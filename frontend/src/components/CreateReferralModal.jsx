@@ -250,11 +250,13 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
                       <SelectValue placeholder="Choose receiving doctor" />
                     </SelectTrigger>
                     <SelectContent>
-                      {doctors.map((doctor) => (
-                        <SelectItem key={doctor._id} value={doctor._id}>
-                          {doctor.fullName} - {doctor.specialty}
-                        </SelectItem>
-                      ))}
+                      {doctors
+                        .filter((doctor) => doctor.isActive !== false)
+                        .map((doctor) => (
+                          <SelectItem key={doctor._id} value={doctor._id}>
+                            {doctor.fullName} - {doctor.specialty}
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                   {!selectedDoctor && (

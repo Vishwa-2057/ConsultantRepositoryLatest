@@ -18,7 +18,6 @@ import {
   Heart,
   FileText,
   Share2,
-  Stethoscope,
   ChevronUp,
   ChevronDown,
   ChevronLeft,
@@ -26,7 +25,6 @@ import {
   User,
   MapPin,
   Clock,
-  UserCheck,
   CalendarDays,
   ArrowRight,
   AlertTriangle,
@@ -61,10 +59,6 @@ const PatientManagement = () => {
   const [error, setError] = useState("");
   const [expandedPatients, setExpandedPatients] = useState(new Set());
   
-  // Specialty-based organization state
-  const [specialtyGroups, setSpecialtyGroups] = useState([]);
-  const [specialtyLoading, setSpecialtyLoading] = useState(false);
-  const [expandedSpecialties, setExpandedSpecialties] = useState(new Set());
   
   // Appointments state
   const [appointments, setAppointments] = useState([]);
@@ -180,34 +174,6 @@ const PatientManagement = () => {
     loadPatients();
   }, [searchTerm, statusFilter, currentPage, activeTab]);
 
-  // Load patients grouped by specialty
-  useEffect(() => {
-    const loadSpecialtyGroups = async () => {
-      if (activeTab !== "specialty") return;
-      
-      setSpecialtyLoading(true);
-      setError("");
-      try {
-        const filters = {};
-        if (searchTerm.trim()) filters.search = searchTerm.trim();
-        if (statusFilter !== "all") {
-          const statusMap = { 'active': 'Active', 'follow-up': 'Follow-up', 'completed': 'Completed' };
-          filters.status = statusMap[statusFilter] || statusFilter;
-        }
-        
-        const response = await patientAPI.getGroupedBySpecialty(filters);
-        setSpecialtyGroups(response.specialtyGroups || []);
-      } catch (err) {
-        console.error('Failed to load specialty groups:', err);
-        setError(err.message || 'Failed to load specialty groups');
-        setSpecialtyGroups([]);
-      } finally {
-        setSpecialtyLoading(false);
-      }
-    };
-
-    loadSpecialtyGroups();
-  }, [searchTerm, statusFilter, activeTab]);
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -404,16 +370,6 @@ const PatientManagement = () => {
     setExpandedPatients(newExpanded);
   };
 
-  // Toggle specialty expansion
-  const toggleSpecialtyExpansion = (specialty) => {
-    const newExpanded = new Set(expandedSpecialties);
-    if (newExpanded.has(specialty)) {
-      newExpanded.delete(specialty);
-    } else {
-      newExpanded.add(specialty);
-    }
-    setExpandedSpecialties(newExpanded);
-  };
 
   return (
     <div className="p-6 space-y-6">
@@ -486,7 +442,6 @@ const PatientManagement = () => {
         <TabsList>
           <TabsTrigger value="list">List View</TabsTrigger>
           <TabsTrigger value="cards">Card View</TabsTrigger>
-          <TabsTrigger value="specialty">By Specialty</TabsTrigger>
         </TabsList>
 
         <TabsContent value="list">
@@ -1043,111 +998,6 @@ const PatientManagement = () => {
           </div>
         </TabsContent>
 
-        <TabsContent value="specialty">
-          <Card className="border-0 shadow-soft">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Stethoscope className="w-5 h-5 text-primary" />
-                Patients by Doctor Specialty
-              </CardTitle>
-              <CardDescription>Patients organized by their assigned doctors' medical specialties</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {specialtyLoading && <p className="text-sm text-muted-foreground">Loading specialty groups...</p>}
-              {error && <p className="text-sm text-red-600">{error}</p>}
-              
-              <div className="space-y-4">
-                {specialtyGroups.map((group) => {
-                  const isExpanded = expandedSpecialties.has(group.specialty);
-                  const specialtyName = group.specialty || 'Unassigned';
-                  
-                  return (
-                    <div key={group.specialty || 'unassigned'} className="rounded-lg border border-border">
-                      {/* Specialty Header */}
-                      <div 
-                        className="p-4 bg-gradient-to-r from-primary/5 to-secondary/5 cursor-pointer hover:from-primary/10 hover:to-secondary/10 transition-all duration-200"
-                        onClick={() => toggleSpecialtyExpansion(group.specialty)}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-3">
-                            <div className="w-10 h-10 bg-gradient-primary rounded-full flex items-center justify-center">
-                              <UserCheck className="w-5 h-5 text-white" />
-                            </div>
-                            <div>
-                              <h3 className="font-semibold text-foreground text-lg">{specialtyName}</h3>
-                              <p className="text-sm text-muted-foreground">
-                                {group.patientCount} patient{group.patientCount !== 1 ? 's' : ''}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <Badge variant="outline" className="bg-background">
-                              {group.patientCount}
-                            </Badge>
-                            <Button variant="ghost" size="icon">
-                              {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Patients in Specialty */}
-                      {isExpanded && (
-                        <div className="border-t border-border/50">
-                          <div className="p-4 space-y-3">
-                            {group.patients.map((patient) => (
-                              <div key={patient._id} className="rounded-lg border border-border/30 hover:bg-muted/20 transition-all duration-200">
-                                <div className="p-3">
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center space-x-3">
-                                      <div className="w-8 h-8 bg-gradient-to-r from-teal-500 to-cyan-500 rounded-full flex items-center justify-center">
-                                        <User className="w-4 h-4 text-white" />
-                                      </div>
-                                      <div>
-                                        <h4 className="font-medium text-foreground">{patient.fullName}</h4>
-                                        <p className="text-xs text-muted-foreground">
-                                          {patient.age || 0} years • {patient.gender || 'Unknown'}
-                                        </p>
-                                        <p className="text-xs text-muted-foreground">
-                                          Doctors: {patient.assignedDoctors?.map(doc => doc.fullName).join(', ') || 'None assigned'}
-                                        </p>
-                                      </div>
-                                    </div>
-                                    
-                                    <div className="flex items-center space-x-2">
-                                      <Badge variant={getStatusColor(patient.status)} className="text-xs">
-                                        {patient.status || 'Active'}
-                                      </Badge>
-                                      <div className="flex space-x-1">
-                                        <Button variant="ghost" size="sm">
-                                          <Phone className="w-3 h-3" />
-                                        </Button>
-                                        <Button variant="ghost" size="sm">
-                                          <Mail className="w-3 h-3" />
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-                
-                {!specialtyLoading && specialtyGroups.length === 0 && (
-                  <div className="text-center py-8">
-                    <UserCheck className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                    <p className="text-muted-foreground">No patients found with assigned doctors</p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
 
       {/* Upcoming Appointments and Compliance Alerts */}

@@ -265,7 +265,7 @@ const AppointmentManagement = () => {
         </div>
         <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-blue-600 hover:bg-blue-700">
+            <Button className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700">
               <Plus className="w-4 h-4 mr-2" />
               New Appointment
             </Button>
@@ -301,11 +301,13 @@ const AppointmentManagement = () => {
                       <SelectValue placeholder="Select doctor" />
                     </SelectTrigger>
                     <SelectContent>
-                      {doctors.map((doctor) => (
-                        <SelectItem key={doctor._id} value={doctor._id}>
-                          Dr. {doctor.fullName} - {doctor.specialty}
-                        </SelectItem>
-                      ))}
+                      {doctors
+                        .filter((doctor) => doctor.isActive !== false)
+                        .map((doctor) => (
+                          <SelectItem key={doctor._id} value={doctor._id}>
+                            Dr. {doctor.fullName} - {doctor.specialty}
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>
