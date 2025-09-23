@@ -2,41 +2,114 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import { 
+  Users, 
+  Calendar, 
+  Activity, 
+  TrendingUp, 
+  Clock, 
+  Plus,
+  Phone,
+  Video,
+  MessageCircle,
+  User,
+  Heart,
+  Stethoscope,
+  AlertTriangle,
+  CheckCircle,
+  ArrowUpRight,
+  ArrowDownRight,
+  ArrowRight,
+  CalendarDays,
+  MapPin,
+  Check,
+  UserCheck,
+  Shield
+} from "lucide-react";
+import AppointmentModal from "@/components/AppointmentModal";
+import AppointmentViewModal from '../components/AppointmentViewModal';
+import ComplianceAlertModal from '../components/ComplianceAlertModal';
+import Carousel from "@/components/Carousel";
+import { getCurrentUser, isDoctor, isNurse, isHeadNurse, isSupervisor } from "@/utils/roleUtils";
+
+// Import lab images
+import labPhoto1 from "@/assets/Images/labphoto1.jpg";
+import labPhoto2 from "@/assets/Images/labphoto2.jpg";
+import labPhoto3 from "@/assets/Images/labphoto3.jpg";
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogDescription, 
+  DialogFooter, 
+  DialogHeader, 
+  DialogTitle 
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { 
-  Users, 
-  Calendar, 
-  AlertTriangle, 
-  TrendingUp, 
-  Clock, 
-  CheckCircle,
-  Plus,
-  ArrowRight,
-  CalendarDays,
-  User,
-  MapPin
-} from "lucide-react";
-import AppointmentModal from "@/components/AppointmentModal";
 import { useToast } from "@/hooks/use-toast";
-import { appointmentAPI, patientAPI, complianceAlertAPI } from "@/services/api";
+import { patientAPI, appointmentAPI, consultationAPI, complianceAlertAPI, invoiceAPI, doctorAPI, nurseAPI } from "@/services/api";
  
 import { Link } from "react-router-dom";
 
 const Dashboard = () => {
+  // Get current user from localStorage
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const raw = localStorage.getItem('authUser');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+
   const [isAppointmentModalOpen, setIsAppointmentModalOpen] = useState(false);
+  const [isAppointmentViewModalOpen, setIsAppointmentViewModalOpen] = useState(false);
+  const [isComplianceAlertModalOpen, setIsComplianceAlertModalOpen] = useState(false);
   const [appointments, setAppointments] = useState([]);
   const [appointmentsLoading, setAppointmentsLoading] = useState(false);
   const [recentPatients, setRecentPatients] = useState([]);
   const [recentPatientsLoading, setRecentPatientsLoading] = useState(false);
   const [totalPatients, setTotalPatients] = useState(0);
   const [totalPatientsLoading, setTotalPatientsLoading] = useState(true);
+  const [todayAppointments, setTodayAppointments] = useState(0);
+  const [todayAppointmentsLoading, setTodayAppointmentsLoading] = useState(true);
+  const [monthlyRevenue, setMonthlyRevenue] = useState(0);
+  const [monthlyRevenueChange, setMonthlyRevenueChange] = useState("+0%");
+  const [monthlyRevenueLoading, setMonthlyRevenueLoading] = useState(true);
+  const [complianceRate, setComplianceRate] = useState(94.2);
+  const [complianceRateLoading, setComplianceRateLoading] = useState(true);
+  const [totalDoctors, setTotalDoctors] = useState(0);
+  const [totalDoctorsLoading, setTotalDoctorsLoading] = useState(true);
+  const [totalNurses, setTotalNurses] = useState(0);
+  const [totalNursesLoading, setTotalNursesLoading] = useState(true);
   
   const { toast } = useToast();
+
+  // Carousel images data
+  const carouselImages = [
+    {
+      src: labPhoto1,
+      alt: "Modern Laboratory Equipment",
+      caption: "State-of-the-Art Laboratory",
+      description: "Advanced diagnostic equipment for accurate results"
+    },
+    {
+      src: labPhoto2,
+      alt: "Medical Research Facility",
+      caption: "Research & Development",
+      description: "Cutting-edge research for better healthcare solutions"
+    },
+    {
+      src: labPhoto3,
+      alt: "Healthcare Technology",
+      caption: "Digital Healthcare",
+      description: "Innovative technology improving patient care"
+    }
+  ];
 
   // Load appointments from API when component mounts
   useEffect(() => {
@@ -80,6 +153,7 @@ const Dashboard = () => {
     };
 
     loadRecentPatients();
+    loadChartData();
   }, []);
 
   // Load total patients count
@@ -100,36 +174,154 @@ const Dashboard = () => {
     loadTotalPatients();
   }, []);
 
-  const stats = [
-    {
-      title: "Total Patients",
-      value: totalPatientsLoading ? "…" : totalPatients.toLocaleString(),
-      change: "+12.5%",
-      icon: Users,
-      color: "text-primary"
-    },
+  // Load today's appointments count
+  useEffect(() => {
+    const loadTodayAppointments = async () => {
+      setTodayAppointmentsLoading(true);
+      try {
+        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+        const response = await appointmentAPI.getAll(1, 100, { date: today });
+        const todayCount = response?.appointments?.length || 0;
+        setTodayAppointments(todayCount);
+      } catch (error) {
+        console.error('Failed to load today\'s appointments:', error);
+        setTodayAppointments(0);
+      } finally {
+        setTodayAppointmentsLoading(false);
+      }
+    };
+    loadTodayAppointments();
+  }, []);
+
+  // Load current month revenue
+  useEffect(() => {
+    const loadMonthlyRevenue = async () => {
+      setMonthlyRevenueLoading(true);
+      try {
+        const response = await invoiceAPI.getCurrentMonthRevenue();
+        setMonthlyRevenue(response.currentMonthRevenue || 0);
+        
+        // Format percentage change
+        const change = response.percentageChange || 0;
+        const sign = change >= 0 ? '+' : '';
+        setMonthlyRevenueChange(`${sign}${change}%`);
+      } catch (error) {
+        console.error('Failed to load monthly revenue:', error);
+        setMonthlyRevenue(0);
+        setMonthlyRevenueChange("+0%");
+      } finally {
+        setMonthlyRevenueLoading(false);
+      }
+    };
+    loadMonthlyRevenue();
+  }, []);
+
+  // Load compliance rate
+  useEffect(() => {
+    const loadComplianceRate = async () => {
+      setComplianceRateLoading(true);
+      try {
+        const rate = await complianceAlertAPI.getComplianceRate();
+        setComplianceRate(rate);
+      } catch (error) {
+        console.error('Failed to load compliance rate:', error);
+        setComplianceRate(94.2); // Fallback to default
+      } finally {
+        setComplianceRateLoading(false);
+      }
+    };
+    loadComplianceRate();
+  }, []);
+
+  // Load total doctors
+  useEffect(() => {
+    const loadTotalDoctors = async () => {
+      setTotalDoctorsLoading(true);
+      try {
+        const response = await doctorAPI.getAll();
+        setTotalDoctors(response.data?.length || 0);
+      } catch (error) {
+        console.error('Failed to load total doctors:', error);
+        setTotalDoctors(0);
+      } finally {
+        setTotalDoctorsLoading(false);
+      }
+    };
+    loadTotalDoctors();
+  }, []);
+
+  // Load total nurses
+  useEffect(() => {
+    const loadTotalNurses = async () => {
+      setTotalNursesLoading(true);
+      try {
+        const response = await nurseAPI.getAll();
+        setTotalNurses(response.data?.length || 0);
+      } catch (error) {
+        console.error('Failed to load total nurses:', error);
+        setTotalNurses(0);
+      } finally {
+        setTotalNursesLoading(false);
+      }
+    };
+    loadTotalNurses();
+  }, []);
+
+  // Base stats available to all users
+  const allBaseStats = [
     {
       title: "Appointments Today",
-      value: "23",
-      change: "+3 from yesterday",
+      value: todayAppointmentsLoading ? "…" : todayAppointments.toString(),
+      change: "",
       icon: Calendar,
       color: "text-secondary"
     },
     {
+      title: "Total Patients",
+      value: totalPatientsLoading ? "…" : totalPatients.toLocaleString(),
+      change: "",
+      icon: Users,
+      color: "text-primary"
+    },
+    {
+      title: "Total Doctors",
+      value: totalDoctorsLoading ? "…" : totalDoctors.toLocaleString(),
+      change: "",
+      icon: UserCheck,
+      color: "text-blue-600"
+    }
+  ];
+
+  // Filter out Total Doctors card for doctors and all nursing roles
+  const baseStats = (isDoctor() || isNurse() || isHeadNurse() || isSupervisor()) 
+    ? allBaseStats.filter(stat => stat.title !== "Total Doctors")
+    : allBaseStats;
+
+  // Clinic-specific stats for the separate row (only for clinic users)
+  const clinicStats = (currentUser?.role === 'clinic' || currentUser?.isClinic) ? [
+    {
+      title: "Total Nurses",
+      value: totalNursesLoading ? "…" : totalNurses.toLocaleString(),
+      change: "",
+      icon: Shield,
+      color: "text-green-600"
+    },
+    {
       title: "Compliance Rate",
-      value: "94.2%",
-      change: "+2.1%",
+      value: complianceRateLoading ? "…" : `${complianceRate}%`,
       icon: CheckCircle,
       color: "text-success"
     },
     {
       title: "Revenue (Month)",
-      value: "$45,230",
-      change: "+8.7%",
+      value: monthlyRevenueLoading ? "…" : `₹${monthlyRevenue.toLocaleString('en-IN')}`,
+      change: monthlyRevenueChange,
       icon: TrendingUp,
       color: "text-warning"
     }
-  ];
+  ] : [];
+
+  const stats = [...baseStats];
 
   // recentPatients are now loaded from the API
 
@@ -140,7 +332,13 @@ const Dashboard = () => {
   const [alertErrors, setAlertErrors] = useState({});
   const [patients, setPatients] = useState([]);
   const [patientsLoading, setPatientsLoading] = useState(false);
+  
+  // Chart data states
+  const [appointmentTrendData, setAppointmentTrendData] = useState([]);
+  const [patientAgeData, setPatientAgeData] = useState([]);
+  const [chartsLoading, setChartsLoading] = useState(false);
   const [submittingAlert, setSubmittingAlert] = useState(false);
+  const [solvingAlerts, setSolvingAlerts] = useState(new Set());
 
   // Load compliance alerts from API
   useEffect(() => {
@@ -250,6 +448,121 @@ const Dashboard = () => {
     }
   };
 
+  // Load chart data
+  const loadChartData = async () => {
+    setChartsLoading(true);
+    try {
+      // Load appointment trend data (last 7 days)
+      const appointmentTrend = [];
+      const today = new Date();
+      
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - i);
+        const dateStr = date.toISOString().split('T')[0];
+        
+        try {
+          const response = await appointmentAPI.getAll(1, 100, { date: dateStr });
+          const count = response.appointments?.length || response.data?.length || 0;
+          
+          appointmentTrend.push({
+            date: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+            appointments: count
+          });
+        } catch (error) {
+          appointmentTrend.push({
+            date: date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+            appointments: 0
+          });
+        }
+      }
+      
+      setAppointmentTrendData(appointmentTrend);
+
+      // Load patient age distribution data
+      try {
+        const patientsResponse = await patientAPI.getAll(1, 1000);
+        const patients = patientsResponse.patients || patientsResponse.data || [];
+        
+        const ageGroups = {
+          '0-18': 0,
+          '19-35': 0,
+          '36-50': 0,
+          '51-65': 0,
+          '65+': 0
+        };
+
+        patients.forEach(patient => {
+          if (patient.age) {
+            const age = parseInt(patient.age);
+            if (age <= 18) ageGroups['0-18']++;
+            else if (age <= 35) ageGroups['19-35']++;
+            else if (age <= 50) ageGroups['36-50']++;
+            else if (age <= 65) ageGroups['51-65']++;
+            else ageGroups['65+']++;
+          }
+        });
+
+        const ageData = Object.entries(ageGroups).map(([range, count]) => ({
+          ageRange: range,
+          patients: count,
+          fill: range === '0-18' ? '#8884d8' : 
+                range === '19-35' ? '#82ca9d' :
+                range === '36-50' ? '#ffc658' :
+                range === '51-65' ? '#ff7c7c' : '#8dd1e1'
+        }));
+
+        setPatientAgeData(ageData);
+      } catch (error) {
+        console.error('Failed to load patient age data:', error);
+        setPatientAgeData([]);
+      }
+
+    } catch (error) {
+      console.error('Failed to load chart data:', error);
+    } finally {
+      setChartsLoading(false);
+    }
+  };
+
+  // Handle solving compliance alert
+  const handleSolveAlert = async (alertId) => {
+    setSolvingAlerts(prev => new Set([...prev, alertId]));
+    
+    try {
+      await complianceAlertAPI.resolve(alertId, 'Marked as solved from dashboard');
+      
+      // Remove the solved alert from the list
+      setAlerts(prev => prev.filter(alert => alert._id !== alertId));
+      
+      // Refresh compliance rate since solving an alert changes the calculation
+      try {
+        const rate = await complianceAlertAPI.getComplianceRate();
+        setComplianceRate(rate);
+      } catch (error) {
+        console.error('Failed to refresh compliance rate:', error);
+      }
+      
+      toast({ 
+        title: "Alert Solved", 
+        description: "Compliance alert has been marked as solved and removed from the dashboard." 
+      });
+    } catch (error) {
+      console.error('Failed to solve compliance alert:', error);
+      toast({ 
+        title: "Error", 
+        description: "Failed to solve compliance alert. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setSolvingAlerts(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(alertId);
+        return newSet;
+      });
+    }
+  };
+
   const getPriorityColor = (priority) => {
     switch (priority) {
       case "High": return "destructive";
@@ -279,14 +592,21 @@ const Dashboard = () => {
   };
 
   const formatAppointmentTime = (date, time) => {
+    if (!date || !time) return "Invalid date";
+    
     const appointmentDate = new Date(`${date}T${time}`);
     const now = new Date();
+    
+    // Check if the date is valid
+    if (isNaN(appointmentDate.getTime())) return "Invalid date";
+    
     const diffTime = appointmentDate - now;
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
     if (diffDays < 0) return "Past";
     if (diffDays === 0) return "Today";
     if (diffDays === 1) return "Tomorrow";
+    if (isNaN(diffDays)) return "Invalid date";
     return `${diffDays} days`;
   };
 
@@ -304,11 +624,19 @@ const Dashboard = () => {
 
   // Modal handlers
   const handleNewAppointment = () => setIsAppointmentModalOpen(true);
+  const handleViewAppointments = () => setIsAppointmentViewModalOpen(true);
 
   // Form submission handlers
   const handleAppointmentSubmit = (appointmentData) => {
     // Add the new appointment to the list
     setAppointments(prev => [appointmentData, ...prev]);
+    
+    // Update today's appointments count if the new appointment is for today
+    const today = new Date().toISOString().split('T')[0];
+    const appointmentDate = new Date(appointmentData.date).toISOString().split('T')[0];
+    if (appointmentDate === today) {
+      setTodayAppointments(prev => prev + 1);
+    }
     
     // Extract patient name from populated patient data
     const patientName = appointmentData.patientId?.fullName || appointmentData.patientName || 'Unknown Patient';
@@ -322,223 +650,222 @@ const Dashboard = () => {
 
   // Modal close handlers
   const handleAppointmentModalClose = () => setIsAppointmentModalOpen(false);
+  const handleAppointmentViewModalClose = () => {
+    setIsAppointmentViewModalOpen(false);
+  };
+
+  const handleViewComplianceAlerts = () => {
+    setIsComplianceAlertModalOpen(true);
+  };
+
+  const handleComplianceAlertModalClose = () => {
+    setIsComplianceAlertModalOpen(false);
+  };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-3 space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
-          <p className="text-muted-foreground">Welcome back, Dr. Johnson. Here's your overview.</p>
+          <p className="text-muted-foreground">Welcome back, {currentUser?.name || currentUser?.fullName || 'User'}. Here's your overview.</p>
         </div>
-        <Button 
-          className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 shadow-lg shadow-teal-500/25" 
-          onClick={handleNewAppointment}
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          New Appointment
-        </Button>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, index) => (
-          <Card key={index} className="border-0 shadow-soft hover:shadow-medical transition-all duration-200">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">{stat.title}</p>
-                  <p className="text-2xl font-bold text-foreground">{stat.value}</p>
-                  <p className={`text-sm ${stat.color}`}>{stat.change}</p>
+      {/* Carousel Section */}
+      <div className="mb-3">
+        <Carousel images={carouselImages} autoPlay={true} interval={4000} />
+      </div>
+
+      {/* Main Content Grid - Charts and Stats */}
+      <div className="grid gap-3 lg:grid-cols-3">
+        {/* Charts Section - Takes 2 columns */}
+        <div className="lg:col-span-2 grid gap-3 md:grid-cols-2">
+          {/* Appointments Trend Chart */}
+          <Card className="border-0 shadow-soft">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-primary" />
+                Appointments Trend (Last 7 Days)
+              </CardTitle>
+              <CardDescription>
+                Daily appointment bookings over the past week
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {chartsLoading ? (
+                <div className="h-[150px] flex items-center justify-center">
+                  <div className="text-muted-foreground">Loading chart data...</div>
                 </div>
-                <div className={`p-2 rounded-lg bg-gradient-primary/10`}>
-                  <stat.icon className={`w-6 h-6 ${stat.color}`} />
-                </div>
-              </div>
+              ) : (
+                <ChartContainer
+                  config={{
+                    appointments: {
+                      label: "Appointments",
+                      color: "hsl(var(--primary))",
+                    },
+                  }}
+                  className="h-[150px]"
+                >
+                  <LineChart data={appointmentTrendData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis 
+                      dataKey="date" 
+                      fontSize={12}
+                      tickLine={false}
+                      axisLine={false}
+                      domain={['dataMin', 'dataMax']}
+                      ticks={appointmentTrendData.length > 0 ? [appointmentTrendData[0]?.date, appointmentTrendData[appointmentTrendData.length - 1]?.date] : []}
+                    />
+                    <YAxis 
+                      fontSize={12}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Line 
+                      type="monotone" 
+                      dataKey="appointments" 
+                      stroke="var(--color-appointments)" 
+                      strokeWidth={2}
+                      dot={{ fill: "var(--color-appointments)" }}
+                    />
+                  </LineChart>
+                </ChartContainer>
+              )}
             </CardContent>
           </Card>
-        ))}
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Patients */}
-        <Card className="border-0 shadow-soft h-full flex flex-col">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center justify-between">
-              <span className="flex items-center gap-2">
+          {/* Patient Age Distribution Chart */}
+          <Card className="border-0 shadow-soft">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
                 <Users className="w-5 h-5 text-primary" />
-                Recent Patients
-              </span>
-              <Button variant="ghost" size="sm" asChild>
-                <Link to="/patients">View All <ArrowRight className="w-4 h-4 ml-1" /></Link>
-              </Button>
-            </CardTitle>
-            <CardDescription>Latest patient interactions and updates</CardDescription>
-          </CardHeader>
-          <CardContent className="flex-1 flex flex-col">
-            <div className="space-y-4 flex-1">
-              {recentPatientsLoading && (
-                <div className="flex items-center justify-center h-32">
-                  <p className="text-sm text-muted-foreground">Loading...</p>
+                Patient Age Distribution
+              </CardTitle>
+              <CardDescription>
+                Breakdown of patients by age groups
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {chartsLoading ? (
+                <div className="h-[150px] flex items-center justify-center">
+                  <div className="text-muted-foreground">Loading chart data...</div>
                 </div>
+              ) : (
+                <ChartContainer
+                  config={{
+                    patients: {
+                      label: "Patients",
+                    },
+                    "0-18": {
+                      label: "0-18 years",
+                      color: "#8884d8",
+                    },
+                    "19-35": {
+                      label: "19-35 years", 
+                      color: "#82ca9d",
+                    },
+                    "36-50": {
+                      label: "36-50 years",
+                      color: "#ffc658",
+                    },
+                    "51-65": {
+                      label: "51-65 years",
+                      color: "#ff7c7c",
+                    },
+                    "65+": {
+                      label: "65+ years",
+                      color: "#8dd1e1",
+                    },
+                  }}
+                  className="h-[150px]"
+                >
+                  <BarChart data={patientAgeData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis 
+                      dataKey="ageRange" 
+                      fontSize={12}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis 
+                      fontSize={12}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Bar 
+                      dataKey="patients" 
+                      radius={[4, 4, 0, 0]}
+                    />
+                  </BarChart>
+                </ChartContainer>
               )}
-              {!recentPatientsLoading && recentPatients.length === 0 && (
-                <div className="flex items-center justify-center h-32">
-                  <p className="text-sm text-muted-foreground">No recent patients.</p>
-                </div>
-              )}
-              {recentPatients.slice(0, 3).map((patient, index) => (
-                <div key={index} className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-foreground truncate">{patient.name}</p>
-                    <p className="text-sm text-muted-foreground truncate">{patient.condition}</p>
-                  </div>
-                  <div className="text-right ml-2 flex-shrink-0">
-                    <Badge variant="outline" className={`mb-1 text-${getStatusColor(patient.status)}`}>
-                      {patient.status}
-                    </Badge>
-                    <p className="text-xs text-muted-foreground">{patient.lastVisit}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
 
-        {/* Upcoming Appointments */}
-        <Card className="border-0 shadow-soft h-full flex flex-col">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center justify-between">
-              <span className="flex items-center gap-2">
-                <CalendarDays className="w-5 h-5 text-secondary" />
-                Upcoming Appointments
-              </span>
-              <Button variant="ghost" size="sm" asChild>
-                <Link to="/teleconsultation">View All <ArrowRight className="w-4 h-4 ml-1" /></Link>
-              </Button>
-            </CardTitle>
-            <CardDescription>Your scheduled appointments and meetings</CardDescription>
-          </CardHeader>
-          <CardContent className="flex-1 flex flex-col">
-            <div className="space-y-4 flex-1">
-              {appointmentsLoading && (
-                <div className="flex items-center justify-center h-32">
-                  <p className="text-sm text-muted-foreground">Loading...</p>
-                </div>
-              )}
-              {!appointmentsLoading && appointments.length === 0 && (
-                <div className="flex items-center justify-center h-32">
-                  <p className="text-sm text-muted-foreground">No upcoming appointments.</p>
-                </div>
-              )}
-              {appointments.slice(0, 3).map((appointment, index) => {
-                const priority = getAppointmentPriority(appointment.date, appointment.time);
-                const timeUntil = formatAppointmentTime(appointment.date, appointment.time);
-                const patientName = appointment.patientId?.fullName || appointment.patientName || 'Unknown Patient';
-                
-                return (
-                  <div key={index} className={`p-2 rounded-lg border transition-colors ${
-                    priority === 'urgent' ? 'border-red-200 bg-red-50/50' :
-                    priority === 'soon' ? 'border-yellow-200 bg-yellow-50/50' :
-                    priority === 'past' ? 'border-gray-200 bg-gray-50/50' :
-                    'border-border hover:bg-muted/30'
-                  }`}>
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <User className="w-3 h-3 text-muted-foreground flex-shrink-0" />
-                        <span className="text-sm font-medium text-foreground truncate">{patientName}</span>
-                        <span className="text-xs text-muted-foreground truncate hidden sm:inline">
-                          • {appointment.appointmentType || 'Consultation'}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1 flex-shrink-0">
-                        <Badge variant={getAppointmentStatusColor(appointment.status)} className="text-xs px-1.5 py-0.5">
-                          {appointment.status}
-                        </Badge>
-                        {priority === 'urgent' && (
-                          <Badge variant="destructive" className="text-xs px-1.5 py-0.5">Urgent</Badge>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between mt-1">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0 flex-1">
-                        <Clock className="w-3 h-3 flex-shrink-0" />
-                        <span className="truncate">{new Date(appointment.date).toLocaleDateString()} at {appointment.time}</span>
-                        {appointment.location && (
-                          <>
-                            <span className="hidden sm:inline">•</span>
-                            <MapPin className="w-3 h-3 flex-shrink-0 hidden sm:inline" />
-                            <span className="truncate hidden sm:inline">{appointment.location}</span>
-                          </>
-                        )}
-                      </div>
-                      <span className={`text-xs font-medium truncate ml-2 ${
-                        priority === 'urgent' ? 'text-red-600' :
-                        priority === 'soon' ? 'text-yellow-600' :
-                        priority === 'past' ? 'text-gray-500' :
-                        'text-muted-foreground'
-                      }`}>
-                        {timeUntil}
-                      </span>
-                    </div>
+        {/* Stats Column - Takes 1 column */}
+        <div className="lg:col-span-1 grid gap-3 grid-cols-1">
+          {stats.map((stat, index) => (
+            <Card key={index} className="border-0 shadow-soft hover:shadow-medical transition-all duration-200">
+              <CardContent className="p-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">{stat.title}</p>
+                    <p className="text-2xl font-bold text-foreground">{stat.value}</p>
+                    <p className={`text-sm ${stat.color}`}>{stat.change}</p>
                   </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Compliance Alerts */}
-        <Card className="border-0 shadow-soft h-full flex flex-col">
-          <CardHeader className="pb-3">
-            <CardTitle className="flex items-center justify-between">
-              <span className="flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-warning" />
-                Compliance Alerts
-              </span>
-              <div className="flex gap-2">
-                <Button variant="ghost" size="sm" asChild>
-                  <Link to="/billing">View All <ArrowRight className="w-4 h-4 ml-1" /></Link>
-                </Button>
-                <Button variant="outline" size="sm" onClick={openAlertModal}>Add Alert</Button>
-              </div>
-            </CardTitle>
-            <CardDescription>Important notifications requiring attention</CardDescription>
-          </CardHeader>
-          <CardContent className="flex-1 flex flex-col">
-            <div className="space-y-4 flex-1">
-              {alertsLoading && (
-                <div className="flex items-center justify-center h-32">
-                  <p className="text-sm text-muted-foreground">Loading...</p>
-                </div>
-              )}
-              {!alertsLoading && alerts.length === 0 && (
-                <div className="flex items-center justify-center h-32">
-                  <p className="text-sm text-muted-foreground">No compliance alerts.</p>
-                </div>
-              )}
-              {alerts.slice(0, 3).map((alert, index) => (
-                <div key={alert._id || index} className="p-3 rounded-lg border border-border hover:bg-muted/30 transition-colors">
-                  <div className="flex items-start justify-between mb-2">
-                    <span className="text-sm font-medium text-muted-foreground truncate">{alert.type}</span>
-                    <Badge variant={getPriorityColor(alert.priority)} className="text-xs flex-shrink-0 ml-2">
-                      {alert.priority}
-                    </Badge>
+                  <div className={`p-2 rounded-lg bg-gradient-primary/10`}>
+                    <stat.icon className={`w-6 h-6 ${stat.color}`} />
                   </div>
-                  <p className="font-medium text-foreground mb-1 truncate">{alert.patientName}</p>
-                  <p className="text-sm text-muted-foreground line-clamp-2">{alert.message}</p>
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
+
+      {/* Clinic-specific Stats Row - Only for clinic users */}
+      {(currentUser?.role === 'clinic' || currentUser?.isClinic) && clinicStats.length > 0 && (
+        <div className="grid gap-3 md:grid-cols-3">
+          {clinicStats.map((stat, index) => (
+            <Card key={index} className="border-0 shadow-soft hover:shadow-medical transition-all duration-200">
+              <CardContent className="p-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">{stat.title}</p>
+                    <p className="text-2xl font-bold text-foreground">{stat.value}</p>
+                    <p className={`text-sm ${stat.color}`}>{stat.change}</p>
+                  </div>
+                  <div className={`p-2 rounded-lg bg-gradient-primary/10`}>
+                    <stat.icon className={`w-6 h-6 ${stat.color}`} />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {/* Appointment Modal */}
       <AppointmentModal
         isOpen={isAppointmentModalOpen}
         onClose={handleAppointmentModalClose}
         onSubmit={handleAppointmentSubmit}
+      />
+
+      {/* Appointment View Modal */}
+      <AppointmentViewModal
+        isOpen={isAppointmentViewModalOpen}
+        onClose={handleAppointmentViewModalClose}
+      />
+
+      {/* Compliance Alert Modal */}
+      <ComplianceAlertModal
+        isOpen={isComplianceAlertModalOpen}
+        onClose={handleComplianceAlertModalClose}
       />
 
       {/* Add Compliance Alert Modal */}

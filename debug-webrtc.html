@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebRTC Debug Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .log { background: #f0f0f0; padding: 10px; margin: 10px 0; border-radius: 5px; }
+        video { width: 300px; height: 200px; border: 1px solid #ccc; margin: 10px; }
+        button { padding: 10px 20px; margin: 5px; }
+    </style>
+</head>
+<body>
+    <h1>WebRTC Connection Debug</h1>
+    
+    <div>
+        <button onclick="testLocalMedia()">Test Local Media</button>
+        <button onclick="testPeerConnection()">Test Peer Connection</button>
+        <button onclick="clearLog()">Clear Log</button>
+    </div>
+    
+    <div>
+        <video id="localVideo" autoplay muted playsinline></video>
+        <video id="remoteVideo" autoplay playsinline></video>
+    </div>
+    
+    <div id="log"></div>
+
+    <script>
+        let localStream = null;
+        let peerConnection = null;
+        
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `<div class="log">[${timestamp}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(message);
+        }
+        
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+        
+        async function testLocalMedia() {
+            try {
+                log('Testing local media access...');
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: true,
+                    audio: true
+                });
+                
+                const localVideo = document.getElementById('localVideo');
+                localVideo.srcObject = localStream;
+                
+                log(`✅ Local media access successful`);
+                log(`Video tracks: ${localStream.getVideoTracks().length}`);
+                log(`Audio tracks: ${localStream.getAudioTracks().length}`);
+                
+                localStream.getTracks().forEach(track => {
+                    log(`Track: ${track.kind}, enabled: ${track.enabled}, readyState: ${track.readyState}`);
+                });
+                
+            } catch (error) {
+                log(`❌ Local media access failed: ${error.message}`);
+            }
+        }
+        
+        async function testPeerConnection() {
+            try {
+                log('Testing peer connection setup...');
+                
+                if (!localStream) {
+                    log('❌ No local stream available. Test local media first.');
+                    return;
+                }
+                
+                // Create peer connection
+                peerConnection = new RTCPeerConnection({
+                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+                });
+                
+                // Add event listeners
+                peerConnection.onconnectionstatechange = () => {
+                    log(`Connection state: ${peerConnection.connectionState}`);
+                };
+                
+                peerConnection.oniceconnectionstatechange = () => {
+                    log(`ICE connection state: ${peerConnection.iceConnectionState}`);
+                };
+                
+                peerConnection.onicegatheringstatechange = () => {
+                    log(`ICE gathering state: ${peerConnection.iceGatheringState}`);
+                };
+                
+                peerConnection.onsignalingstatechange = () => {
+                    log(`Signaling state: ${peerConnection.signalingState}`);
+                };
+                
+                peerConnection.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        log(`ICE candidate: ${event.candidate.candidate}`);
+                    } else {
+                        log('ICE gathering complete');
+                    }
+                };
+                
+                peerConnection.ontrack = (event) => {
+                    log(`Received remote track: ${event.track.kind}`);
+                    const remoteVideo = document.getElementById('remoteVideo');
+                    remoteVideo.srcObject = event.streams[0];
+                };
+                
+                // Add local tracks
+                localStream.getTracks().forEach(track => {
+                    log(`Adding ${track.kind} track to peer connection`);
+                    peerConnection.addTrack(track, localStream);
+                });
+                
+                // Create offer
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                log('✅ Offer created and set as local description');
+                
+                // Simulate receiving the offer back as answer (for testing)
+                setTimeout(async () => {
+                    try {
+                        const answer = await peerConnection.createAnswer();
+                        await peerConnection.setRemoteDescription(offer); // Simulate remote offer
+                        await peerConnection.setLocalDescription(answer);
+                        log('✅ Answer created and set');
+                    } catch (error) {
+                        log(`❌ Answer creation failed: ${error.message}`);
+                    }
+                }, 1000);
+                
+            } catch (error) {
+                log(`❌ Peer connection test failed: ${error.message}`);
+            }
+        }
+        
+        // Auto-start local media test
+        window.onload = () => {
+            log('WebRTC Debug Tool loaded');
+            log('Click "Test Local Media" to start');
+        };
+    </script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
   Dialog, 
   DialogContent, 
@@ -13,20 +13,34 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { User, Phone, Mail, MapPin, Calendar, Heart, FileText, Plus, X } from "lucide-react";
-import { appointmentAPI, patientAPI } from "@/services/api";
+import { User, Phone, Mail, MapPin, Calendar, Heart, FileText, Plus, X, UserCheck, Share2 } from "lucide-react";
+import { appointmentAPI, patientAPI, doctorAPI } from "@/services/api";
+import { useToast } from "@/hooks/use-toast";
 
 const PatientModal = ({ isOpen, onClose, onSubmit }) => {
+  const { toast } = useToast();
   const [formData, setFormData] = useState({
     fullName: "",
     dateOfBirth: "",
     gender: "",
     phone: "",
     email: "",
-    address: "",
-    city: "",
-    state: "",
-    zipCode: "",
+    password: "",
+    uhid: "",
+    bloodGroup: "",
+    occupation: "",
+    referringDoctor: "",
+    referredClinic: "",
+    governmentId: "",
+    idNumber: "",
+    address: {
+      street: "",
+      city: "",
+      state: "",
+      zipCode: "",
+      country: "India"
+    },
+    assignedDoctors: [],
     emergencyContact: {
       name: "",
       relationship: "",
@@ -47,10 +61,41 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
   });
 
   const [errors, setErrors] = useState({});
+  const [doctors, setDoctors] = useState([]);
+  const [doctorsLoading, setDoctorsLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [newCondition, setNewCondition] = useState("");
   const [newAllergy, setNewAllergy] = useState("");
   const [newMedication, setNewMedication] = useState("");
   const [newSurgery, setNewSurgery] = useState("");
+  
+  // File upload states
+  const [profileImage, setProfileImage] = useState(null);
+  const [profileImagePreview, setProfileImagePreview] = useState(null);
+  const [governmentDocument, setGovernmentDocument] = useState(null);
+  const [governmentDocumentName, setGovernmentDocumentName] = useState("");
+
+  // Load doctors when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      loadDoctors();
+    }
+  }, [isOpen]);
+
+  const loadDoctors = async () => {
+    setDoctorsLoading(true);
+    try {
+      const response = await doctorAPI.getAll();
+      const doctorsList = response.doctors || response.data || [];
+      console.log('Loaded doctors:', doctorsList);
+      setDoctors(Array.isArray(doctorsList) ? doctorsList : []);
+    } catch (error) {
+      console.error('Failed to load doctors:', error);
+      setDoctors([]);
+    } finally {
+      setDoctorsLoading(false);
+    }
+  };
 
   const handleInputChange = (field, value) => {
     if (field.includes('.')) {
@@ -97,6 +142,58 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
     }));
   };
 
+  // Handle profile image upload
+  const handleProfileImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Validate file type
+      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+      if (!allowedTypes.includes(file.type)) {
+        setErrors(prev => ({ ...prev, profileImage: "Please select a valid image file (JPEG, PNG, GIF, WebP)" }));
+        return;
+      }
+      
+      // Validate file size (5MB limit)
+      if (file.size > 5 * 1024 * 1024) {
+        setErrors(prev => ({ ...prev, profileImage: "Image size must be less than 5MB" }));
+        return;
+      }
+      
+      setProfileImage(file);
+      setErrors(prev => ({ ...prev, profileImage: "" }));
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setProfileImagePreview(e.target.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Handle government document upload
+  const handleGovernmentDocumentChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Validate file type (images and PDFs)
+      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+      if (!allowedTypes.includes(file.type)) {
+        setErrors(prev => ({ ...prev, governmentDocument: "Please select a valid image file or PDF" }));
+        return;
+      }
+      
+      // Validate file size (10MB limit)
+      if (file.size > 10 * 1024 * 1024) {
+        setErrors(prev => ({ ...prev, governmentDocument: "File size must be less than 10MB" }));
+        return;
+      }
+      
+      setGovernmentDocument(file);
+      setGovernmentDocumentName(file.name);
+      setErrors(prev => ({ ...prev, governmentDocument: "" }));
+    }
+  };
+
   const validateForm = () => {
     const newErrors = {};
     
@@ -107,82 +204,162 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = "Please enter a valid email address";
     }
-    if (!formData.address.trim()) newErrors.address = "Address is required";
-    if (!formData.city.trim()) newErrors.city = "City is required";
-    if (!formData.state.trim()) newErrors.state = "State is required";
-    if (!formData.zipCode.trim()) newErrors.zipCode = "ZIP code is required";
+    if (!formData.password.trim()) {
+      newErrors.password = "Password is required";
+    } else if (formData.password.length < 6) {
+      newErrors.password = "Password must be at least 6 characters long";
+    }
+    
+    // New required fields validation
+    if (!formData.uhid.trim()) newErrors.uhid = "UHID is required";
+    if (!formData.bloodGroup) newErrors.bloodGroup = "Blood group is required";
+    if (!formData.occupation.trim()) newErrors.occupation = "Occupation is required";
+    if (!formData.governmentId) newErrors.governmentId = "Government ID type is required";
+    if (!formData.idNumber.trim()) newErrors.idNumber = "ID number is required";
+    
+    // Address validation
+    if (!formData.address.street.trim()) newErrors['address.street'] = "Street address is required";
+    if (!formData.address.city.trim()) newErrors['address.city'] = "City is required";
+    if (!formData.address.state.trim()) newErrors['address.state'] = "State is required";
+    if (!formData.address.zipCode.trim()) newErrors['address.zipCode'] = "ZIP code is required";
+    
+    // File validation
+    if (!profileImage) newErrors.profileImage = "Profile image is required";
+    if (!governmentDocument) newErrors.governmentDocument = "Government document is required";
 
     setErrors(newErrors);
+    console.log('Validation errors:', newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async () => {
+    console.log('Add Patient button clicked!');
+    console.log('Form data before validation:', {
+      fullName: formData.fullName,
+      phone: formData.phone,
+      email: formData.email,
+      password: formData.password ? `[${formData.password.length} characters]` : 'Not provided',
+      uhid: formData.uhid,
+      bloodGroup: formData.bloodGroup,
+      profileImage: profileImage ? 'Selected' : 'Not selected',
+      governmentDocument: governmentDocument ? 'Selected' : 'Not selected'
+    });
+    
     if (validateForm()) {
+      console.log('Frontend validation passed, submitting form...');
+      setSubmitting(true);
       try {
-        const today = new Date();
-        const birthDate = new Date(formData.dateOfBirth);
-        const age = today.getFullYear() - birthDate.getFullYear();
-        const monthDiff = today.getMonth() - birthDate.getMonth();
-        const actualAge = monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate()) ? age - 1 : age;
+        // Create FormData for file upload
+        const formDataToSend = new FormData();
+        
+        // Add basic fields
+        formDataToSend.append('fullName', formData.fullName.trim());
+        formDataToSend.append('dateOfBirth', formData.dateOfBirth);
+        formDataToSend.append('gender', formData.gender);
+        formDataToSend.append('phone', formData.phone.trim());
+        formDataToSend.append('email', formData.email.trim());
+        formDataToSend.append('password', formData.password);
+        formDataToSend.append('uhid', formData.uhid.trim().toUpperCase());
+        formDataToSend.append('bloodGroup', formData.bloodGroup);
+        formDataToSend.append('occupation', formData.occupation.trim());
+        formDataToSend.append('referringDoctor', formData.referringDoctor.trim());
+        formDataToSend.append('referredClinic', formData.referredClinic.trim());
+        formDataToSend.append('governmentId', formData.governmentId);
+        formDataToSend.append('idNumber', formData.idNumber.trim());
+        
+        // Add address as JSON string (easier for backend to parse)
+        formDataToSend.append('address', JSON.stringify({
+          street: formData.address.street.trim(),
+          city: formData.address.city.trim(),
+          state: formData.address.state.trim(),
+          zipCode: formData.address.zipCode.trim(),
+          country: formData.address.country
+        }));
+        
+        // Add emergency contact as JSON string
+        formDataToSend.append('emergencyContact', JSON.stringify({
+          name: formData.emergencyContact.name.trim(),
+          relationship: formData.emergencyContact.relationship.trim(),
+          phone: formData.emergencyContact.phone.trim()
+        }));
+        
+        // Add insurance as JSON string
+        formDataToSend.append('insurance', JSON.stringify({
+          provider: formData.insurance.provider.trim(),
+          policyNumber: formData.insurance.policyNumber.trim(),
+          groupNumber: formData.insurance.groupNumber.trim()
+        }));
+        
+        // Add medical history as JSON string
+        formDataToSend.append('medicalHistory', JSON.stringify({
+          conditions: formData.medicalHistory.conditions,
+          allergies: formData.medicalHistory.allergies,
+          medications: formData.medicalHistory.medications,
+          surgeries: formData.medicalHistory.surgeries
+        }));
+        
+        // Add assigned doctors as JSON string
+        formDataToSend.append('assignedDoctors', JSON.stringify(formData.assignedDoctors));
+        
+        // Add notes and status
+        formDataToSend.append('notes', formData.notes.trim());
+        formDataToSend.append('status', 'Active');
+        
+        // Add files
+        formDataToSend.append('profileImage', profileImage);
+        formDataToSend.append('governmentDocument', governmentDocument);
 
-        // Map to backend schema (nest address fields, trim strings)
-        const patientData = {
-          fullName: formData.fullName.trim(),
-          dateOfBirth: formData.dateOfBirth,
-          gender: formData.gender,
-          phone: formData.phone.trim(),
-          email: formData.email.trim(),
-          address: {
-            street: formData.address.trim(),
-            city: formData.city.trim(),
-            state: formData.state.trim(),
-            zipCode: formData.zipCode.trim(),
-          },
-          emergencyContact: {
-            name: formData.emergencyContact.name.trim(),
-            relationship: formData.emergencyContact.relationship.trim(),
-            phone: formData.emergencyContact.phone.trim(),
-          },
-          insurance: {
-            provider: formData.insurance.provider.trim(),
-            policyNumber: formData.insurance.policyNumber.trim(),
-            groupNumber: formData.insurance.groupNumber.trim(),
-          },
-          medicalHistory: {
-            conditions: formData.medicalHistory.conditions,
-            allergies: formData.medicalHistory.allergies,
-            medications: formData.medicalHistory.medications,
-            surgeries: formData.medicalHistory.surgeries,
-          },
-          notes: formData.notes.trim(),
-          age: actualAge,
-          status: "Active",
-          lastVisit: new Date().toISOString(),
-          nextAppointment: appointmentAPI.time,
-        };
+        console.log('Submitting form data to API...');
 
-        const response = await patientAPI.create(patientData);
+        const response = await patientAPI.create(formDataToSend);
         const created = response.patient || response;
+        
+        toast({
+          title: "Patient Added Successfully!",
+          description: `${formData.fullName} has been added to the system.`,
+        });
+        
         onSubmit(created);
         handleClose();
       } catch (error) {
-        console.error('Failed to create patient:', error);
-        alert(`Failed to create patient: ${error.message}`);
+        console.error('Error creating patient:', error);
+        toast({
+          title: "Error",
+          description: error.message || "Failed to create patient. Please try again.",
+          variant: "destructive"
+        });
+      } finally {
+        setSubmitting(false);
       }
+    } else {
+      console.log('Frontend validation failed, not submitting form');
     }
   };
 
   const handleClose = () => {
+    // Reset form data
     setFormData({
       fullName: "",
       dateOfBirth: "",
       gender: "",
       phone: "",
       email: "",
-      address: "",
-      city: "",
-      state: "",
-      zipCode: "",
+      password: "",
+      uhid: "",
+      bloodGroup: "",
+      occupation: "",
+      referringDoctor: "",
+      referredClinic: "",
+      governmentId: "",
+      idNumber: "",
+      address: {
+        street: "",
+        city: "",
+        state: "",
+        zipCode: "",
+        country: "India"
+      },
+      assignedDoctors: [],
       emergencyContact: {
         name: "",
         relationship: "",
@@ -201,16 +378,27 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
       },
       notes: ""
     });
+    
+    // Reset file states
+    setProfileImage(null);
+    setProfileImagePreview(null);
+    setGovernmentDocument(null);
+    setGovernmentDocumentName("");
+    
+    // Reset other states
     setErrors({});
+    setSubmitting(false);
     setNewCondition("");
     setNewAllergy("");
     setNewMedication("");
     setNewSurgery("");
+    
     onClose();
   };
 
+
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
+    <Dialog open={isOpen} onOpenChange={submitting ? undefined : handleClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -222,7 +410,20 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6">
+        {/* Submitting Overlay */}
+        {submitting && (
+          <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center">
+            <div className="bg-white p-6 rounded-lg shadow-lg border flex items-center gap-3">
+              <div className="w-6 h-6 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
+              <div>
+                <p className="font-medium text-gray-900">Creating Patient...</p>
+                <p className="text-sm text-gray-600">Please wait while we process your request</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className={`space-y-6 ${submitting ? 'pointer-events-none opacity-50' : ''}`}>
           {/* Personal Information */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold flex items-center gap-2">
@@ -269,6 +470,106 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                 </Select>
                 {errors.gender && <p className="text-sm text-red-500 mt-1">{errors.gender}</p>}
               </div>
+              
+              <div>
+                <Label htmlFor="uhid">UHID *</Label>
+                <Input
+                  id="uhid"
+                  value={formData.uhid}
+                  onChange={(e) => handleInputChange("uhid", e.target.value.toUpperCase())}
+                  placeholder="Enter UHID"
+                  className={errors.uhid ? "border-red-500" : ""}
+                />
+                {errors.uhid && <p className="text-sm text-red-500 mt-1">{errors.uhid}</p>}
+              </div>
+              
+              <div>
+                <Label htmlFor="bloodGroup">Blood Group *</Label>
+                <Select value={formData.bloodGroup} onValueChange={(value) => handleInputChange("bloodGroup", value)}>
+                  <SelectTrigger className={errors.bloodGroup ? "border-red-500" : ""}>
+                    <SelectValue placeholder="Select blood group" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="A+">A+</SelectItem>
+                    <SelectItem value="A-">A-</SelectItem>
+                    <SelectItem value="B+">B+</SelectItem>
+                    <SelectItem value="B-">B-</SelectItem>
+                    <SelectItem value="AB+">AB+</SelectItem>
+                    <SelectItem value="AB-">AB-</SelectItem>
+                    <SelectItem value="O+">O+</SelectItem>
+                    <SelectItem value="O-">O-</SelectItem>
+                  </SelectContent>
+                </Select>
+                {errors.bloodGroup && <p className="text-sm text-red-500 mt-1">{errors.bloodGroup}</p>}
+              </div>
+              
+              <div>
+                <Label htmlFor="occupation">Occupation *</Label>
+                <Input
+                  id="occupation"
+                  value={formData.occupation}
+                  onChange={(e) => handleInputChange("occupation", e.target.value)}
+                  placeholder="Enter occupation"
+                  className={errors.occupation ? "border-red-500" : ""}
+                />
+                {errors.occupation && <p className="text-sm text-red-500 mt-1">{errors.occupation}</p>}
+              </div>
+
+              <div>
+                <Label htmlFor="assignedDoctors">Assigned Doctors</Label>
+                <div className="space-y-2">
+                  <Select onValueChange={(value) => {
+                    if (value !== "none" && value !== "unavailable" && !formData.assignedDoctors.includes(value)) {
+                      handleInputChange("assignedDoctors", [...formData.assignedDoctors, value]);
+                    }
+                  }}>
+                    <SelectTrigger>
+                      <UserCheck className="w-4 h-4 mr-2" />
+                      <SelectValue placeholder={doctorsLoading ? "Loading doctors..." : "Select doctors (optional)"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No doctor assigned</SelectItem>
+                      {doctors && doctors.length > 0 ? (
+                        doctors.map((doctor) => (
+                          <SelectItem 
+                            key={doctor._id} 
+                            value={doctor._id}
+                            disabled={formData.assignedDoctors.includes(doctor._id)}
+                          >
+                            Dr. {doctor.fullName} - {doctor.specialty}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem value="unavailable" disabled>No doctors available</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                  
+                  {/* Selected Doctors Display */}
+                  {formData.assignedDoctors.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {formData.assignedDoctors.map((doctorId) => {
+                        const doctor = doctors.find(d => d._id === doctorId);
+                        return doctor ? (
+                          <Badge key={doctorId} variant="secondary" className="gap-1">
+                            Dr. {doctor.fullName}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updatedDoctors = formData.assignedDoctors.filter(id => id !== doctorId);
+                                handleInputChange("assignedDoctors", updatedDoctors);
+                              }}
+                              className="ml-1 hover:text-red-500"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </Badge>
+                        ) : null;
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -303,6 +604,139 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                 />
                 {errors.email && <p className="text-sm text-red-500 mt-1">{errors.email}</p>}
               </div>
+              
+              <div>
+                <Label htmlFor="password">Password <span className="text-red-500">*</span></Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={formData.password}
+                  onChange={(e) => handleInputChange("password", e.target.value)}
+                  placeholder="Enter password (min. 6 characters)"
+                  className={errors.password ? "border-red-500" : ""}
+                  required
+                />
+                {errors.password && <p className="text-sm text-red-500 mt-1">{errors.password}</p>}
+              </div>
+            </div>
+          </div>
+
+          {/* File Uploads */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <FileText className="w-4 h-4" />
+              Documents & Images
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="profileImage">Profile Image *</Label>
+                <div className="flex flex-col gap-2">
+                  <Input
+                    id="profileImage"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleProfileImageChange}
+                    className={`cursor-pointer ${errors.profileImage ? "border-red-500" : ""}`}
+                  />
+                  {profileImagePreview && (
+                    <div className="flex justify-center">
+                      <img 
+                        src={profileImagePreview} 
+                        alt="Profile Preview" 
+                        className="w-20 h-20 object-cover rounded-full border-2 border-gray-300"
+                      />
+                    </div>
+                  )}
+                </div>
+                {errors.profileImage && <p className="text-sm text-red-500 mt-1">{errors.profileImage}</p>}
+              </div>
+              
+              <div>
+                <Label htmlFor="governmentDocument">Government Document *</Label>
+                <div className="flex flex-col gap-2">
+                  <Input
+                    id="governmentDocument"
+                    type="file"
+                    accept="image/*,.pdf"
+                    onChange={handleGovernmentDocumentChange}
+                    className={`cursor-pointer ${errors.governmentDocument ? "border-red-500" : ""}`}
+                  />
+                  {governmentDocumentName && (
+                    <p className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
+                      Selected: {governmentDocumentName}
+                    </p>
+                  )}
+                </div>
+                {errors.governmentDocument && <p className="text-sm text-red-500 mt-1">{errors.governmentDocument}</p>}
+              </div>
+            </div>
+          </div>
+
+          {/* Government ID Information */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <UserCheck className="w-4 h-4" />
+              Government Identification
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="governmentId">Government ID Type *</Label>
+                <Select value={formData.governmentId} onValueChange={(value) => handleInputChange("governmentId", value)}>
+                  <SelectTrigger className={errors.governmentId ? "border-red-500" : ""}>
+                    <SelectValue placeholder="Select ID type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Aadhaar Card">Aadhaar Card</SelectItem>
+                    <SelectItem value="PAN Card">PAN Card</SelectItem>
+                    <SelectItem value="Passport">Passport</SelectItem>
+                    <SelectItem value="Driving License">Driving License</SelectItem>
+                    <SelectItem value="Voter ID">Voter ID</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+                {errors.governmentId && <p className="text-sm text-red-500 mt-1">{errors.governmentId}</p>}
+              </div>
+              
+              <div>
+                <Label htmlFor="idNumber">ID Number *</Label>
+                <Input
+                  id="idNumber"
+                  value={formData.idNumber}
+                  onChange={(e) => handleInputChange("idNumber", e.target.value)}
+                  placeholder="Enter ID number"
+                  className={errors.idNumber ? "border-red-500" : ""}
+                />
+                {errors.idNumber && <p className="text-sm text-red-500 mt-1">{errors.idNumber}</p>}
+              </div>
+            </div>
+          </div>
+
+          {/* Referral Information */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              <Share2 className="w-4 h-4" />
+              Referral Information (Optional)
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="referringDoctor">Referring Doctor</Label>
+                <Input
+                  id="referringDoctor"
+                  value={formData.referringDoctor}
+                  onChange={(e) => handleInputChange("referringDoctor", e.target.value)}
+                  placeholder="Enter referring doctor name"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="referredClinic">Referred Clinic</Label>
+                <Input
+                  id="referredClinic"
+                  value={formData.referredClinic}
+                  onChange={(e) => handleInputChange("referredClinic", e.target.value)}
+                  placeholder="Enter referred clinic name"
+                />
+              </div>
             </div>
           </div>
 
@@ -314,52 +748,52 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
             </h3>
             <div className="space-y-4">
               <div>
-                <Label htmlFor="address">Street Address *</Label>
+                <Label htmlFor="address.street">Street Address *</Label>
                 <Input
-                  id="address"
-                  value={formData.address}
-                  onChange={(e) => handleInputChange("address", e.target.value)}
+                  id="address.street"
+                  value={formData.address.street}
+                  onChange={(e) => handleInputChange("address.street", e.target.value)}
                   placeholder="Enter street address"
-                  className={errors.address ? "border-red-500" : ""}
+                  className={errors['address.street'] ? "border-red-500" : ""}
                 />
-                {errors.address && <p className="text-sm text-red-500 mt-1">{errors.address}</p>}
+                {errors['address.street'] && <p className="text-sm text-red-500 mt-1">{errors['address.street']}</p>}
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <Label htmlFor="city">City *</Label>
+                  <Label htmlFor="address.city">City *</Label>
                   <Input
-                    id="city"
-                    value={formData.city}
-                    onChange={(e) => handleInputChange("city", e.target.value)}
+                    id="address.city"
+                    value={formData.address.city}
+                    onChange={(e) => handleInputChange("address.city", e.target.value)}
                     placeholder="Enter city"
-                    className={errors.city ? "border-red-500" : ""}
+                    className={errors['address.city'] ? "border-red-500" : ""}
                   />
-                  {errors.city && <p className="text-sm text-red-500 mt-1">{errors.city}</p>}
+                  {errors['address.city'] && <p className="text-sm text-red-500 mt-1">{errors['address.city']}</p>}
                 </div>
                 
                 <div>
-                  <Label htmlFor="state">State *</Label>
+                  <Label htmlFor="address.state">State *</Label>
                   <Input
-                    id="state"
-                    value={formData.state}
-                    onChange={(e) => handleInputChange("state", e.target.value)}
+                    id="address.state"
+                    value={formData.address.state}
+                    onChange={(e) => handleInputChange("address.state", e.target.value)}
                     placeholder="Enter state"
-                    className={errors.state ? "border-red-500" : ""}
+                    className={errors['address.state'] ? "border-red-500" : ""}
                   />
-                  {errors.state && <p className="text-sm text-red-500 mt-1">{errors.state}</p>}
+                  {errors['address.state'] && <p className="text-sm text-red-500 mt-1">{errors['address.state']}</p>}
                 </div>
                 
                 <div>
-                  <Label htmlFor="zipCode">ZIP Code *</Label>
+                  <Label htmlFor="address.zipCode">ZIP Code *</Label>
                   <Input
-                    id="zipCode"
-                    value={formData.zipCode}
-                    onChange={(e) => handleInputChange("zipCode", e.target.value)}
+                    id="address.zipCode"
+                    value={formData.address.zipCode}
+                    onChange={(e) => handleInputChange("address.zipCode", e.target.value)}
                     placeholder="Enter ZIP code"
-                    className={errors.zipCode ? "border-red-500" : ""}
+                    className={errors['address.zipCode'] ? "border-red-500" : ""}
                   />
-                  {errors.zipCode && <p className="text-sm text-red-500 mt-1">{errors.zipCode}</p>}
+                  {errors['address.zipCode'] && <p className="text-sm text-red-500 mt-1">{errors['address.zipCode']}</p>}
                 </div>
               </div>
             </div>
@@ -601,12 +1035,31 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>
+          <Button variant="outline" onClick={handleClose} disabled={submitting}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700">
-            <Plus className="w-4 h-4 mr-2" />
-            Add Patient
+          <Button 
+            onClick={(e) => {
+              console.log('Button clicked - event triggered');
+              e.preventDefault();
+              e.stopPropagation();
+              handleSubmit();
+            }} 
+            className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700"
+            type="button"
+            disabled={submitting}
+          >
+            {submitting ? (
+              <>
+                <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                Creating Patient...
+              </>
+            ) : (
+              <>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Patient
+              </>
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

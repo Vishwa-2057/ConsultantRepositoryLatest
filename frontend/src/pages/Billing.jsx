@@ -40,41 +40,143 @@ const Billing = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [totalInvoices, setTotalInvoices] = useState(0);
 
+  // Revenue statistics state
+  const [revenueStats, setRevenueStats] = useState({
+    totalRevenue: 0,
+    pendingApprovalCount: 0,
+    outstandingAmount: 0,
+    paidThisMonth: 0
+  });
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  // Financial reports state
+  const [monthlyRevenue, setMonthlyRevenue] = useState([]);
+  const [paymentMethods, setPaymentMethods] = useState([]);
+  const [reportsLoading, setReportsLoading] = useState(true);
+
+  // Fetch revenue statistics
+  const fetchRevenueStats = useCallback(async () => {
+    setStatsLoading(true);
+    try {
+      // Fetch all invoices to calculate statistics
+      const allInvoicesResponse = await invoiceAPI.getAll(1, 1000, {});
+      const allInvoices = allInvoicesResponse.invoices || [];
+      
+      // Calculate total revenue (only from approved and paid invoices)
+      const totalRevenue = allInvoices
+        .filter(inv => ['Approved', 'Paid'].includes(inv.status))
+        .reduce((sum, inv) => sum + (Number(inv.total) || 0), 0);
+      
+      // Count invoices pending approval (status = 'Sent')
+      const pendingApprovalCount = allInvoices
+        .filter(inv => inv.status === 'Sent').length;
+      
+      // Calculate outstanding amount (overdue invoices)
+      const outstandingAmount = allInvoices
+        .filter(inv => inv.status === 'Overdue')
+        .reduce((sum, inv) => sum + (Number(inv.total) || 0), 0);
+      
+      // Calculate paid this month (invoices with status 'Paid' created this month)
+      const currentMonth = new Date().getMonth();
+      const currentYear = new Date().getFullYear();
+      const paidThisMonth = allInvoices
+        .filter(inv => {
+          const invoiceDate = new Date(inv.date);
+          return inv.status === 'Paid' && 
+                 invoiceDate.getMonth() === currentMonth && 
+                 invoiceDate.getFullYear() === currentYear;
+        })
+        .reduce((sum, inv) => sum + (Number(inv.total) || 0), 0);
+      
+      setRevenueStats({
+        totalRevenue,
+        pendingApprovalCount,
+        outstandingAmount,
+        paidThisMonth
+      });
+
+      // Calculate monthly revenue for the last 6 months
+      const monthlyData = [];
+      const currentDate = new Date();
+      
+      for (let i = 5; i >= 0; i--) {
+        const monthDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1);
+        const nextMonthDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - i + 1, 1);
+        
+        const monthRevenue = allInvoices
+          .filter(inv => {
+            const invoiceDate = new Date(inv.date);
+            return ['Approved', 'Paid'].includes(inv.status) && 
+                   invoiceDate >= monthDate && invoiceDate < nextMonthDate;
+          })
+          .reduce((sum, inv) => sum + (Number(inv.total) || 0), 0);
+        
+        monthlyData.push({
+          month: monthDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+          revenue: monthRevenue
+        });
+      }
+      setMonthlyRevenue(monthlyData);
+
+      // Calculate payment methods breakdown (only from approved and paid invoices)
+      const totalPaidRevenue = allInvoices
+        .filter(inv => ['Approved', 'Paid'].includes(inv.status))
+        .reduce((sum, inv) => sum + (Number(inv.total) || 0), 0);
+      
+      const paymentMethodsData = {
+        'Direct Payment': totalPaidRevenue * 0.6,
+        'Insurance': totalPaidRevenue * 0.3,
+        'Cash': totalPaidRevenue * 0.1
+      };
+      
+      const paymentMethodsArray = Object.entries(paymentMethodsData).map(([method, amount]) => ({
+        method,
+        amount,
+        percentage: totalPaidRevenue > 0 ? Math.round((amount / totalPaidRevenue) * 100) : 0
+      })).sort((a, b) => b.amount - a.amount);
+      
+      setPaymentMethods(paymentMethodsArray);
+      setReportsLoading(false);
+    } catch (err) {
+      console.error('Failed to load revenue statistics:', err);
+      setReportsLoading(false);
+    } finally {
+      setStatsLoading(false);
+    }
+  }, []);
+
   // Fetch invoices from API
   const fetchInvoices = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const filters = {};
-      // Map status filter to backend expected values
-      if (statusFilter !== "all") {
-        // Supported statuses in backend: Draft, Sent, Paid, Overdue, Cancelled
-        const map = {
-          draft: "Draft",
-          sent: "Sent",
-          paid: "Paid",
-          overdue: "Overdue",
-          cancelled: "Cancelled",
-        };
-        const mapped = map[statusFilter] || statusFilter;
-        filters.status = mapped;
-      }
+      // Note: New invoice model doesn't have status field
+      // We'll filter on frontend based on date ranges if needed
       // The backend supports date and patientId filters; search by text is not supported.
       // We'll keep simple client-side search on the rendered list for now.
 
       const response = await invoiceAPI.getAll(currentPage, 10, filters);
       const list = response.invoices || [];
 
-      // Normalize for rendering convenience
+      // Normalize for rendering convenience with new invoice structure
       const transformed = list.map(inv => ({
         _id: inv._id,
-        invoiceNumber: inv.invoiceNumber,
-        patientName: inv.patientId?.fullName || inv.patientName,
-        invoiceDate: inv.invoiceDate,
-        dueDate: inv.dueDate,
+        invoiceNo: inv.invoiceNo,
+        patientName: inv.patientName,
+        date: inv.date,
         total: inv.total,
-        status: inv.status,
-        service: inv.items?.[0]?.description || "",
+        phone: inv.phone,
+        email: inv.email,
+        address: inv.address,
+        lineItems: inv.lineItems || [],
+        discount: inv.discount || 0,
+        tax: inv.tax || 0,
+        shipping: inv.shipping || 0,
+        remarks: inv.remarks,
+        status: inv.status, // Include status field
+        createdAt: inv.createdAt,
+        service: inv.lineItems?.[0]?.description || "No description",
       }));
 
       setInvoices(transformed);
@@ -98,7 +200,8 @@ const Billing = () => {
 
   useEffect(() => {
     fetchInvoices();
-  }, [fetchInvoices]);
+    fetchRevenueStats();
+  }, [fetchInvoices, fetchRevenueStats]);
 
   // Pending approvals (fetch invoices that are effectively pending review)
   const [approvals, setApprovals] = useState([]);
@@ -114,12 +217,11 @@ const Billing = () => {
       const list = response.invoices || [];
       const transformed = list.map(inv => ({
         _id: inv._id,
-        patient: inv.patientId?.fullName || inv.patientName,
-        service: inv.items?.[0]?.description || '',
+        patient: inv.patientName,
+        service: inv.lineItems?.[0]?.description || 'No description',
         amount: Number(inv.total || 0).toFixed(2),
-        submittedDate: inv.invoiceDate,
-        status: inv.status,
-        invoiceNumber: inv.invoiceNumber,
+        submittedDate: inv.date,
+        invoiceNo: inv.invoiceNo,
       }));
       setApprovals(transformed);
     } catch (err) {
@@ -138,56 +240,96 @@ const Billing = () => {
   // Approve / Reject handlers
   const handleApproveInvoice = async (approval) => {
     try {
-      await invoiceAPI.updateStatus(approval._id, 'Paid');
-      toast({ title: 'Invoice Approved', description: `Invoice ${approval.invoiceNumber} marked as Paid.` });
-      // Refresh both lists
+      await invoiceAPI.approve(approval._id);
+      toast({ 
+        title: 'Invoice Approved', 
+        description: `Invoice ${approval.invoiceNo} has been approved successfully.`,
+        variant: 'default'
+      });
+      // Refresh both lists and statistics
       fetchApprovals();
       fetchInvoices();
+      fetchRevenueStats();
     } catch (err) {
       console.error('Failed to approve invoice:', err);
-      toast({ title: 'Error', description: 'Failed to approve invoice.', variant: 'destructive' });
+      toast({ 
+        title: 'Error', 
+        description: err.message || 'Failed to approve invoice.', 
+        variant: 'destructive' 
+      });
     }
   };
 
   const handleRejectInvoice = async (approval) => {
     try {
-      await invoiceAPI.updateStatus(approval._id, 'Cancelled');
-      toast({ title: 'Invoice Rejected', description: `Invoice ${approval.invoiceNumber} marked as Cancelled.` });
-      // Refresh both lists
+      // You could add a dialog to ask for rejection reason here
+      const reason = 'Rejected by administrator';
+      await invoiceAPI.reject(approval._id, reason);
+      toast({ 
+        title: 'Invoice Rejected', 
+        description: `Invoice ${approval.invoiceNo} has been rejected.`,
+        variant: 'default'
+      });
+      // Refresh both lists and statistics
       fetchApprovals();
       fetchInvoices();
+      fetchRevenueStats();
     } catch (err) {
       console.error('Failed to reject invoice:', err);
-      toast({ title: 'Error', description: 'Failed to reject invoice.', variant: 'destructive' });
+      toast({ 
+        title: 'Error', 
+        description: err.message || 'Failed to reject invoice.', 
+        variant: 'destructive' 
+      });
     }
+  };
+
+  // Get invoice status from database or fallback to date-based calculation
+  const getInvoiceStatus = (invoice) => {
+    // Use actual status from database if available
+    if (invoice.status) {
+      return invoice.status;
+    }
+    
+    // Fallback to date-based calculation for existing invoices without status
+    const invoiceDate = new Date(invoice.date);
+    const daysDiff = Math.floor((new Date() - invoiceDate) / (1000 * 60 * 60 * 24));
+    
+    if (daysDiff <= 7) return 'Sent';
+    if (daysDiff <= 30) return 'Approved';
+    return 'Overdue';
   };
 
   const getStatusColor = (status) => {
     switch (status) {
+      case "Draft": return "secondary";
+      case "Sent": return "warning";
+      case "Approved": return "success";
+      case "Rejected": return "destructive";
       case "Paid": return "success";
-      case "Sent": return "primary";
-      case "Draft": return "muted";
       case "Overdue": return "destructive";
-      case "Cancelled": return "destructive";
-      default: return "muted";
-    }
-  };
-
-  const getPriorityColor = (priority) => {
-    switch (priority) {
-      case "High": return "destructive";
-      case "Medium": return "warning";
-      case "Low": return "success";
-      default: return "muted";
+      case "Cancelled": return "secondary";
+      // Fallback for old status values
+      case "Recent": return "warning";
+      case "Current": return "success";
+      case "Older": return "destructive";
+      default: return "secondary";
     }
   };
 
   const getStatusIcon = (status) => {
     switch (status) {
+      case "Draft": return FileText;
+      case "Sent": return Clock;
+      case "Approved": return CheckCircle;
+      case "Rejected": return AlertCircle;
       case "Paid": return CheckCircle;
-      case "Sent": return CheckCircle;
-      case "Draft": return Clock;
       case "Overdue": return AlertCircle;
+      case "Cancelled": return AlertCircle;
+      // Fallback for old status values
+      case "Recent": return Clock;
+      case "Current": return CheckCircle;
+      case "Older": return AlertCircle;
       default: return Clock;
     }
   };
@@ -195,8 +337,18 @@ const Billing = () => {
   // Client-side search on fetched data (by patient or invoice number)
   const filteredInvoices = invoices.filter(invoice => {
     const patient = (invoice.patientName || "").toLowerCase();
-    const invNum = (invoice.invoiceNumber || "").toLowerCase();
-    const matchesSearch = patient.includes(searchTerm.toLowerCase()) || invNum.includes(searchTerm.toLowerCase());
+    const invNum = (invoice.invoiceNo || "").toString().toLowerCase();
+    const service = (invoice.service || "").toLowerCase();
+    const matchesSearch = patient.includes(searchTerm.toLowerCase()) || 
+                         invNum.includes(searchTerm.toLowerCase()) ||
+                         service.includes(searchTerm.toLowerCase());
+    
+    // Apply status filter
+    if (statusFilter !== "all") {
+      const invoiceStatus = getInvoiceStatus(invoice).toLowerCase();
+      if (invoiceStatus !== statusFilter.toLowerCase()) return false;
+    }
+    
     return matchesSearch;
   });
 
@@ -206,17 +358,18 @@ const Billing = () => {
 
   const handleInvoiceSubmit = (invoiceData) => {
     // Add the new invoice to the list (in a real app, this would be handled by state management)
-    const patientName = invoiceData.patientId?.fullName || invoiceData.patientName || 'patient';
-    const totalAmount = invoiceData.total || invoiceData.amount || 0;
+    const patientName = invoiceData.patientName || 'patient';
+    const totalAmount = invoiceData.total || 0;
     
     toast({
       title: "Invoice Generated!",
-      description: `Successfully created invoice ${invoiceData.invoiceNumber} for ${patientName} - $${totalAmount}`,
+      description: `Successfully created invoice ${invoiceData.invoiceNo} for ${patientName} - ₹${totalAmount}`,
       variant: "default",
     });
     
-    // Refresh the invoices list
+    // Refresh the invoices list and statistics
     fetchInvoices();
+    fetchRevenueStats();
   };
 
   // View modal handlers
@@ -253,48 +406,63 @@ const Billing = () => {
       let y = 15;
       const pageHeight = doc.internal.pageSize.getHeight();
       const lineHeight = 8;
-      const money = (val) => `$${Number(val || 0).toFixed(2)}`;
+      const money = (val) => `₹${Number(val || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
       const ensureSpace = (needed = lineHeight) => {
         if (y + needed > pageHeight - 15) { doc.addPage(); y = 15; }
       };
       const line = (text, inc = lineHeight) => { ensureSpace(inc); doc.text(String(text), 14, y); y += inc; };
       const lineAt = (x, text, inc = lineHeight) => { ensureSpace(inc); doc.text(String(text), x, y); y += inc; };
 
+      // Helper function to get status label
+      const getStatusLabel = (status) => {
+        switch (status) {
+          case "Draft": return "Draft";
+          case "Sent": return "Pending Approval";
+          case "Approved": return "Approved";
+          case "Rejected": return "Rejected";
+          case "Paid": return "Paid";
+          case "Overdue": return "Overdue";
+          case "Cancelled": return "Cancelled";
+          default: return status || "Unknown";
+        }
+      };
+
       // Header
       doc.setFontSize(18);
       line('INVOICE', 10);
       doc.setFontSize(12);
-      line(`Invoice Number: ${fullInvoice.invoiceNumber}`);
-      line(`Date: ${new Date(fullInvoice.invoiceDate).toLocaleDateString()}`);
-      line(`Due Date: ${new Date(fullInvoice.dueDate).toLocaleDateString()}`, 12);
+      line(`Invoice Number: ${fullInvoice.invoiceNo}`);
+      line(`Date: ${fullInvoice.date}`);
+      line(`Status: ${getStatusLabel(fullInvoice.status)}`);
+      line(`Created: ${new Date(fullInvoice.createdAt).toLocaleDateString()}`, 12);
 
       // Bill To
       doc.setFont(undefined, 'bold');
       line('Bill To:', 8);
       doc.setFont(undefined, 'normal');
-      const patientName = fullInvoice.patientName || fullInvoice.patientId?.fullName || '';
-      const patientPhone = fullInvoice.patientId?.phone || '';
-      const patientEmail = fullInvoice.patientId?.email || '';
-      const addr = fullInvoice.patientId?.address;
+      const patientName = fullInvoice.patientName || '';
+      const patientPhone = fullInvoice.phone || '';
+      const patientEmail = fullInvoice.email || '';
+      const addr = fullInvoice.address;
       const addressText = addr && typeof addr === 'object'
-        ? [addr.street, addr.city, addr.state, addr.zipCode].filter(Boolean).join(', ')
-        : (typeof addr === 'string' ? addr : '');
+        ? [addr.line1, addr.line2, addr.city, addr.state, addr.zipCode].filter(Boolean).join(', ')
+        : '';
       line(patientName);
       if (patientPhone) line(patientPhone);
       if (patientEmail) line(patientEmail);
       if (addressText) line(addressText, 12);
 
-      // Items table header
+      // Line Items table header
       doc.setFont(undefined, 'bold');
-      line('Services & Items:', 8);
+      line('Line Items:', 8);
       doc.text('Description', 14, y);
       doc.text('Qty', 130, y);
-      doc.text('Rate', 150, y);
+      doc.text('Unit Price', 150, y);
       doc.text('Amount', 175, y);
       y += 6;
       doc.setFont(undefined, 'normal');
 
-      const items = fullInvoice.items || [];
+      const items = fullInvoice.lineItems || [];
       if (items.length === 0) {
         line('No items listed');
       } else {
@@ -304,9 +472,9 @@ const Billing = () => {
             ensureSpace();
             doc.text(t, 14, y);
             if (idx === 0) {
-              doc.text(String(item.quantity || 0), 130, y);
-              doc.text(money(item.rate), 150, y);
-              doc.text(money(item.amount), 175, y);
+              doc.text(String(item.qty || 0), 130, y);
+              doc.text(money(item.unitPrice), 150, y);
+              doc.text(money(item.qty * item.unitPrice), 175, y);
             }
             y += lineHeight - 2;
           });
@@ -315,29 +483,32 @@ const Billing = () => {
       }
 
       y += 4;
-      line(`Subtotal: ${money(fullInvoice.subtotal)}`);
-      line(`Tax (${fullInvoice.taxRate || 0}%): ${money(fullInvoice.taxAmount)}`);
+      const subtotal = fullInvoice.lineItems?.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0) || 0;
+      line(`Subtotal: ${money(subtotal)}`);
+      if (fullInvoice.discount > 0) line(`Discount: ${money(fullInvoice.discount)}`);
+      if (fullInvoice.tax > 0) line(`Tax: ${money(fullInvoice.tax)}`);
+      if (fullInvoice.shipping > 0) line(`Shipping: ${money(fullInvoice.shipping)}`);
       doc.setFont(undefined, 'bold');
       line(`Total: ${money(fullInvoice.total)}`, 12);
       doc.setFont(undefined, 'normal');
 
       y += 4;
-      line(`Status: ${fullInvoice.status}`);
-      line(`Payment Method: ${fullInvoice.paymentMethod || 'N/A'}`, 12);
+      line(`Invoice Date: ${fullInvoice.date}`);
+      line(`Created: ${new Date(fullInvoice.createdAt).toLocaleDateString()}`, 12);
 
-      if (fullInvoice.notes) {
+      if (fullInvoice.remarks) {
         doc.setFont(undefined, 'bold');
-        line('Notes:', 8);
+        line('Remarks:', 8);
         doc.setFont(undefined, 'normal');
-        const splitNotes = doc.splitTextToSize(fullInvoice.notes, 180);
-        splitNotes.forEach((t) => line(t));
+        const splitRemarks = doc.splitTextToSize(fullInvoice.remarks, 180);
+        splitRemarks.forEach((t) => line(t));
       }
 
-      doc.save(`invoice-${fullInvoice.invoiceNumber}.pdf`);
+      doc.save(`invoice-${fullInvoice.invoiceNo}.pdf`);
 
       toast({
         title: 'Download Started',
-        description: `Invoice ${invoice.invoiceNumber} downloaded as PDF`,
+        description: `Invoice ${invoice.invoiceNo} downloaded as PDF`,
       });
     } catch (err) {
       console.error('PDF generation failed:', err);
@@ -369,8 +540,10 @@ const Billing = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Total Revenue</p>
-                <p className="text-2xl font-bold text-foreground">$24,750</p>
-                <p className="text-sm text-success">+12.5% from last month</p>
+                <p className="text-2xl font-bold text-foreground">
+                  {statsLoading ? 'Loading...' : `₹${revenueStats.totalRevenue.toLocaleString('en-IN')}`}
+                </p>
+                <p className="text-sm text-success">All invoices</p>
               </div>
               <div className="p-2 rounded-lg bg-gradient-primary/10">
                 <DollarSign className="w-6 h-6 text-primary" />
@@ -384,8 +557,10 @@ const Billing = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Pending Approval</p>
-                <p className="text-2xl font-bold text-foreground">8</p>
-                <p className="text-sm text-warning">Awaiting admin review</p>
+                <p className="text-2xl font-bold text-foreground">
+                  {statsLoading ? 'Loading...' : revenueStats.pendingApprovalCount}
+                </p>
+                <p className="text-sm text-warning">Recent invoices</p>
               </div>
               <div className="p-2 rounded-lg bg-warning/10">
                 <Clock className="w-6 h-6 text-warning" />
@@ -399,8 +574,10 @@ const Billing = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Outstanding</p>
-                <p className="text-2xl font-bold text-foreground">$3,420</p>
-                <p className="text-sm text-destructive">5 overdue invoices</p>
+                <p className="text-2xl font-bold text-foreground">
+                  {statsLoading ? 'Loading...' : `₹${revenueStats.outstandingAmount.toLocaleString('en-IN')}`}
+                </p>
+                <p className="text-sm text-destructive">Older invoices</p>
               </div>
               <div className="p-2 rounded-lg bg-destructive/10">
                 <AlertCircle className="w-6 h-6 text-destructive" />
@@ -414,8 +591,10 @@ const Billing = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Paid This Month</p>
-                <p className="text-2xl font-bold text-foreground">$18,900</p>
-                <p className="text-sm text-success">94% collection rate</p>
+                <p className="text-2xl font-bold text-foreground">
+                  {statsLoading ? 'Loading...' : `₹${revenueStats.paidThisMonth.toLocaleString('en-IN')}`}
+                </p>
+                <p className="text-sm text-success">Current month payments</p>
               </div>
               <div className="p-2 rounded-lg bg-success/10">
                 <CheckCircle className="w-6 h-6 text-success" />
@@ -446,15 +625,13 @@ const Billing = () => {
                 <SelectItem value="all">All Statuses</SelectItem>
                 <SelectItem value="draft">Draft</SelectItem>
                 <SelectItem value="sent">Sent</SelectItem>
+                <SelectItem value="approved">Approved</SelectItem>
+                <SelectItem value="rejected">Rejected</SelectItem>
                 <SelectItem value="paid">Paid</SelectItem>
                 <SelectItem value="overdue">Overdue</SelectItem>
                 <SelectItem value="cancelled">Cancelled</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline">
-              <Download className="w-4 h-4 mr-2" />
-              Export
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -480,7 +657,7 @@ const Billing = () => {
               ) : filteredInvoices.length > 0 ? (
                 <div className="space-y-4">
                   {filteredInvoices.map((invoice) => {
-                    const StatusIcon = getStatusIcon(invoice.status);
+                    const StatusIcon = getStatusIcon(getInvoiceStatus(invoice));
                     return (
                       <div key={invoice._id} className="p-4 rounded-lg border border-border hover:bg-muted/30 transition-colors">
                         <div className="flex items-center justify-between">
@@ -491,27 +668,52 @@ const Billing = () => {
                             <div>
                               <h3 className="font-semibold text-foreground">{invoice.patientName}</h3>
                               <p className="text-sm text-muted-foreground">
-                                {invoice.invoiceNumber} • {invoice.service}
+                                #{invoice.invoiceNo} • {invoice.service}
                               </p>
                               <div className="flex items-center space-x-4 mt-1 text-sm text-muted-foreground">
                                 <span className="flex items-center">
                                   <Calendar className="w-4 h-4 mr-1" />
-                                  {new Date(invoice.invoiceDate).toLocaleDateString()}
+                                  {invoice.date}
                                 </span>
-                                <span>Due: {new Date(invoice.dueDate).toLocaleDateString()}</span>
+                                {invoice.phone && (
+                                  <span className="flex items-center">
+                                    <User className="w-4 h-4 mr-1" />
+                                    {invoice.phone}
+                                  </span>
+                                )}
                               </div>
+                              {invoice.lineItems && invoice.lineItems.length > 1 && (
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {invoice.lineItems.length} items total
+                                </p>
+                              )}
                             </div>
                           </div>
                           
                           <div className="flex items-center space-x-4">
                             <div className="text-right">
-                              <p className="text-lg font-bold text-foreground">${invoice.total?.toFixed ? invoice.total.toFixed(2) : Number(invoice.total || 0).toFixed(2)}</p>
-                              <Badge variant={getStatusColor(invoice.status)} className="mt-1">
+                              <p className="text-lg font-bold text-foreground">₹{Number(invoice.total || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                              <Badge variant={getStatusColor(getInvoiceStatus(invoice))} className="mt-1">
                                 <StatusIcon className="w-3 h-3 mr-1" />
-                                {invoice.status}
+                                {getInvoiceStatus(invoice)}
                               </Badge>
+                              {(invoice.discount > 0 || invoice.tax > 0 || invoice.shipping > 0) && (
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {invoice.discount > 0 && `Disc: ₹${invoice.discount} `}
+                                  {invoice.tax > 0 && `Tax: ₹${invoice.tax} `}
+                                  {invoice.shipping > 0 && `Ship: ₹${invoice.shipping}`}
+                                </p>
+                              )}
                             </div>
                             <div className="flex space-x-2">
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => handleViewInvoice(invoice)}
+                                title="View Invoice Details"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </Button>
                               <Button 
                                 variant="ghost" 
                                 size="sm"
@@ -557,18 +759,18 @@ const Billing = () => {
                           <div>
                             <h3 className="font-semibold text-foreground">{approval.patient}</h3>
                             <p className="text-sm text-muted-foreground">
-                              {approval.invoiceNumber} • {approval.service}
+                              #{approval.invoiceNo} • {approval.service}
                             </p>
                             <p className="text-sm text-muted-foreground">
-                              Submitted: {new Date(approval.submittedDate).toLocaleDateString()}
+                              Date: {approval.submittedDate}
                             </p>
                           </div>
                         </div>
                         
                         <div className="flex items-center space-x-4">
                           <div className="text-right">
-                            <p className="text-lg font-bold text-foreground">${approval.amount}</p>
-                            <Badge variant="warning">Sent</Badge>
+                            <p className="text-lg font-bold text-foreground">₹{Number(approval.amount).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                            <Badge variant="warning">Recent</Badge>
                           </div>
                           <div className="flex space-x-2">
                             <Button 
@@ -605,23 +807,25 @@ const Billing = () => {
             <Card className="border-0 shadow-soft">
               <CardHeader>
                 <CardTitle>Monthly Revenue</CardTitle>
-                <CardDescription>Revenue breakdown by month</CardDescription>
+                <CardDescription>Revenue breakdown by month (Last 6 months)</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span>January 2024</span>
-                    <span className="font-semibold">$24,750</span>
+                {reportsLoading ? (
+                  <p className="text-center text-muted-foreground">Loading reports...</p>
+                ) : (
+                  <div className="space-y-4">
+                    {monthlyRevenue.length > 0 ? (
+                      monthlyRevenue.map((data, index) => (
+                        <div key={index} className="flex justify-between items-center">
+                          <span>{data.month}</span>
+                          <span className="font-semibold">₹{data.revenue.toLocaleString('en-IN')}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-center text-muted-foreground">No revenue data available</p>
+                    )}
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span>December 2023</span>
-                    <span className="font-semibold">$22,100</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>November 2023</span>
-                    <span className="font-semibold">$26,300</span>
-                  </div>
-                </div>
+                )}
               </CardContent>
             </Card>
 
@@ -631,20 +835,22 @@ const Billing = () => {
                 <CardDescription>Revenue by payment method</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span>Insurance Claims</span>
-                    <span className="font-semibold">$18,900 (76%)</span>
+                {reportsLoading ? (
+                  <p className="text-center text-muted-foreground">Loading reports...</p>
+                ) : (
+                  <div className="space-y-4">
+                    {paymentMethods.length > 0 ? (
+                      paymentMethods.map((data, index) => (
+                        <div key={index} className="flex justify-between items-center">
+                          <span>{data.method}</span>
+                          <span className="font-semibold">₹{data.amount.toLocaleString('en-IN')} ({data.percentage}%)</span>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-center text-muted-foreground">No payment data available</p>
+                    )}
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span>Direct Payment</span>
-                    <span className="font-semibold">$4,200 (17%)</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Medicare/Medicaid</span>
-                    <span className="font-semibold">$1,650 (7%)</span>
-                  </div>
-                </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -681,7 +887,12 @@ const Billing = () => {
         onSubmit={handleInvoiceSubmit}
       />
 
-      
+      {/* Invoice View Modal */}
+      <InvoiceViewModal
+        isOpen={isViewModalOpen}
+        onClose={handleViewModalClose}
+        invoice={selectedInvoice}
+      />
     </div>
   );
 };

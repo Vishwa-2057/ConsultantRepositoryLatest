@@ -17,17 +17,17 @@ All colors MUST be HSL.
     --popover: 0 0% 100%;
     --popover-foreground: 198 25% 25%;
 
-    --primary: 173 60% 40%;
+    --primary: 212 100% 30%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 187 85% 53%;
+    --secondary: 171 43% 46%;
     --secondary-foreground: 0 0% 100%;
 
-    --muted: 180 11% 96%;
-    --muted-foreground: 180 10% 45%;
+    --muted: 212 20% 96%;
+    --muted-foreground: 212 15% 45%;
 
-    --accent: 172 100% 95%;
-    --accent-foreground: 173 60% 40%;
+    --accent: 171 50% 95%;
+    --accent-foreground: 212 100% 30%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
@@ -38,14 +38,14 @@ All colors MUST be HSL.
     --warning: 45 93% 47%;
     --warning-foreground: 0 0% 100%;
 
-    --border: 180 20% 90%;
-    --input: 180 20% 94%;
-    --ring: 173 60% 40%;
+    --border: 212 20% 90%;
+    --input: 212 20% 94%;
+    --ring: 212 100% 30%;
 
-    --gradient-primary: linear-gradient(135deg, hsl(173 60% 40%), hsl(187 85% 53%));
-    --gradient-subtle: linear-gradient(180deg, hsl(0 0% 100%), hsl(180 11% 98%));
-    --shadow-soft: 0 4px 20px -2px hsl(173 60% 40% / 0.1);
-    --shadow-medical: 0 8px 32px -4px hsl(173 60% 40% / 0.15);
+    --gradient-primary: linear-gradient(135deg, hsl(212 100% 30%), hsl(171 43% 46%));
+    --gradient-subtle: linear-gradient(180deg, hsl(0 0% 100%), hsl(212 15% 98%));
+    --shadow-soft: 0 4px 20px -2px hsl(212 100% 30% / 0.1);
+    --shadow-medical: 0 8px 32px -4px hsl(212 100% 30% / 0.15);
 
     --radius: 0.75rem;
 
@@ -76,17 +76,17 @@ All colors MUST be HSL.
     --popover: 198 25% 10%;
     --popover-foreground: 180 11% 96%;
 
-    --primary: 173 60% 45%;
+    --primary: 212 100% 40%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 187 85% 58%;
+    --secondary: 171 43% 56%;
     --secondary-foreground: 0 0% 100%;
 
-    --muted: 198 25% 15%;
-    --muted-foreground: 180 10% 65%;
+    --muted: 212 25% 15%;
+    --muted-foreground: 212 10% 65%;
 
-    --accent: 198 25% 15%;
-    --accent-foreground: 173 60% 45%;
+    --accent: 212 25% 15%;
+    --accent-foreground: 212 100% 40%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
@@ -97,9 +97,9 @@ All colors MUST be HSL.
     --warning: 45 93% 52%;
     --warning-foreground: 0 0% 100%;
 
-    --border: 198 25% 20%;
-    --input: 198 25% 18%;
-    --ring: 173 60% 45%;
+    --border: 212 25% 20%;
+    --input: 212 25% 18%;
+    --ring: 212 100% 40%;
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
     --sidebar-primary: 224.3 76.3% 48%;

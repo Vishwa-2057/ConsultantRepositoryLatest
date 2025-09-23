@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { authAPI } from "@/services/api";
+import { authAPI, clinicAPI } from "@/services/api";
 import { Link, useNavigate } from "react-router-dom";
 import { Mail, Lock, Shield, ArrowLeft } from "lucide-react";
 
@@ -18,6 +18,7 @@ const Login = () => {
   const [otpSent, setOtpSent] = useState(false);
   const [otpTimer, setOtpTimer] = useState(0);
   const [activeTab, setActiveTab] = useState("password");
+  const [userType, setUserType] = useState("regular"); // "regular" or "clinic"
   const navigate = useNavigate();
 
   const handlePasswordLogin = async (e) => {
@@ -25,7 +26,13 @@ const Login = () => {
     setError("");
     setLoading(true);
     try {
-      const res = await authAPI.login({ email: email.trim(), password });
+      let res;
+      if (userType === "clinic") {
+        res = await clinicAPI.login({ email: email.trim(), password });
+      } else {
+        res = await authAPI.login({ email: email.trim(), password });
+      }
+      
       authAPI.setToken(res.token);
       localStorage.setItem('authToken', res.token);
       localStorage.setItem('authUser', JSON.stringify(res.user || res.doctor || {}));
@@ -47,7 +54,12 @@ const Login = () => {
     setError("");
     setOtpLoading(true);
     try {
-      const res = await authAPI.requestOTP(email.trim());
+      let res;
+      if (userType === "clinic") {
+        res = await clinicAPI.requestOTP(email.trim());
+      } else {
+        res = await authAPI.requestOTP(email.trim());
+      }
       setOtpSent(true);
       setOtpTimer(60); // 60 seconds countdown
       startTimer();
@@ -63,7 +75,12 @@ const Login = () => {
     setError("");
     setLoading(true);
     try {
-      const res = await authAPI.loginWithOTP(email.trim(), otp);
+      let res;
+      if (userType === "clinic") {
+        res = await clinicAPI.loginWithOTP(email.trim(), otp);
+      } else {
+        res = await authAPI.loginWithOTP(email.trim(), otp);
+      }
       authAPI.setToken(res.token);
       localStorage.setItem('authToken', res.token);
       localStorage.setItem('authUser', JSON.stringify(res.user || res.doctor || {}));
@@ -96,16 +113,45 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-teal-50 via-cyan-50 to-white">
-      <Card className="w-full max-w-md border border-teal-100/60 shadow-xl backdrop-blur bg-white/80">
+    <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-teal-50 via-cyan-50 to-white dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+      <Card className="w-full max-w-md border border-teal-100/60 dark:border-transparent shadow-xl backdrop-blur bg-white/80 dark:bg-transparent">
         <CardHeader>
-          <CardTitle className="text-teal-900 flex items-center gap-2">
+          <CardTitle className="text-teal-900 dark:text-teal-100 flex items-center gap-2">
             <Shield className="w-6 h-6" />
             Secure Login
           </CardTitle>
-          <CardDescription className="text-teal-700">Choose your preferred login method</CardDescription>
+          <CardDescription className="text-teal-700 dark:text-teal-300">Choose your preferred login method</CardDescription>
         </CardHeader>
         <CardContent>
+          {/* User Type Selection */}
+          <div className="mb-6">
+            <Label className="text-sm font-medium text-teal-900 dark:text-teal-100 mb-3 block">Login as:</Label>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant={userType === "regular" ? "default" : "outline"}
+                onClick={() => setUserType("regular")}
+                className={`${userType === "regular" 
+                  ? "bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700" 
+                  : "border-teal-200 dark:border-teal-600 text-teal-700 dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-900/20"
+                }`}
+              >
+                Regular User
+              </Button>
+              <Button
+                type="button"
+                variant={userType === "clinic" ? "default" : "outline"}
+                onClick={() => setUserType("clinic")}
+                className={`${userType === "clinic" 
+                  ? "bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700" 
+                  : "border-purple-200 dark:border-purple-600 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/20"
+                }`}
+              >
+                Clinic Admin
+              </Button>
+            </div>
+          </div>
+
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="password" className="flex items-center gap-2">
@@ -121,34 +167,37 @@ const Login = () => {
             <TabsContent value="password" className="space-y-4 mt-6">
               <form onSubmit={handlePasswordLogin} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email-password">Email</Label>
+                  <Label htmlFor="email-password" className="text-foreground">Email</Label>
                   <Input 
                     id="email-password" 
                     type="email" 
                     value={email} 
                     onChange={(e) => setEmail(e.target.value)} 
                     required 
-                    className="focus-visible:ring-teal-600" 
+                    className="focus-visible:ring-teal-600 dark:focus-visible:ring-teal-400" 
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
+                  <Label htmlFor="password" className="text-foreground">Password</Label>
                   <Input 
                     id="password" 
                     type="password" 
                     value={password} 
                     onChange={(e) => setPassword(e.target.value)} 
                     required 
-                    className="focus-visible:ring-teal-600" 
+                    className="focus-visible:ring-teal-600 dark:focus-visible:ring-teal-400" 
                   />
                 </div>
                 {error && <p className="text-sm text-red-600">{error}</p>}
                 <Button 
                   type="submit" 
-                  className="w-full bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700" 
+                  className={`w-full ${userType === "clinic" 
+                    ? "bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700"
+                    : "bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700"
+                  }`}
                   disabled={loading}
                 >
-                  {loading ? 'Signing in...' : 'Sign In with Password'}
+                  {loading ? 'Signing in...' : `Sign In as ${userType === "clinic" ? "Clinic Admin" : "Regular User"}`}
                 </Button>
               </form>
             </TabsContent>
@@ -157,14 +206,14 @@ const Login = () => {
               {!otpSent ? (
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="email-otp">Email</Label>
+                    <Label htmlFor="email-otp" className="text-foreground">Email</Label>
                     <Input 
                       id="email-otp" 
                       type="email" 
                       value={email} 
                       onChange={(e) => setEmail(e.target.value)} 
                       required 
-                      className="focus-visible:ring-teal-600" 
+                      className="focus-visible:ring-teal-600 dark:focus-visible:ring-teal-400" 
                     />
                   </div>
                   {error && <p className="text-sm text-red-600">{error}</p>}
@@ -179,18 +228,18 @@ const Login = () => {
               ) : (
                 <div className="space-y-4">
                   <div className="text-center space-y-2">
-                    <div className="w-12 h-12 bg-teal-100 rounded-full flex items-center justify-center mx-auto">
-                      <Mail className="w-6 h-6 text-teal-600" />
+                    <div className="w-12 h-12 bg-teal-100 dark:bg-teal-900/30 rounded-full flex items-center justify-center mx-auto">
+                      <Mail className="w-6 h-6 text-teal-600 dark:text-teal-400" />
                     </div>
-                    <h3 className="font-semibold text-teal-900">Check your email</h3>
-                    <p className="text-sm text-teal-700">
+                    <h3 className="font-semibold text-teal-900 dark:text-teal-100">Check your email</h3>
+                    <p className="text-sm text-teal-700 dark:text-teal-300">
                       We've sent a 6-digit verification code to <strong>{email}</strong>
                     </p>
                   </div>
                   
                   <form onSubmit={handleOTPLogin} className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="otp">Verification Code</Label>
+                      <Label htmlFor="otp" className="text-foreground">Verification Code</Label>
                       <Input 
                         id="otp" 
                         type="text" 
@@ -199,12 +248,12 @@ const Login = () => {
                         placeholder="Enter 6-digit code"
                         maxLength={6}
                         required 
-                        className="focus-visible:ring-teal-600 text-center text-lg tracking-widest" 
+                        className="focus-visible:ring-teal-600 dark:focus-visible:ring-teal-400 text-center text-lg tracking-widest" 
                       />
                     </div>
                     
                     {otpTimer > 0 && (
-                      <p className="text-sm text-teal-600 text-center">
+                      <p className="text-sm text-teal-600 dark:text-teal-400 text-center">
                         Resend available in {otpTimer} seconds
                       </p>
                     )}
@@ -247,9 +296,9 @@ const Login = () => {
             </TabsContent>
           </Tabs>
 
-          <p className="text-sm text-teal-700 mt-6 text-center">
-            Don&apos;t have an account? <Link to="/register" className="text-teal-700 underline">Register</Link>
-          </p>
+          <div className="mt-6 text-center space-y-2">
+            {/* Removed clinic registration - clinic details fetched from database */}
+          </div>
         </CardContent>
       </Card>
     </div>

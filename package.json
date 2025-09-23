@@ -25,5 +25,11 @@
   "license": "MIT",
   "devDependencies": {
     "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "selfsigned": "^3.0.1",
+    "socket.io": "^4.8.1"
   }
 }

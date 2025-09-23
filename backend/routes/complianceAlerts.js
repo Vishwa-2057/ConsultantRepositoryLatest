@@ -2,6 +2,7 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const ComplianceAlert = require('../models/ComplianceAlert');
 const Patient = require('../models/Patient');
+const auth = require('../middleware/auth');
 const router = express.Router();
 
 // Validation middleware
@@ -17,7 +18,7 @@ const validateComplianceAlert = [
 ];
 
 // GET /api/compliance-alerts - Get all compliance alerts with pagination and filtering
-router.get('/', async (req, res) => {
+router.get('/', auth, async (req, res) => {
   try {
     const {
       page = 1,
@@ -32,6 +33,19 @@ router.get('/', async (req, res) => {
 
     // Build query
     const query = {};
+    
+    // Role-based filtering: doctors only see alerts for their assigned patients
+    if (req.user.role === 'doctor') {
+      // Use aggregation to filter by patient's assignedDoctors array
+      const patientIds = await Patient.find(
+        { assignedDoctors: req.user.id },
+        { _id: 1 }
+      ).distinct('_id');
+      query.patientId = { $in: patientIds };
+    } else if (req.user.role === 'clinic') {
+      // Clinic admins only see alerts for their clinic
+      query.clinicId = req.user.id;
+    }
     
     if (search) {
       query.$or = [
@@ -92,9 +106,22 @@ router.get('/', async (req, res) => {
 });
 
 // GET /api/compliance-alerts/stats - Get compliance alerts statistics
-router.get('/stats', async (req, res) => {
+router.get('/stats', auth, async (req, res) => {
   try {
+    // Role-based filtering for stats
+    let matchStage = {};
+    if (req.user.role === 'doctor') {
+      const patientIds = await Patient.find(
+        { assignedDoctors: req.user.id },
+        { _id: 1 }
+      ).distinct('_id');
+      matchStage = { patientId: { $in: patientIds } };
+    } else if (req.user.role === 'clinic') {
+      matchStage = { clinicId: req.user.id };
+    }
+    
     const stats = await ComplianceAlert.aggregate([
+      ...(Object.keys(matchStage).length > 0 ? [{ $match: matchStage }] : []),
       {
         $group: {
           _id: null,
@@ -112,6 +139,7 @@ router.get('/stats', async (req, res) => {
     ]);
 
     const typeStats = await ComplianceAlert.aggregate([
+      ...(Object.keys(matchStage).length > 0 ? [{ $match: matchStage }] : []),
       {
         $group: {
           _id: '$type',
@@ -121,19 +149,32 @@ router.get('/stats', async (req, res) => {
       { $sort: { count: -1 } }
     ]);
 
+    const overview = stats[0] || {
+      total: 0,
+      active: 0,
+      acknowledged: 0,
+      resolved: 0,
+      dismissed: 0,
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0
+    };
+
+    // Calculate compliance rate: (resolved + dismissed) / total * 100
+    // If no alerts exist, default to 100% compliance
+    let complianceRate = 100;
+    if (overview.total > 0) {
+      const compliantAlerts = overview.resolved + overview.dismissed;
+      complianceRate = Math.round((compliantAlerts / overview.total) * 100 * 10) / 10; // Round to 1 decimal place
+    }
+
     res.json({
       success: true,
       data: {
-        overview: stats[0] || {
-          total: 0,
-          active: 0,
-          acknowledged: 0,
-          resolved: 0,
-          dismissed: 0,
-          critical: 0,
-          high: 0,
-          medium: 0,
-          low: 0
+        overview: {
+          ...overview,
+          complianceRate
         },
         byType: typeStats
       }
@@ -149,9 +190,22 @@ router.get('/stats', async (req, res) => {
 });
 
 // GET /api/compliance-alerts/:id - Get single compliance alert
-router.get('/:id', async (req, res) => {
+router.get('/:id', auth, async (req, res) => {
   try {
-    const alert = await ComplianceAlert.findById(req.params.id)
+    let query = { _id: req.params.id };
+    
+    // Role-based filtering: doctors can only access alerts for their assigned patients
+    if (req.user.role === 'doctor') {
+      const patientIds = await Patient.find(
+        { assignedDoctors: req.user.id },
+        { _id: 1 }
+      ).distinct('_id');
+      query.patientId = { $in: patientIds };
+    } else if (req.user.role === 'clinic') {
+      query.clinicId = req.user.id;
+    }
+    
+    const alert = await ComplianceAlert.findOne(query)
       .populate('patientId', 'fullName phone email')
       .populate('createdBy', 'fullName')
       .populate('assignedTo', 'fullName')
@@ -179,7 +233,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/compliance-alerts - Create new compliance alert
-router.post('/', validateComplianceAlert, async (req, res) => {
+router.post('/', auth, validateComplianceAlert, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -199,11 +253,11 @@ router.post('/', validateComplianceAlert, async (req, res) => {
       });
     }
 
-    // Create alert
+    // Create alert with clinic reference
     const alertData = {
       ...req.body,
-      createdBy: req.user?.id || 'system', // Assuming auth middleware sets req.user
-      patientName: patient.fullName // Ensure patient name matches
+      patientName: patient.fullName, // Ensure patient name matches
+      clinicId: req.user.role === 'clinic' ? req.user.id : req.body.clinicId
     };
 
     const alert = new ComplianceAlert(alertData);
@@ -211,8 +265,7 @@ router.post('/', validateComplianceAlert, async (req, res) => {
 
     // Populate the created alert
     await alert.populate([
-      { path: 'patientId', select: 'fullName phone email' },
-      { path: 'createdBy', select: 'fullName' }
+      { path: 'patientId', select: 'fullName phone email' }
     ]);
 
     res.status(201).json({
@@ -231,7 +284,7 @@ router.post('/', validateComplianceAlert, async (req, res) => {
 });
 
 // PUT /api/compliance-alerts/:id - Update compliance alert
-router.put('/:id', async (req, res) => {
+router.put('/:id', auth, async (req, res) => {
   try {
     const allowedUpdates = ['title', 'message', 'priority', 'status', 'category', 'dueDate', 'assignedTo'];
     const updates = {};
@@ -242,8 +295,21 @@ router.put('/:id', async (req, res) => {
       }
     });
 
-    const alert = await ComplianceAlert.findByIdAndUpdate(
-      req.params.id,
+    let query = { _id: req.params.id };
+    
+    // Role-based filtering: doctors can only update alerts for their assigned patients
+    if (req.user.role === 'doctor') {
+      const patientIds = await Patient.find(
+        { assignedDoctors: req.user.id },
+        { _id: 1 }
+      ).distinct('_id');
+      query.patientId = { $in: patientIds };
+    } else if (req.user.role === 'clinic') {
+      query.clinicId = req.user.id;
+    }
+
+    const alert = await ComplianceAlert.findOneAndUpdate(
+      query,
       updates,
       { new: true, runValidators: true }
     ).populate('patientId', 'fullName phone email')
@@ -273,7 +339,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // PATCH /api/compliance-alerts/:id/status - Update alert status
-router.patch('/:id/status', async (req, res) => {
+router.patch('/:id/status', auth, async (req, res) => {
   try {
     const { status, resolutionNotes } = req.body;
     
@@ -287,15 +353,25 @@ router.patch('/:id/status', async (req, res) => {
     const updateData = { status };
     
     if (status === 'Resolved') {
-      updateData.resolvedBy = req.user?.id || 'system';
       updateData.resolvedAt = new Date();
       if (resolutionNotes) {
         updateData.resolutionNotes = resolutionNotes;
       }
     }
 
-    const alert = await ComplianceAlert.findByIdAndUpdate(
-      req.params.id,
+    let query = { _id: req.params.id };
+    
+    // Role-based filtering: doctors can only update alerts for their assigned patients
+    if (req.user.role === 'doctor') {
+      const patientIds = await Patient.find(
+        { assignedDoctors: req.user.id },
+        { _id: 1 }
+      ).distinct('_id');
+      query.patientId = { $in: patientIds };
+    }
+
+    const alert = await ComplianceAlert.findOneAndUpdate(
+      query,
       updateData,
       { new: true, runValidators: true }
     ).populate('patientId', 'fullName phone email')
@@ -325,9 +401,20 @@ router.patch('/:id/status', async (req, res) => {
 });
 
 // DELETE /api/compliance-alerts/:id - Delete compliance alert
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', auth, async (req, res) => {
   try {
-    const alert = await ComplianceAlert.findByIdAndDelete(req.params.id);
+    let query = { _id: req.params.id };
+    
+    // Role-based filtering: doctors can only delete alerts for their assigned patients
+    if (req.user.role === 'doctor') {
+      const patientIds = await Patient.find(
+        { assignedDoctors: req.user.id },
+        { _id: 1 }
+      ).distinct('_id');
+      query.patientId = { $in: patientIds };
+    }
+    
+    const alert = await ComplianceAlert.findOneAndDelete(query);
 
     if (!alert) {
       return res.status(404).json({
@@ -351,12 +438,30 @@ router.delete('/:id', async (req, res) => {
 });
 
 // GET /api/compliance-alerts/patient/:patientId - Get alerts for specific patient
-router.get('/patient/:patientId', async (req, res) => {
+router.get('/patient/:patientId', auth, async (req, res) => {
   try {
-    const alerts = await ComplianceAlert.find({ 
+    let query = { 
       patientId: req.params.patientId,
       status: { $ne: 'Dismissed' }
-    })
+    };
+    
+    // Role-based filtering: doctors can only access alerts for their assigned patients
+    if (req.user.role === 'doctor') {
+      const patientIds = await Patient.find(
+        { assignedDoctors: req.user.id },
+        { _id: 1 }
+      ).distinct('_id');
+      
+      // Check if the requested patient is assigned to this doctor
+      if (!patientIds.map(id => id.toString()).includes(req.params.patientId)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied. Patient not assigned to you.'
+        });
+      }
+    }
+    
+    const alerts = await ComplianceAlert.find(query)
     .populate('patientId', 'fullName phone email')
     .populate('createdBy', 'fullName')
     .populate('assignedTo', 'fullName')

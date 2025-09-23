@@ -1,17 +1,31 @@
 import { config } from '../config/env.js';
 
-const API_BASE_URL = config.API_BASE_URL;
+const API_BASE_URL = config.API_BASE_URL || 'http://localhost:5000/api';
 let authToken = null;
+
+// Initialize auth token from localStorage
+const initializeAuth = () => {
+  const token = localStorage.getItem('authToken');
+  if (token) {
+    authToken = token;
+  }
+};
+
+// Call initialization
+initializeAuth();
 
 // Generic API request function
 const apiRequest = async (endpoint, options = {}) => {
   const url = `${API_BASE_URL}${endpoint}`;
   
+  // Always get fresh token from localStorage
+  const currentToken = localStorage.getItem('authToken');
+  
   const defaultOptions = {
     headers: {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {}),
+      ...(currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {}),
     },
     ...options,
   };
@@ -79,6 +93,40 @@ export const patientAPI = {
 
   // Create new patient
   create: async (patientData) => {
+    // Handle FormData differently (for file uploads)
+    if (patientData instanceof FormData) {
+      const currentToken = localStorage.getItem('authToken');
+      const url = `${API_BASE_URL}/patients`;
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          ...(currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {}),
+          // Don't set Content-Type for FormData - browser will set it with boundary
+        },
+        body: patientData,
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        let message = `HTTP error! status: ${response.status}`;
+        if (errorData) {
+          const backendMsg = errorData.message || errorData.error;
+          const details = Array.isArray(errorData.details)
+            ? errorData.details.map(d => d.msg || d).join('; ')
+            : (typeof errorData.details === 'string' ? errorData.details : undefined);
+          message = [backendMsg, details].filter(Boolean).join(' - ') || message;
+        }
+        const error = new Error(message);
+        error.response = response;
+        error.data = errorData;
+        throw error;
+      }
+      
+      return await response.json();
+    }
+    
+    // Handle regular JSON data
     return apiRequest('/patients', {
       method: 'POST',
       body: JSON.stringify(patientData),
@@ -108,6 +156,12 @@ export const patientAPI = {
   // Quick search patients
   search: async (query) => {
     return apiRequest(`/patients/search?q=${encodeURIComponent(query)}`);
+  },
+
+  // Get patients grouped by doctor specialties
+  getGroupedBySpecialty: async (filters = {}) => {
+    const queryParams = new URLSearchParams(filters);
+    return apiRequest(`/patients/grouped-by-specialty?${queryParams}`);
   },
 };
 
@@ -163,7 +217,15 @@ export const appointmentAPI = {
 
   // Get appointment statistics
   getStats: async () => {
-    return apiRequest('/appointments/stats');
+    return apiRequest('/appointments/stats/summary');
+  },
+
+  // Update appointment status
+  updateStatus: async (id, status) => {
+    return apiRequest(`/appointments/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
   },
 };
 
@@ -211,6 +273,14 @@ export const consultationAPI = {
   getStats: async () => {
     return apiRequest('/consultations/stats');
   },
+
+  // Update consultation status
+  updateStatus: async (id, status) => {
+    return apiRequest(`/consultations/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+  },
 };
 
 // Referral API functions
@@ -253,9 +323,36 @@ export const referralAPI = {
     });
   },
 
+  // Update referral status
+  updateStatus: async (id, status) => {
+    return apiRequest(`/referrals/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+  },
+
   // Get referral statistics
   getStats: async () => {
-    return apiRequest('/referrals/stats');
+    return apiRequest('/referrals/stats/summary');
+  },
+
+  // Generate shareable referral link
+  generateLink: async (id) => {
+    return apiRequest(`/referrals/${id}/generate-link`, {
+      method: 'POST',
+    });
+  },
+
+  // Get referral by shareable code
+  getByCode: async (code) => {
+    return apiRequest(`/referrals/shared/${code}`);
+  },
+
+  // Deactivate shareable link
+  deactivateLink: async (id) => {
+    return apiRequest(`/referrals/${id}/deactivate-link`, {
+      method: 'PATCH',
+    });
   },
 };
 
@@ -310,6 +407,26 @@ export const invoiceAPI = {
   // Get invoice statistics
   getStats: async () => {
     return apiRequest('/invoices/stats');
+  },
+
+  // Get current month revenue
+  getCurrentMonthRevenue: async () => {
+    return apiRequest('/invoices/stats/current-month-revenue');
+  },
+
+  // Approve invoice
+  approve: async (id) => {
+    return apiRequest(`/invoices/${id}/approve`, {
+      method: 'PATCH',
+    });
+  },
+
+  // Reject invoice
+  reject: async (id, reason = '') => {
+    return apiRequest(`/invoices/${id}/reject`, {
+      method: 'PATCH',
+      body: JSON.stringify({ reason }),
+    });
   },
 };
 
@@ -445,12 +562,270 @@ export const complianceAlertAPI = {
       body: JSON.stringify({ status: 'Dismissed' }),
     });
   },
+
+  // Get compliance rate
+  getComplianceRate: async () => {
+    const response = await apiRequest('/compliance-alerts/stats');
+    return response.data.overview.complianceRate;
+  },
+};
+
+// Doctor API functions
+export const doctorAPI = {
+  // Get all doctors
+  getAll: async (page = 1, limit = 100, filters = {}) => {
+    console.log('doctorAPI.getAll called');
+    console.log('Auth token in API:', authToken ? 'Present' : 'Missing');
+    const result = await apiRequest('/doctors');
+    console.log('doctorAPI.getAll result:', result);
+    
+    // Normalize response format - backend returns { success: true, data: [...] }
+    // but frontend expects { doctors: [...] } for consistency with other APIs
+    if (result.success && result.data) {
+      return {
+        success: result.success,
+        doctors: result.data,
+        data: result.data // Keep both for backward compatibility
+      };
+    }
+    
+    return result;
+  },
+
+  // Get doctor by ID
+  getById: async (id) => {
+    return apiRequest(`/doctors/${id}`);
+  },
+
+  // Create new doctor
+  create: async (doctorData) => {
+    // Handle FormData differently (for file uploads)
+    if (doctorData instanceof FormData) {
+      const currentToken = localStorage.getItem('authToken');
+      const url = `${API_BASE_URL}/doctors`;
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          ...(currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {}),
+          // Don't set Content-Type for FormData - browser will set it with boundary
+        },
+        body: doctorData,
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        let message = `HTTP error! status: ${response.status}`;
+        if (errorData) {
+          const backendMsg = errorData.message || errorData.error;
+          const details = Array.isArray(errorData.details)
+            ? errorData.details.map(d => d.msg || d).join('; ')
+            : (typeof errorData.details === 'string' ? errorData.details : undefined);
+          message = [backendMsg, details].filter(Boolean).join(' - ') || message;
+        }
+        const error = new Error(message);
+        error.response = response;
+        error.data = errorData;
+        throw error;
+      }
+      
+      return await response.json();
+    }
+    
+    // Handle regular JSON data
+    return apiRequest('/doctors', {
+      method: 'POST',
+      body: JSON.stringify(doctorData),
+    });
+  },
+
+  // Update doctor
+  update: async (id, doctorData) => {
+    return apiRequest(`/doctors/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(doctorData),
+    });
+  },
+
+  // Delete doctor (soft delete)
+  delete: async (id) => {
+    return apiRequest(`/doctors/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // Activate doctor
+  activate: async (id) => {
+    return apiRequest(`/doctors/${id}/activate`, {
+      method: 'PATCH',
+    });
+  },
+
+  // Deactivate doctor
+  deactivate: async (id) => {
+    return apiRequest(`/doctors/${id}/deactivate`, {
+      method: 'PATCH',
+    });
+  },
+
+  // Search doctors by name or specialty
+  search: async (query) => {
+    return apiRequest(`/doctors/search?q=${encodeURIComponent(query)}`);
+  },
+};
+
+// Nurse API functions
+export const nurseAPI = {
+  // Get all nurses
+  getAll: async () => {
+    return apiRequest('/nurses');
+  },
+
+  // Get nurse by ID
+  getById: async (id) => {
+    return apiRequest(`/nurses/${id}`);
+  },
+
+  // Create new nurse
+  create: async (nurseData) => {
+    // Handle FormData differently (for file uploads)
+    if (nurseData instanceof FormData) {
+      const currentToken = localStorage.getItem('authToken');
+      const url = `${API_BASE_URL}/nurses`;
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          ...(currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {}),
+          // Don't set Content-Type for FormData - browser will set it with boundary
+        },
+        body: nurseData,
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        let message = `HTTP error! status: ${response.status}`;
+        if (errorData) {
+          const backendMsg = errorData.message || errorData.error;
+          const details = Array.isArray(errorData.details)
+            ? errorData.details.map(d => d.msg || d).join('; ')
+            : (typeof errorData.details === 'string' ? errorData.details : undefined);
+          message = [backendMsg, details].filter(Boolean).join(' - ') || message;
+        }
+        const error = new Error(message);
+        error.response = response;
+        error.data = errorData;
+        throw error;
+      }
+      
+      return await response.json();
+    }
+    
+    // Handle regular JSON data
+    return apiRequest('/nurses', {
+      method: 'POST',
+      body: JSON.stringify(nurseData),
+    });
+  },
+
+  // Update nurse
+  update: async (id, nurseData) => {
+    return apiRequest(`/nurses/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(nurseData),
+    });
+  },
+
+  // Delete nurse (soft delete)
+  delete: async (id) => {
+    return apiRequest(`/nurses/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // Activate nurse
+  activate: async (id) => {
+    return apiRequest(`/nurses/${id}/activate`, {
+      method: 'PATCH',
+    });
+  },
+
+  // Deactivate nurse
+  deactivate: async (id) => {
+    return apiRequest(`/nurses/${id}/deactivate`, {
+      method: 'PATCH',
+    });
+  },
+
+  // Search nurses by name or department
+  search: async (query) => {
+    return apiRequest(`/nurses/search?q=${encodeURIComponent(query)}`);
+  },
+};
+
+// Clinic API functions
+export const clinicAPI = {
+  // Login clinic
+  login: async (payload) => {
+    return apiRequest('/auth/clinic-login', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  // Get clinic profile
+  getProfile: async () => {
+    return apiRequest('/auth/me');
+  },
+
+  // OTP-based authentication for clinics
+  requestOTP: async (email) => {
+    return apiRequest('/auth/clinic-request-otp', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
+  
+  loginWithOTP: async (email, otp) => {
+    return apiRequest('/auth/clinic-login-otp', {
+      method: 'POST',
+      body: JSON.stringify({ email, otp }),
+    });
+  },
+
+  // Update clinic profile
+  updateProfile: async (payload) => {
+    return apiRequest('/clinics/profile', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  // Change password
+  changePassword: async (payload) => {
+    return apiRequest('/clinics/change-password', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  // Get all clinics
+  getAll: async () => {
+    return apiRequest('/clinics/all');
+  },
 };
 
 // Auth API functions
 export const authAPI = {
-  setToken: (token) => { authToken = token; },
-  clearToken: () => { authToken = null; },
+  setToken: (token) => {
+    authToken = token;
+    if (token) {
+      localStorage.setItem('authToken', token);
+    } else {
+      localStorage.removeItem('authToken');
+    }
+  },
+  clearToken: () => authToken = null,
   register: async (payload) => {
     return apiRequest('/auth/register', {
       method: 'POST',
@@ -539,6 +914,109 @@ export const emailConfigAPI = {
   }
 };
 
+// Prescription API functions
+export const prescriptionAPI = {
+  // Get all prescriptions with optional pagination and filters
+  getAll: async (page = 1, limit = 10, filters = {}) => {
+    try {
+      const queryParams = new URLSearchParams({
+        page: page.toString(),
+        limit: limit.toString(),
+        ...filters
+      });
+      console.log('Requesting prescriptions with URL:', `/prescriptions?${queryParams}`);
+      const response = await apiRequest(`/prescriptions?${queryParams}`);
+      console.log('Raw prescriptions response:', response);
+      return response;
+    } catch (error) {
+      console.error('Error in prescriptionAPI.getAll:', error);
+      throw error;
+    }
+  },
+
+  // Create new prescription
+  create: async (prescriptionData) => {
+    return apiRequest('/prescriptions', {
+      method: 'POST',
+      body: JSON.stringify(prescriptionData),
+    });
+  },
+
+  // Update prescription
+  update: async (id, prescriptionData) => {
+    return apiRequest(`/prescriptions/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(prescriptionData),
+    });
+  },
+
+  // Delete prescription
+  delete: async (id) => {
+    return apiRequest(`/prescriptions/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // Get prescription statistics
+  getStats: async () => {
+    return apiRequest('/prescriptions/stats/summary');
+  },
+
+  // Get prescriptions for specific patient
+  getByPatient: async (patientId) => {
+    return apiRequest(`/prescriptions/patient/${patientId}`);
+  },
+
+  // Update prescription status
+  updateStatus: async (id, status) => {
+    return apiRequest(`/prescriptions/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+  }
+};
+
+// Vitals API functions
+export const vitalsAPI = {
+  // Get all vitals for a patient
+  getByPatient: async (patientId, page = 1, limit = 10) => {
+    return apiRequest(`/vitals/patient/${patientId}?page=${page}&limit=${limit}`);
+  },
+
+  // Get latest vitals for a patient
+  getLatestByPatient: async (patientId) => {
+    return apiRequest(`/vitals/patient/${patientId}/latest`);
+  },
+
+  // Get single vitals record
+  getById: async (id) => {
+    return apiRequest(`/vitals/${id}`);
+  },
+
+  // Create new vitals record
+  create: async (vitalsData) => {
+    return apiRequest('/vitals', {
+      method: 'POST',
+      body: JSON.stringify(vitalsData),
+    });
+  },
+
+  // Update vitals record
+  update: async (id, vitalsData) => {
+    return apiRequest(`/vitals/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(vitalsData),
+    });
+  },
+
+  // Delete vitals record
+  delete: async (id) => {
+    return apiRequest(`/vitals/${id}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
 export default {
   patientAPI,
   appointmentAPI,
@@ -548,5 +1026,10 @@ export default {
   postAPI,
   authAPI,
   complianceAlertAPI,
-  emailConfigAPI
+  emailConfigAPI,
+  doctorAPI,
+  nurseAPI,
+  clinicAPI,
+  prescriptionAPI,
+  vitalsAPI
 };

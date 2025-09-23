@@ -2,6 +2,7 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const Consultation = require('../models/Consultation');
 const Patient = require('../models/Patient');
+const auth = require('../middleware/auth');
 const router = express.Router();
 
 // Validation middleware
@@ -16,7 +17,7 @@ const validateConsultation = [
 ];
 
 // GET /api/consultations - Get all consultations with filtering and pagination
-router.get('/', async (req, res) => {
+router.get('/', auth, async (req, res) => {
   try {
     const {
       page = 1,
@@ -32,6 +33,11 @@ router.get('/', async (req, res) => {
 
     // Build query
     const query = {};
+    
+    // Clinic-based filtering: clinic admins can only see their clinic's consultations
+    if (req.user.role === 'clinic') {
+      query.clinicId = req.user.id;
+    }
     
     if (status && status !== 'all') {
       query.status = status;
@@ -88,9 +94,15 @@ router.get('/', async (req, res) => {
 });
 
 // GET /api/consultations/:id - Get consultation by ID
-router.get('/:id', async (req, res) => {
+router.get('/:id', auth, async (req, res) => {
   try {
-    const consultation = await Consultation.findById(req.params.id)
+    // Filter by clinic for clinic admins
+    const query = { _id: req.params.id };
+    if (req.user.role === 'clinic') {
+      query.clinicId = req.user.id;
+    }
+    
+    const consultation = await Consultation.findOne(query)
       .populate('patientId', 'fullName phone email address')
       .select('-__v');
     
@@ -109,7 +121,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/consultations - Create new consultation
-router.post('/', validateConsultation, async (req, res) => {
+router.post('/', auth, validateConsultation, async (req, res) => {
   try {
     // Check for validation errors
     const errors = validationResult(req);
@@ -126,8 +138,12 @@ router.post('/', validateConsultation, async (req, res) => {
       return res.status(404).json({ error: 'Patient not found' });
     }
 
-    // Create new consultation
-    const consultation = new Consultation(req.body);
+    // Create new consultation with clinic reference
+    const consultationData = {
+      ...req.body,
+      clinicId: req.user.role === 'clinic' ? req.user.id : req.body.clinicId
+    };
+    const consultation = new Consultation(consultationData);
     await consultation.save();
 
     const populatedConsultation = await Consultation.findById(consultation._id)
@@ -150,7 +166,7 @@ router.post('/', validateConsultation, async (req, res) => {
 });
 
 // PUT /api/consultations/:id - Update consultation
-router.put('/:id', validateConsultation, async (req, res) => {
+router.put('/:id', auth, validateConsultation, async (req, res) => {
   try {
     // Check for validation errors
     const errors = validationResult(req);
@@ -161,15 +177,21 @@ router.put('/:id', validateConsultation, async (req, res) => {
       });
     }
 
+    // Filter by clinic for clinic admins
+    const query = { _id: req.params.id };
+    if (req.user.role === 'clinic') {
+      query.clinicId = req.user.id;
+    }
+    
     // Check if consultation exists
-    const consultation = await Consultation.findById(req.params.id);
+    const consultation = await Consultation.findOne(query);
     if (!consultation) {
       return res.status(404).json({ error: 'Consultation not found' });
     }
 
     // Update consultation
-    const updatedConsultation = await Consultation.findByIdAndUpdate(
-      req.params.id,
+    const updatedConsultation = await Consultation.findOneAndUpdate(
+      query,
       { ...req.body, updatedAt: new Date() },
       { new: true, runValidators: true }
     )
@@ -196,9 +218,15 @@ router.put('/:id', validateConsultation, async (req, res) => {
 });
 
 // DELETE /api/consultations/:id - Delete consultation
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', auth, async (req, res) => {
   try {
-    const consultation = await Consultation.findById(req.params.id);
+    // Filter by clinic for clinic admins
+    const query = { _id: req.params.id };
+    if (req.user.role === 'clinic') {
+      query.clinicId = req.user.id;
+    }
+    
+    const consultation = await Consultation.findOne(query);
     
     if (!consultation) {
       return res.status(404).json({ error: 'Consultation not found' });
@@ -217,7 +245,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // PATCH /api/consultations/:id/status - Update consultation status
-router.patch('/:id/status', async (req, res) => {
+router.patch('/:id/status', auth, async (req, res) => {
   try {
     const { status } = req.body;
     
@@ -225,7 +253,13 @@ router.patch('/:id/status', async (req, res) => {
       return res.status(400).json({ error: 'Valid status is required' });
     }
 
-    const consultation = await Consultation.findById(req.params.id);
+    // Filter by clinic for clinic admins
+    const query = { _id: req.params.id };
+    if (req.user.role === 'clinic') {
+      query.clinicId = req.user.id;
+    }
+    
+    const consultation = await Consultation.findOne(query);
     if (!consultation) {
       return res.status(404).json({ error: 'Consultation not found' });
     }
@@ -251,9 +285,15 @@ router.patch('/:id/status', async (req, res) => {
 });
 
 // GET /api/consultations/stats/summary - Get consultation statistics
-router.get('/stats/summary', async (req, res) => {
+router.get('/stats/summary', auth, async (req, res) => {
   try {
-    const totalConsultations = await Consultation.countDocuments();
+    // Filter by clinic for clinic admins
+    const query = {};
+    if (req.user.role === 'clinic') {
+      query.clinicId = req.user.id;
+    }
+    
+    const totalConsultations = await Consultation.countDocuments(query);
     
     // Get consultations by type
     const typeStats = await Consultation.aggregate([

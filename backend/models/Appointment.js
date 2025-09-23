@@ -33,6 +33,20 @@ const appointmentSchema = new mongoose.Schema({
     max: [240, 'Duration cannot exceed 4 hours']
   },
   
+  // Doctor Information
+  doctorId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Doctor',
+    required: [true, 'Doctor ID is required']
+  },
+  
+  // Clinic Reference
+  clinicId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Clinic',
+    required: [true, 'Clinic ID is required']
+  },
+  
   // Location and Provider
   location: {
     type: String,
@@ -41,7 +55,6 @@ const appointmentSchema = new mongoose.Schema({
   },
   provider: {
     type: String,
-    default: 'Dr. Johnson',
     trim: true
   },
   
@@ -131,6 +144,7 @@ appointmentSchema.pre('save', function(next) {
 
 // Indexes for better query performance
 appointmentSchema.index({ patientId: 1 });
+appointmentSchema.index({ doctorId: 1 });
 appointmentSchema.index({ date: 1 });
 appointmentSchema.index({ status: 1 });
 appointmentSchema.index({ provider: 1 });

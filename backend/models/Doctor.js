@@ -29,10 +29,51 @@ const doctorSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  profileImage: {
+    type: String,
+    required: [true, 'Profile image is required'],
+    trim: true
+  },
+  uhid: {
+    type: String,
+    required: [true, 'UHID is required'],
+    unique: true,
+    trim: true,
+    uppercase: true
+  },
+  qualification: {
+    type: String,
+    required: [true, 'Qualification is required'],
+    trim: true
+  },
+  currentAddress: {
+    street: { type: String, required: [true, 'Current address street is required'], trim: true },
+    city: { type: String, required: [true, 'Current address city is required'], trim: true },
+    state: { type: String, required: [true, 'Current address state is required'], trim: true },
+    zipCode: { type: String, required: [true, 'Current address zip code is required'], trim: true },
+    country: { type: String, default: 'India', trim: true }
+  },
+  permanentAddress: {
+    street: { type: String, required: [true, 'Permanent address street is required'], trim: true },
+    city: { type: String, required: [true, 'Permanent address city is required'], trim: true },
+    state: { type: String, required: [true, 'Permanent address state is required'], trim: true },
+    zipCode: { type: String, required: [true, 'Permanent address zip code is required'], trim: true },
+    country: { type: String, default: 'India', trim: true }
+  },
+  about: {
+    type: String,
+    trim: true,
+    maxlength: [1000, 'About section cannot exceed 1000 characters']
+  },
   role: {
     type: String,
     enum: ['doctor', 'admin'],
     default: 'doctor'
+  },
+  clinicId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Clinic',
+    required: [true, 'Clinic ID is required']
   },
   isActive: {
     type: Boolean,

@@ -330,6 +330,350 @@ This is an automated message from ${doctorName}. Please do not reply to this ema
       return { success: false, message: error.message };
     }
   }
+
+  // Method to send referral notification emails
+  async sendReferralNotification(referral) {
+    try {
+      const transporter = await this.getTransporter();
+      
+      let recipientEmail, emailType, recipientName;
+      
+      // Determine recipient based on referral type
+      if (referral.referralType === 'outbound') {
+        // For outbound referrals, send to external doctor
+        recipientEmail = referral.specialistContact?.email;
+        recipientName = referral.specialistName;
+        emailType = 'outbound';
+      } else if (referral.referralType === 'inbound') {
+        // For inbound referrals, send to receiving doctor (referring provider)
+        recipientEmail = referral.referringProvider?.email;
+        recipientName = referral.referringProvider?.name;
+        emailType = 'inbound';
+      }
+
+      if (!recipientEmail) {
+        console.warn(`No email address found for ${emailType} referral recipient`);
+        return { success: false, error: 'Recipient email address not found' };
+      }
+
+      const subject = this.getReferralEmailSubject(referral, emailType);
+      const htmlContent = this.generateReferralEmailHTML(referral, emailType, recipientName);
+      const textContent = this.generateReferralEmailText(referral, emailType, recipientName);
+
+      const mailOptions = {
+        from: {
+          name: 'Healthcare Management System',
+          address: process.env.EMAIL_USER || 'noreply@healthcare.com'
+        },
+        to: recipientEmail,
+        subject: subject,
+        text: textContent,
+        html: htmlContent
+      };
+
+      const result = await transporter.sendMail(mailOptions);
+      console.log(`✅ Referral notification sent successfully to ${recipientEmail} (${recipientName}):`, result.messageId);
+      return { success: true, messageId: result.messageId };
+    } catch (error) {
+      console.error('❌ Failed to send referral notification:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  getReferralEmailSubject(referral, emailType) {
+    const urgencyText = referral.urgency === 'Urgent' || referral.urgency === 'High' ? '[URGENT] ' : '';
+    if (emailType === 'outbound') {
+      return `${urgencyText}New Patient Referral - ${referral.patientName}`;
+    } else {
+      return `${urgencyText}Incoming Patient Referral - ${referral.patientName}`;
+    }
+  }
+
+  generateReferralEmailHTML(referral, emailType, recipientName) {
+    const isOutbound = emailType === 'outbound';
+    const urgencyColor = referral.urgency === 'Urgent' || referral.urgency === 'High' ? '#dc3545' : '#28a745';
+    const urgencyBadge = referral.urgency === 'Urgent' || referral.urgency === 'High' ? 'URGENT' : referral.urgency;
+
+    return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Patient Referral Notification</title>
+        <style>
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                line-height: 1.6;
+                color: #333;
+                max-width: 700px;
+                margin: 0 auto;
+                padding: 20px;
+                background-color: #f8f9fa;
+            }
+            .container {
+                background-color: #ffffff;
+                padding: 30px;
+                border-radius: 10px;
+                box-shadow: 0 0 20px rgba(0,0,0,0.1);
+            }
+            .header {
+                text-align: center;
+                margin-bottom: 30px;
+                padding-bottom: 20px;
+                border-bottom: 2px solid #e9ecef;
+            }
+            .logo {
+                font-size: 24px;
+                font-weight: bold;
+                color: #2c5aa0;
+                margin-bottom: 10px;
+            }
+            .urgency-badge {
+                display: inline-block;
+                background-color: ${urgencyColor};
+                color: white;
+                padding: 5px 15px;
+                border-radius: 20px;
+                font-size: 12px;
+                font-weight: bold;
+                margin-bottom: 20px;
+            }
+            .patient-info {
+                background-color: #f8f9fa;
+                border-left: 4px solid #2c5aa0;
+                padding: 20px;
+                margin: 20px 0;
+                border-radius: 5px;
+            }
+            .info-row {
+                display: flex;
+                margin-bottom: 10px;
+            }
+            .info-label {
+                font-weight: bold;
+                min-width: 150px;
+                color: #495057;
+            }
+            .info-value {
+                flex: 1;
+            }
+            .referral-details {
+                background-color: #fff3cd;
+                border: 1px solid #ffeaa7;
+                border-radius: 5px;
+                padding: 20px;
+                margin: 20px 0;
+            }
+            .footer {
+                text-align: center;
+                margin-top: 30px;
+                padding-top: 20px;
+                border-top: 1px solid #eee;
+                color: #666;
+                font-size: 14px;
+            }
+            .action-required {
+                background-color: #d1ecf1;
+                border: 1px solid #bee5eb;
+                border-radius: 5px;
+                padding: 15px;
+                margin: 20px 0;
+                color: #0c5460;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <div class="logo">🏥 Healthcare Management System</div>
+                <h2>${isOutbound ? 'New Patient Referral' : 'Incoming Patient Referral'}</h2>
+                <div class="urgency-badge">${urgencyBadge}</div>
+            </div>
+            
+            <p>Dear ${recipientName || 'Doctor'},</p>
+            
+            <p>${isOutbound ? 
+                'You have received a new patient referral for your review and care.' : 
+                'A patient has been referred to you for specialized care.'
+            }</p>
+            
+            <div class="patient-info">
+                <h3>👤 Patient Information</h3>
+                <div class="info-row">
+                    <div class="info-label">Patient Name:</div>
+                    <div class="info-value">${referral.patientName}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Specialty Required:</div>
+                    <div class="info-value">${referral.specialty}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Urgency Level:</div>
+                    <div class="info-value" style="color: ${urgencyColor}; font-weight: bold;">${referral.urgency}</div>
+                </div>
+                ${referral.preferredDate ? `
+                <div class="info-row">
+                    <div class="info-label">Preferred Date:</div>
+                    <div class="info-value">${new Date(referral.preferredDate).toLocaleDateString()}</div>
+                </div>
+                ` : ''}
+                ${referral.preferredTime ? `
+                <div class="info-row">
+                    <div class="info-label">Preferred Time:</div>
+                    <div class="info-value">${referral.preferredTime}</div>
+                </div>
+                ` : ''}
+            </div>
+
+            <div class="referral-details">
+                <h3>📋 Referral Details</h3>
+                <div class="info-row">
+                    <div class="info-label">Reason for Referral:</div>
+                    <div class="info-value">${referral.reason}</div>
+                </div>
+                ${referral.clinicalHistory ? `
+                <div class="info-row">
+                    <div class="info-label">Clinical History:</div>
+                    <div class="info-value">${referral.clinicalHistory}</div>
+                </div>
+                ` : ''}
+                ${referral.currentMedications && referral.currentMedications.length > 0 ? `
+                <div class="info-row">
+                    <div class="info-label">Current Medications:</div>
+                    <div class="info-value">${referral.currentMedications.join(', ')}</div>
+                </div>
+                ` : ''}
+                ${referral.testResults ? `
+                <div class="info-row">
+                    <div class="info-label">Test Results:</div>
+                    <div class="info-value">${referral.testResults}</div>
+                </div>
+                ` : ''}
+                ${referral.specialInstructions ? `
+                <div class="info-row">
+                    <div class="info-label">Special Instructions:</div>
+                    <div class="info-value">${referral.specialInstructions}</div>
+                </div>
+                ` : ''}
+            </div>
+
+            <div class="patient-info">
+                <h3>👨‍⚕️ Referring Provider</h3>
+                <div class="info-row">
+                    <div class="info-label">Provider Name:</div>
+                    <div class="info-value">${referral.referringProvider?.name || 'Dr. Johnson'}</div>
+                </div>
+                ${referral.referringProvider?.phone ? `
+                <div class="info-row">
+                    <div class="info-label">Phone:</div>
+                    <div class="info-value">${referral.referringProvider.phone}</div>
+                </div>
+                ` : ''}
+                ${referral.referringProvider?.email ? `
+                <div class="info-row">
+                    <div class="info-label">Email:</div>
+                    <div class="info-value">${referral.referringProvider.email}</div>
+                </div>
+                ` : ''}
+            </div>
+
+            ${referral.insuranceInfo?.provider ? `
+            <div class="patient-info">
+                <h3>🏥 Insurance Information</h3>
+                <div class="info-row">
+                    <div class="info-label">Insurance Provider:</div>
+                    <div class="info-value">${referral.insuranceInfo.provider}</div>
+                </div>
+                ${referral.insuranceInfo.policyNumber ? `
+                <div class="info-row">
+                    <div class="info-label">Policy Number:</div>
+                    <div class="info-value">${referral.insuranceInfo.policyNumber}</div>
+                </div>
+                ` : ''}
+                ${referral.insuranceInfo.authorizationRequired ? `
+                <div class="info-row">
+                    <div class="info-label">Authorization:</div>
+                    <div class="info-value">Required ${referral.insuranceInfo.authorizationNumber ? `(#${referral.insuranceInfo.authorizationNumber})` : ''}</div>
+                </div>
+                ` : ''}
+            </div>
+            ` : ''}
+
+            <div class="action-required">
+                <strong>📞 Next Steps:</strong>
+                <ul>
+                    <li>Please review the patient information and referral details</li>
+                    <li>Contact the patient to schedule an appointment</li>
+                    <li>Coordinate with the referring provider if needed</li>
+                    <li>Update the referral status in the system</li>
+                </ul>
+            </div>
+            
+            <div class="footer">
+                <p>This referral was created on ${new Date(referral.createdAt).toLocaleDateString()} at ${new Date(referral.createdAt).toLocaleTimeString()}</p>
+                <p>This is an automated message from Healthcare Management System. Please do not reply to this email.</p>
+                <p>© ${new Date().getFullYear()} Healthcare Management System. All rights reserved.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    `;
+  }
+
+  generateReferralEmailText(referral, emailType, recipientName) {
+    const isOutbound = emailType === 'outbound';
+    const urgencyText = referral.urgency === 'Urgent' || referral.urgency === 'High' ? '[URGENT] ' : '';
+
+    return `
+${urgencyText}Healthcare Management System - ${isOutbound ? 'New Patient Referral' : 'Incoming Patient Referral'}
+
+Dear ${recipientName || 'Doctor'},
+
+${isOutbound ? 
+  'You have received a new patient referral for your review and care.' : 
+  'A patient has been referred to you for specialized care.'
+}
+
+PATIENT INFORMATION:
+- Patient Name: ${referral.patientName}
+- Specialty Required: ${referral.specialty}
+- Urgency Level: ${referral.urgency}
+${referral.preferredDate ? `- Preferred Date: ${new Date(referral.preferredDate).toLocaleDateString()}` : ''}
+${referral.preferredTime ? `- Preferred Time: ${referral.preferredTime}` : ''}
+
+REFERRAL DETAILS:
+- Reason for Referral: ${referral.reason}
+${referral.clinicalHistory ? `- Clinical History: ${referral.clinicalHistory}` : ''}
+${referral.currentMedications && referral.currentMedications.length > 0 ? `- Current Medications: ${referral.currentMedications.join(', ')}` : ''}
+${referral.testResults ? `- Test Results: ${referral.testResults}` : ''}
+${referral.specialInstructions ? `- Special Instructions: ${referral.specialInstructions}` : ''}
+
+REFERRING PROVIDER:
+- Provider Name: ${referral.referringProvider?.name || 'Dr. Johnson'}
+${referral.referringProvider?.phone ? `- Phone: ${referral.referringProvider.phone}` : ''}
+${referral.referringProvider?.email ? `- Email: ${referral.referringProvider.email}` : ''}
+
+${referral.insuranceInfo?.provider ? `
+INSURANCE INFORMATION:
+- Insurance Provider: ${referral.insuranceInfo.provider}
+${referral.insuranceInfo.policyNumber ? `- Policy Number: ${referral.insuranceInfo.policyNumber}` : ''}
+${referral.insuranceInfo.authorizationRequired ? `- Authorization: Required ${referral.insuranceInfo.authorizationNumber ? `(#${referral.insuranceInfo.authorizationNumber})` : ''}` : ''}
+` : ''}
+
+NEXT STEPS:
+- Please review the patient information and referral details
+- Contact the patient to schedule an appointment
+- Coordinate with the referring provider if needed
+- Update the referral status in the system
+
+This referral was created on ${new Date(referral.createdAt).toLocaleDateString()} at ${new Date(referral.createdAt).toLocaleTimeString()}
+
+This is an automated message from Healthcare Management System. Please do not reply to this email.
+
+© ${new Date().getFullYear()} Healthcare Management System. All rights reserved.
+    `;
+  }
 }
 
 // Create singleton instance

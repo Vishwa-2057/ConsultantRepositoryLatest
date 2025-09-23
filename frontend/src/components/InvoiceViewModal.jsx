@@ -18,72 +18,242 @@ import {
   X,
   MapPin,
   Phone,
-  Mail
+  Mail,
+  CheckCircle,
+  Clock,
+  AlertCircle
 } from "lucide-react";
+import jsPDF from 'jspdf';
 
 const InvoiceViewModal = ({ isOpen, onClose, invoice }) => {
   if (!invoice) return null;
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case "Paid": return "success";
-      case "Sent": return "primary";
-      case "Draft": return "muted";
-      case "Overdue": return "destructive";
-      case "Cancelled": return "destructive";
-      default: return "muted";
-    }
+  // Format address from the new address structure
+  const formatAddress = (address) => {
+    if (!address) return 'N/A';
+    const parts = [address.line1, address.line2, address.city, address.state, address.zipCode].filter(Boolean);
+    return parts.join(', ');
   };
 
-  const getStatusIcon = (status) => {
+  // Get status display properties
+  const getStatusInfo = (status) => {
     switch (status) {
-      case "Paid": return "✓";
-      case "Sent": return "📤";
-      case "Draft": return "📝";
-      case "Overdue": return "⚠️";
-      case "Cancelled": return "❌";
-      default: return "📄";
+      case "Draft": 
+        return { color: "secondary", icon: FileText, label: "Draft" };
+      case "Sent": 
+        return { color: "warning", icon: Clock, label: "Pending Approval" };
+      case "Approved": 
+        return { color: "success", icon: CheckCircle, label: "Approved" };
+      case "Rejected": 
+        return { color: "destructive", icon: AlertCircle, label: "Rejected" };
+      case "Paid": 
+        return { color: "success", icon: CheckCircle, label: "Paid" };
+      case "Overdue": 
+        return { color: "destructive", icon: AlertCircle, label: "Overdue" };
+      case "Cancelled": 
+        return { color: "secondary", icon: AlertCircle, label: "Cancelled" };
+      default: 
+        return { color: "secondary", icon: Clock, label: status || "Unknown" };
     }
   };
 
   const handleDownload = () => {
-    // Create a simple text-based invoice for download
-    const invoiceContent = `
-INVOICE
-Invoice Number: ${invoice.invoiceNumber}
-Date: ${new Date(invoice.invoiceDate).toLocaleDateString()}
-Due Date: ${new Date(invoice.dueDate).toLocaleDateString()}
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.width;
+    const pageHeight = doc.internal.pageSize.height;
+    let yPosition = 20;
 
-BILL TO:
-${invoice.patientName}
-${invoice.patientId?.phone || 'N/A'}
-${invoice.patientId?.email || 'N/A'}
+    // Helper function to add text with automatic line wrapping
+    const addText = (text, x, y, options = {}) => {
+      const { fontSize = 10, fontStyle = 'normal', maxWidth = pageWidth - 40, align = 'left' } = options;
+      doc.setFontSize(fontSize);
+      doc.setFont('helvetica', fontStyle);
+      
+      if (align === 'center') {
+        doc.text(text, pageWidth / 2, y, { align: 'center' });
+      } else if (align === 'right') {
+        doc.text(text, x, y, { align: 'right' });
+      } else {
+        const lines = doc.splitTextToSize(text, maxWidth);
+        doc.text(lines, x, y);
+        return y + (lines.length * (fontSize * 0.4));
+      }
+      return y + (fontSize * 0.4);
+    };
 
-SERVICES:
-${invoice.items?.map(item => 
-  `${item.description} - Qty: ${item.quantity} x $${item.rate} = $${item.amount}`
-).join('\n') || 'No items listed'}
+    // Header
+    doc.setFillColor(4, 77, 153); // #004D99
+    doc.rect(0, 0, pageWidth, 30, 'F');
+    
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(24);
+    doc.setFont('helvetica', 'bold');
+    doc.text('INVOICE', pageWidth / 2, 20, { align: 'center' });
+    
+    yPosition = 45;
+    doc.setTextColor(0, 0, 0);
 
-SUBTOTAL: $${invoice.subtotal?.toFixed(2) || '0.00'}
-TAX: $${invoice.taxAmount?.toFixed(2) || '0.00'}
-TOTAL: $${invoice.total?.toFixed(2) || '0.00'}
+    // Invoice Details
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Invoice #${invoice.invoiceNo}`, 20, yPosition);
+    
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Date: ${invoice.date}`, pageWidth - 20, yPosition, { align: 'right' });
+    
+    yPosition += 10;
+    
+    // Status information
+    const statusInfo = getStatusInfo(invoice.status);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Status: ${statusInfo.label}`, pageWidth - 20, yPosition, { align: 'right' });
+    
+    yPosition += 15;
 
-STATUS: ${invoice.status}
-PAYMENT METHOD: ${invoice.paymentMethod || 'N/A'}
+    // Patient Information Section
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('BILL TO:', 20, yPosition);
+    yPosition += 8;
 
-NOTES:
-${invoice.notes || 'No additional notes'}
-    `.trim();
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    yPosition = addText(invoice.patientName || 'N/A', 20, yPosition, { fontSize: 11, fontStyle: 'bold' });
+    yPosition += 3;
+    
+    if (invoice.phone) {
+      yPosition = addText(`Phone: ${invoice.phone}`, 20, yPosition, { fontSize: 10 });
+      yPosition += 3;
+    }
+    
+    if (invoice.email) {
+      yPosition = addText(`Email: ${invoice.email}`, 20, yPosition, { fontSize: 10 });
+      yPosition += 3;
+    }
+    
+    if (invoice.address) {
+      yPosition = addText(`Address: ${formatAddress(invoice.address)}`, 20, yPosition, { fontSize: 10, maxWidth: pageWidth - 40 });
+      yPosition += 5;
+    }
 
-    const blob = new Blob([invoiceContent], { type: 'text/plain' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `invoice-${invoice.invoiceNumber}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
+    yPosition += 10;
+
+    // Line Items Section
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('LINE ITEMS:', 20, yPosition);
+    yPosition += 10;
+
+    // Table Header
+    doc.setFillColor(66, 168, 155); // #42A89B
+    doc.rect(20, yPosition - 5, pageWidth - 40, 8, 'F');
+    
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Description', 25, yPosition);
+    doc.text('Qty', pageWidth - 120, yPosition, { align: 'center' });
+    doc.text('Unit Price', pageWidth - 80, yPosition, { align: 'center' });
+    doc.text('Amount', pageWidth - 25, yPosition, { align: 'right' });
+    
+    yPosition += 10;
+    doc.setTextColor(0, 0, 0);
+
+    // Line Items
+    if (invoice.lineItems && invoice.lineItems.length > 0) {
+      invoice.lineItems.forEach((item, index) => {
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        
+        // Add alternating row colors
+        if (index % 2 === 0) {
+          doc.setFillColor(248, 249, 250);
+          doc.rect(20, yPosition - 4, pageWidth - 40, 8, 'F');
+        }
+        
+        const amount = (item.qty * item.unitPrice) || 0;
+        
+        doc.text(item.description || 'N/A', 25, yPosition);
+        doc.text(String(item.qty || 0), pageWidth - 120, yPosition, { align: 'center' });
+        doc.text(`₹${Number(item.unitPrice || 0).toFixed(2)}`, pageWidth - 80, yPosition, { align: 'center' });
+        doc.text(`₹${amount.toFixed(2)}`, pageWidth - 25, yPosition, { align: 'right' });
+        
+        yPosition += 8;
+      });
+    } else {
+      doc.setFontSize(10);
+      doc.text('No items listed', 25, yPosition);
+      yPosition += 8;
+    }
+
+    yPosition += 10;
+
+    // Totals Section
+    const subtotal = invoice.lineItems?.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0) || 0;
+    const rightAlign = pageWidth - 25;
+    const labelX = pageWidth - 80;
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    
+    doc.text('Subtotal:', labelX, yPosition);
+    doc.text(`₹${subtotal.toFixed(2)}`, rightAlign, yPosition, { align: 'right' });
+    yPosition += 6;
+
+    if (invoice.discount > 0) {
+      doc.text('Discount:', labelX, yPosition);
+      doc.text(`-₹${Number(invoice.discount || 0).toFixed(2)}`, rightAlign, yPosition, { align: 'right' });
+      yPosition += 6;
+    }
+
+    if (invoice.tax > 0) {
+      doc.text('Tax:', labelX, yPosition);
+      doc.text(`₹${Number(invoice.tax || 0).toFixed(2)}`, rightAlign, yPosition, { align: 'right' });
+      yPosition += 6;
+    }
+
+    if (invoice.shipping > 0) {
+      doc.text('Shipping:', labelX, yPosition);
+      doc.text(`₹${Number(invoice.shipping || 0).toFixed(2)}`, rightAlign, yPosition, { align: 'right' });
+      yPosition += 6;
+    }
+
+    // Total line
+    doc.setLineWidth(0.5);
+    doc.line(labelX - 5, yPosition + 2, rightAlign, yPosition + 2);
+    yPosition += 8;
+
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('TOTAL:', labelX, yPosition);
+    doc.text(`₹${Number(invoice.total || 0).toFixed(2)}`, rightAlign, yPosition, { align: 'right' });
+
+    // Remarks Section
+    if (invoice.remarks) {
+      yPosition += 20;
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('REMARKS:', 20, yPosition);
+      yPosition += 8;
+      
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      const remarkLines = doc.splitTextToSize(invoice.remarks, pageWidth - 40);
+      doc.text(remarkLines, 20, yPosition);
+    }
+
+    // Footer
+    const footerY = pageHeight - 20;
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(128, 128, 128);
+    doc.text('Generated by Smaart Healthcare System', pageWidth / 2, footerY, { align: 'center' });
+    doc.text(`Generated on: ${new Date().toLocaleString()}`, pageWidth / 2, footerY + 5, { align: 'center' });
+
+    // Save the PDF
+    doc.save(`invoice-${invoice.invoiceNo}.pdf`);
   };
 
   return (
@@ -91,7 +261,7 @@ ${invoice.notes || 'No additional notes'}
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl">
-            <FileText className="w-5 h-5 text-teal-600" />
+            <FileText className="w-5 h-5 text-blue-600" />
             Invoice Details
           </DialogTitle>
           <DialogDescription>
@@ -103,17 +273,29 @@ ${invoice.notes || 'No additional notes'}
           {/* Invoice Header */}
           <div className="flex justify-between items-start">
             <div>
-              <h2 className="text-2xl font-bold text-foreground">Invoice #{invoice.invoiceNumber}</h2>
+              <h2 className="text-2xl font-bold text-foreground">Invoice #{invoice.invoiceNo}</h2>
               <p className="text-muted-foreground">
-                Created: {new Date(invoice.invoiceDate).toLocaleDateString()}
+                Date: {invoice.date}
               </p>
+              {/* Status Badge */}
+              {invoice.status && (
+                <div className="mt-2">
+                  {(() => {
+                    const statusInfo = getStatusInfo(invoice.status);
+                    const StatusIcon = statusInfo.icon;
+                    return (
+                      <Badge variant={statusInfo.color} className="flex items-center gap-1 w-fit">
+                        <StatusIcon className="w-3 h-3" />
+                        {statusInfo.label}
+                      </Badge>
+                    );
+                  })()}
+                </div>
+              )}
             </div>
             <div className="text-right">
-              <Badge variant={getStatusColor(invoice.status)} className="mb-2">
-                {getStatusIcon(invoice.status)} {invoice.status}
-              </Badge>
               <p className="text-2xl font-bold text-foreground">
-                ${Number(invoice.total || 0).toFixed(2)}
+                ₹{Number(invoice.total || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
               </p>
             </div>
           </div>
@@ -124,7 +306,7 @@ ${invoice.notes || 'No additional notes'}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <User className="w-5 h-5 text-teal-600" />
+                <User className="w-5 h-5 text-blue-600" />
                 Patient Information
               </CardTitle>
             </CardHeader>
@@ -133,22 +315,22 @@ ${invoice.notes || 'No additional notes'}
                 <div>
                   <h3 className="font-semibold text-foreground">{invoice.patientName}</h3>
                   <div className="space-y-1 text-sm text-muted-foreground">
-                    {invoice.patientId?.phone && (
+                    {invoice.phone && (
                       <div className="flex items-center gap-2">
                         <Phone className="w-4 h-4" />
-                        {invoice.patientId.phone}
+                        {invoice.phone}
                       </div>
                     )}
-                    {invoice.patientId?.email && (
+                    {invoice.email && (
                       <div className="flex items-center gap-2">
                         <Mail className="w-4 h-4" />
-                        {invoice.patientId.email}
+                        {invoice.email}
                       </div>
                     )}
-                    {invoice.patientId?.address && (
+                    {invoice.address && (
                       <div className="flex items-center gap-2">
                         <MapPin className="w-4 h-4" />
-                        {invoice.patientId.address}
+                        {formatAddress(invoice.address)}
                       </div>
                     )}
                   </div>
@@ -156,50 +338,52 @@ ${invoice.notes || 'No additional notes'}
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Invoice Date:</span>
-                    <span className="font-medium">{new Date(invoice.invoiceDate).toLocaleDateString()}</span>
+                    <span className="font-medium">{invoice.date}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Due Date:</span>
-                    <span className="font-medium">{new Date(invoice.dueDate).toLocaleDateString()}</span>
+                    <span className="text-muted-foreground">Invoice Number:</span>
+                    <span className="font-medium">{invoice.invoiceNo}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Payment Method:</span>
-                    <span className="font-medium">{invoice.paymentMethod || 'N/A'}</span>
+                    <span className="text-muted-foreground">Created:</span>
+                    <span className="font-medium">{new Date(invoice.createdAt).toLocaleDateString()}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Terms:</span>
-                    <span className="font-medium">{invoice.terms || 'Net 30'}</span>
-                  </div>
+                  {invoice.status && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Status:</span>
+                      <span className="font-medium">{getStatusInfo(invoice.status).label}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Services/Items */}
+          {/* Line Items */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-teal-600" />
-                Services & Items
+                <FileText className="w-5 h-5 text-blue-600" />
+                Line Items
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {invoice.items && invoice.items.length > 0 ? (
+              {invoice.lineItems && invoice.lineItems.length > 0 ? (
                 <div className="space-y-4">
                   <div className="grid grid-cols-12 gap-4 font-medium text-sm text-muted-foreground border-b pb-2">
                     <div className="col-span-6">Description</div>
                     <div className="col-span-2 text-center">Qty</div>
-                    <div className="col-span-2 text-right">Rate</div>
+                    <div className="col-span-2 text-right">Unit Price</div>
                     <div className="col-span-2 text-right">Amount</div>
                   </div>
-                  {invoice.items.map((item, index) => (
+                  {invoice.lineItems.map((item, index) => (
                     <div key={index} className="grid grid-cols-12 gap-4 py-2 border-b border-border/50">
                       <div className="col-span-6">
                         <p className="font-medium">{item.description}</p>
                       </div>
-                      <div className="col-span-2 text-center">{item.quantity}</div>
-                      <div className="col-span-2 text-right">${Number(item.rate || 0).toFixed(2)}</div>
-                      <div className="col-span-2 text-right font-medium">${Number(item.amount || 0).toFixed(2)}</div>
+                      <div className="col-span-2 text-center">{item.qty}</div>
+                      <div className="col-span-2 text-right">₹{Number(item.unitPrice || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                      <div className="col-span-2 text-right font-medium">₹{Number((item.qty * item.unitPrice) || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
                     </div>
                   ))}
                 </div>
@@ -215,29 +399,43 @@ ${invoice.notes || 'No additional notes'}
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Subtotal:</span>
-                  <span className="font-medium">${Number(invoice.subtotal || 0).toFixed(2)}</span>
+                  <span className="font-medium">₹{Number(invoice.lineItems?.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0) || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Tax ({invoice.taxRate || 0}%):</span>
-                  <span className="font-medium">${Number(invoice.taxAmount || 0).toFixed(2)}</span>
-                </div>
+                {invoice.discount > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Discount:</span>
+                    <span className="font-medium text-red-600">-₹{Number(invoice.discount || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                  </div>
+                )}
+                {invoice.tax > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Tax:</span>
+                    <span className="font-medium">₹{Number(invoice.tax || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                  </div>
+                )}
+                {invoice.shipping > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Shipping:</span>
+                    <span className="font-medium">₹{Number(invoice.shipping || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                  </div>
+                )}
                 <Separator />
                 <div className="flex justify-between text-lg font-bold">
                   <span>Total:</span>
-                  <span>${Number(invoice.total || 0).toFixed(2)}</span>
+                  <span>₹{Number(invoice.total || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Notes */}
-          {invoice.notes && (
+          {/* Remarks */}
+          {invoice.remarks && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Notes</CardTitle>
+                <CardTitle className="text-base">Remarks</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-muted-foreground whitespace-pre-wrap">{invoice.notes}</p>
+                <p className="text-muted-foreground whitespace-pre-wrap">{invoice.remarks}</p>
               </CardContent>
             </Card>
           )}
@@ -250,7 +448,7 @@ ${invoice.notes || 'No additional notes'}
           </Button>
           <Button 
             onClick={handleDownload}
-            className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700"
+            className="bg-gradient-to-r from-blue-800 to-teal-500 hover:from-blue-900 hover:to-teal-600"
           >
             <Download className="w-4 h-4 mr-2" />
             Download Invoice

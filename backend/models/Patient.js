@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
 
 const patientSchema = new mongoose.Schema({
   // Basic Information
@@ -34,6 +35,69 @@ const patientSchema = new mongoose.Schema({
     trim: true,
     lowercase: true,
     match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
+  },
+  passwordHash: {
+    type: String,
+    required: [true, 'Password is required']
+  },
+  
+  // Patient Identification
+  uhid: {
+    type: String,
+    required: [true, 'UHID is required'],
+    unique: true,
+    trim: true,
+    uppercase: true
+  },
+  profileImage: {
+    type: String,
+    required: [true, 'Profile image is required'],
+    trim: true
+  },
+  
+  // Medical Information
+  bloodGroup: {
+    type: String,
+    required: [true, 'Blood group is required'],
+    enum: ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'],
+    trim: true
+  },
+  occupation: {
+    type: String,
+    required: [true, 'Occupation is required'],
+    trim: true,
+    maxlength: [100, 'Occupation cannot exceed 100 characters']
+  },
+  
+  // Referral Information
+  referringDoctor: {
+    type: String,
+    trim: true,
+    maxlength: [100, 'Referring doctor name cannot exceed 100 characters']
+  },
+  referredClinic: {
+    type: String,
+    trim: true,
+    maxlength: [100, 'Referred clinic name cannot exceed 100 characters']
+  },
+  
+  // Government Identification
+  governmentId: {
+    type: String,
+    required: [true, 'Government ID type is required'],
+    enum: ['Aadhaar Card', 'PAN Card', 'Passport', 'Driving License', 'Voter ID', 'Other'],
+    trim: true
+  },
+  idNumber: {
+    type: String,
+    required: [true, 'ID number is required'],
+    trim: true,
+    maxlength: [50, 'ID number cannot exceed 50 characters']
+  },
+  governmentDocument: {
+    type: String,
+    required: [true, 'Government document is required'],
+    trim: true
   },
   
   // Address Information
@@ -117,6 +181,19 @@ const patientSchema = new mongoose.Schema({
     }]
   },
   
+  // Assigned Doctor
+  assignedDoctors: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Doctor'
+  }],
+  
+  // Clinic Reference
+  clinicId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Clinic',
+    required: [true, 'Clinic ID is required']
+  },
+  
   // Additional Information
   notes: {
     type: String,
@@ -185,6 +262,8 @@ patientSchema.pre('save', function(next) {
 patientSchema.index({ fullName: 'text' });
 patientSchema.index({ phone: 1 });
 patientSchema.index({ email: 1 });
+patientSchema.index({ uhid: 1 });
+patientSchema.index({ idNumber: 1 });
 patientSchema.index({ status: 1 });
 patientSchema.index({ createdAt: -1 });
 
@@ -216,6 +295,11 @@ patientSchema.methods.addAllergy = function(allergy) {
     this.updatedAt = new Date();
   }
   return this.save();
+};
+
+// Instance method to compare password
+patientSchema.methods.comparePassword = function(candidatePassword) {
+  return bcrypt.compare(candidatePassword, this.passwordHash);
 };
 
 module.exports = mongoose.model('Patient', patientSchema);

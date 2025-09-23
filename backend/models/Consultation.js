@@ -50,6 +50,11 @@ const consultationSchema = new mongoose.Schema({
     trim: true,
     maxlength: [1000, 'Provider notes cannot exceed 1000 characters']
   },
+  clinicId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Clinic',
+    required: [true, 'Clinic ID is required']
+  },
   
   // Patient Information
   reason: {

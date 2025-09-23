@@ -2,30 +2,35 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const Invoice = require('../models/Invoice');
 const Patient = require('../models/Patient');
+const auth = require('../middleware/auth');
 const router = express.Router();
 
 // Validation middleware
 const validateInvoice = [
   body('patientId').isMongoId().withMessage('Valid patient ID is required'),
   body('patientName').trim().isLength({ min: 1 }).withMessage('Patient name is required'),
-  body('invoiceNumber').trim().isLength({ min: 1 }).withMessage('Invoice number is required'),
-  body('invoiceDate').isISO8601().withMessage('Valid invoice date is required'),
-  body('dueDate').isISO8601().withMessage('Valid due date is required'),
-  body('items').isArray({ min: 1 }).withMessage('At least one item is required'),
-  body('items.*.description').trim().isLength({ min: 1 }).withMessage('Item description is required'),
-  body('items.*.quantity').isFloat({ min: 0.01 }).withMessage('Valid quantity is required'),
-  body('items.*.rate').isFloat({ min: 0 }).withMessage('Valid rate is required')
+  body('invoiceNo').isNumeric().withMessage('Valid invoice number is required'),
+  body('date').trim().isLength({ min: 1 }).withMessage('Invoice date is required'),
+  body('lineItems').isArray({ min: 1 }).withMessage('At least one line item is required'),
+  body('lineItems.*.description').trim().isLength({ min: 1 }).withMessage('Item description is required'),
+  body('lineItems.*.qty').isFloat({ min: 0.01 }).withMessage('Valid quantity is required'),
+  body('lineItems.*.unitPrice').isFloat({ min: 0 }).withMessage('Valid unit price is required'),
+  body('address.line1').trim().isLength({ min: 1 }).withMessage('Address line 1 is required'),
+  body('address.city').trim().isLength({ min: 1 }).withMessage('City is required'),
+  body('address.state').trim().isLength({ min: 1 }).withMessage('State is required'),
+  body('address.zipCode').trim().isLength({ min: 1 }).withMessage('Zip code is required'),
+  body('total').isFloat({ min: 0 }).withMessage('Valid total is required')
 ];
 
 // GET /api/invoices - Get all invoices with filtering and pagination
-router.get('/', async (req, res) => {
+router.get('/', auth, async (req, res) => {
   try {
     const {
       page = 1,
       limit = 10,
-      status = '',
       date = '',
       patientId = '',
+      status = '',
       sortBy = 'createdAt',
       sortOrder = 'desc'
     } = req.query;
@@ -33,19 +38,21 @@ router.get('/', async (req, res) => {
     // Build query
     const query = {};
     
-    if (status && status !== 'all') {
-      query.status = status;
+    // Clinic-based filtering: clinic admins can only see their clinic's invoices
+    if (req.user.role === 'clinic') {
+      query.clinicId = req.user.id;
     }
     
     if (date) {
-      const startDate = new Date(date);
-      const endDate = new Date(date);
-      endDate.setDate(endDate.getDate() + 1);
-      query.invoiceDate = { $gte: startDate, $lt: endDate };
+      query.date = date;
     }
     
     if (patientId) {
       query.patientId = patientId;
+    }
+
+    if (status) {
+      query.status = status;
     }
 
     // Build sort object
@@ -80,9 +87,15 @@ router.get('/', async (req, res) => {
 });
 
 // GET /api/invoices/:id - Get invoice by ID
-router.get('/:id', async (req, res) => {
+router.get('/:id', auth, async (req, res) => {
   try {
-    const invoice = await Invoice.findById(req.params.id)
+    // Filter by clinic for clinic admins
+    const query = { _id: req.params.id };
+    if (req.user.role === 'clinic') {
+      query.clinicId = req.user.id;
+    }
+    
+    const invoice = await Invoice.findOne(query)
       .populate('patientId', 'fullName phone email address')
       .select('-__v');
     
@@ -101,7 +114,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/invoices - Create new invoice
-router.post('/', validateInvoice, async (req, res) => {
+router.post('/', auth, validateInvoice, async (req, res) => {
   try {
     // Check for validation errors
     const errors = validationResult(req);
@@ -119,13 +132,17 @@ router.post('/', validateInvoice, async (req, res) => {
     }
 
     // Check if invoice number already exists
-    const existingInvoice = await Invoice.findOne({ invoiceNumber: req.body.invoiceNumber });
+    const existingInvoice = await Invoice.findOne({ invoiceNo: req.body.invoiceNo });
     if (existingInvoice) {
       return res.status(400).json({ error: 'Invoice number already exists' });
     }
 
-    // Create new invoice
-    const invoice = new Invoice(req.body);
+    // Create new invoice with clinic reference
+    const invoiceData = {
+      ...req.body,
+      clinicId: req.user.role === 'clinic' ? req.user.id : req.body.clinicId
+    };
+    const invoice = new Invoice(invoiceData);
     await invoice.save();
 
     const populatedInvoice = await Invoice.findById(invoice._id)
@@ -148,7 +165,7 @@ router.post('/', validateInvoice, async (req, res) => {
 });
 
 // PUT /api/invoices/:id - Update invoice
-router.put('/:id', validateInvoice, async (req, res) => {
+router.put('/:id', auth, validateInvoice, async (req, res) => {
   try {
     // Check for validation errors
     const errors = validationResult(req);
@@ -159,16 +176,22 @@ router.put('/:id', validateInvoice, async (req, res) => {
       });
     }
 
+    // Filter by clinic for clinic admins
+    const query = { _id: req.params.id };
+    if (req.user.role === 'clinic') {
+      query.clinicId = req.user.id;
+    }
+    
     // Check if invoice exists
-    const invoice = await Invoice.findById(req.params.id);
+    const invoice = await Invoice.findOne(query);
     if (!invoice) {
       return res.status(404).json({ error: 'Invoice not found' });
     }
 
     // Check if invoice number is being changed and conflicts with another invoice
-    if (req.body.invoiceNumber && req.body.invoiceNumber !== invoice.invoiceNumber) {
+    if (req.body.invoiceNo && req.body.invoiceNo !== invoice.invoiceNo) {
       const existingInvoice = await Invoice.findOne({ 
-        invoiceNumber: req.body.invoiceNumber,
+        invoiceNo: req.body.invoiceNo,
         _id: { $ne: req.params.id }
       });
       if (existingInvoice) {
@@ -177,8 +200,8 @@ router.put('/:id', validateInvoice, async (req, res) => {
     }
 
     // Update invoice
-    const updatedInvoice = await Invoice.findByIdAndUpdate(
-      req.params.id,
+    const updatedInvoice = await Invoice.findOneAndUpdate(
+      query,
       { ...req.body, updatedAt: new Date() },
       { new: true, runValidators: true }
     )
@@ -205,9 +228,15 @@ router.put('/:id', validateInvoice, async (req, res) => {
 });
 
 // DELETE /api/invoices/:id - Delete invoice
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', auth, async (req, res) => {
   try {
-    const invoice = await Invoice.findById(req.params.id);
+    // Filter by clinic for clinic admins
+    const query = { _id: req.params.id };
+    if (req.user.role === 'clinic') {
+      query.clinicId = req.user.id;
+    }
+    
+    const invoice = await Invoice.findOne(query);
     
     if (!invoice) {
       return res.status(404).json({ error: 'Invoice not found' });
@@ -225,36 +254,181 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-// PATCH /api/invoices/:id/status - Update invoice status
-router.patch('/:id/status', async (req, res) => {
+// PATCH /api/invoices/:id/approve - Approve invoice
+router.patch('/:id/approve', auth, async (req, res) => {
   try {
-    const { status } = req.body;
-    
-    if (!status || !['Draft', 'Sent', 'Paid', 'Overdue', 'Cancelled'].includes(status)) {
-      return res.status(400).json({ error: 'Valid status is required' });
+    // Filter by clinic for clinic admins
+    const query = { _id: req.params.id };
+    if (req.user.role === 'clinic') {
+      query.clinicId = req.user.id;
     }
-
-    const invoice = await Invoice.findById(req.params.id);
+    
+    const invoice = await Invoice.findOne(query);
+    
     if (!invoice) {
       return res.status(404).json({ error: 'Invoice not found' });
     }
 
-    invoice.status = status;
-    invoice.updatedAt = new Date();
-    await invoice.save();
+    // Check if invoice is in a state that can be approved
+    if (invoice.status !== 'Sent') {
+      return res.status(400).json({ 
+        error: `Invoice cannot be approved. Current status: ${invoice.status}` 
+      });
+    }
 
-    const updatedInvoice = await Invoice.findById(req.params.id)
-      .populate('patientId', 'fullName phone email');
+    // Update invoice status to approved
+    const updatedInvoice = await Invoice.findOneAndUpdate(
+      query,
+      {
+        status: 'Approved',
+        approvedBy: req.user.id,
+        approvedAt: new Date()
+      },
+      { new: true, runValidators: true }
+    )
+    .populate('patientId', 'fullName phone email')
+    .select('-__v');
 
     res.json({
-      message: 'Invoice status updated successfully',
+      message: 'Invoice approved successfully',
       invoice: updatedInvoice
     });
   } catch (error) {
-    console.error('Error updating invoice status:', error);
+    console.error('Error approving invoice:', error);
     if (error.kind === 'ObjectId') {
       return res.status(400).json({ error: 'Invalid invoice ID' });
     }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PATCH /api/invoices/:id/reject - Reject invoice
+router.patch('/:id/reject', auth, async (req, res) => {
+  try {
+    const { reason } = req.body;
+    
+    // Filter by clinic for clinic admins
+    const query = { _id: req.params.id };
+    if (req.user.role === 'clinic') {
+      query.clinicId = req.user.id;
+    }
+    
+    const invoice = await Invoice.findOne(query);
+    
+    if (!invoice) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    // Check if invoice is in a state that can be rejected
+    if (invoice.status !== 'Sent') {
+      return res.status(400).json({ 
+        error: `Invoice cannot be rejected. Current status: ${invoice.status}` 
+      });
+    }
+
+    // Update invoice status to rejected
+    const updatedInvoice = await Invoice.findOneAndUpdate(
+      query,
+      {
+        status: 'Rejected',
+        rejectedBy: req.user.id,
+        rejectedAt: new Date(),
+        rejectionReason: reason || 'No reason provided'
+      },
+      { new: true, runValidators: true }
+    )
+    .populate('patientId', 'fullName phone email')
+    .select('-__v');
+
+    res.json({
+      message: 'Invoice rejected successfully',
+      invoice: updatedInvoice
+    });
+  } catch (error) {
+    console.error('Error rejecting invoice:', error);
+    if (error.kind === 'ObjectId') {
+      return res.status(400).json({ error: 'Invalid invoice ID' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
+// GET /api/invoices/stats/current-month-revenue - Get current month revenue
+router.get('/stats/current-month-revenue', auth, async (req, res) => {
+  try {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    // Get current month revenue with clinic filtering
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const matchStage = {
+      date: { $regex: `^${currentMonth}` }
+    };
+    
+    // Add clinic filtering for clinic admins
+    if (req.user.role === 'clinic') {
+      matchStage.clinicId = req.user.id;
+    }
+    
+    const currentMonthRevenue = await Invoice.aggregate([
+      {
+        $match: matchStage
+      },
+      {
+        $group: {
+          _id: null,
+          totalRevenue: { $sum: '$total' },
+          invoiceCount: { $sum: 1 }
+        }
+      }
+    ]);
+
+    // Get previous month revenue for comparison
+    const prevMonth = `${now.getFullYear()}-${String(now.getMonth()).padStart(2, '0')}`;
+    const prevMatchStage = {
+      date: { $regex: `^${prevMonth}` }
+    };
+    
+    // Add clinic filtering for clinic admins
+    if (req.user.role === 'clinic') {
+      prevMatchStage.clinicId = req.user.id;
+    }
+    
+    const prevMonthRevenue = await Invoice.aggregate([
+      {
+        $match: prevMatchStage
+      },
+      {
+        $group: {
+          _id: null,
+          totalRevenue: { $sum: '$total' }
+        }
+      }
+    ]);
+
+    const currentRevenue = currentMonthRevenue[0]?.totalRevenue || 0;
+    const previousRevenue = prevMonthRevenue[0]?.totalRevenue || 0;
+    const invoiceCount = currentMonthRevenue[0]?.invoiceCount || 0;
+
+    // Calculate percentage change
+    let percentageChange = 0;
+    if (previousRevenue > 0) {
+      percentageChange = ((currentRevenue - previousRevenue) / previousRevenue) * 100;
+    } else if (currentRevenue > 0) {
+      percentageChange = 100; // If no previous revenue but current revenue exists
+    }
+
+    res.json({
+      currentMonthRevenue: currentRevenue,
+      previousMonthRevenue: previousRevenue,
+      percentageChange: Math.round(percentageChange * 10) / 10, // Round to 1 decimal place
+      invoiceCount,
+      month: now.toLocaleString('default', { month: 'long', year: 'numeric' })
+    });
+  } catch (error) {
+    console.error('Error fetching current month revenue:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -266,32 +440,23 @@ router.get('/stats/summary', async (req, res) => {
     const totalRevenue = await Invoice.aggregate([
       { $group: { _id: null, total: { $sum: '$total' } } }
     ]);
-    
-    // Get invoices by status
-    const statusStats = await Invoice.aggregate([
-      {
-        $group: {
-          _id: '$status',
-          count: { $sum: 1 },
-          total: { $sum: '$total' }
-        }
-      }
-    ]);
 
     // Get monthly revenue for current year
     const currentYear = new Date().getFullYear();
     const monthlyRevenue = await Invoice.aggregate([
       {
         $match: {
-          invoiceDate: {
-            $gte: new Date(currentYear, 0, 1),
-            $lt: new Date(currentYear + 1, 0, 1)
-          }
+          date: { $regex: `^${currentYear}` }
+        }
+      },
+      {
+        $addFields: {
+          month: { $toInt: { $substr: ['$date', 5, 2] } }
         }
       },
       {
         $group: {
-          _id: { $month: '$invoiceDate' },
+          _id: '$month',
           total: { $sum: '$total' },
           count: { $sum: 1 }
         }
@@ -302,7 +467,6 @@ router.get('/stats/summary', async (req, res) => {
     res.json({
       totalInvoices,
       totalRevenue: totalRevenue[0]?.total || 0,
-      statusStats,
       monthlyRevenue
     });
   } catch (error) {

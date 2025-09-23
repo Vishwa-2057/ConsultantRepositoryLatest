@@ -14,11 +14,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, Clock, User, Phone, Mail, MapPin, Stethoscope, X } from "lucide-react";
-import { appointmentAPI, patientAPI } from "@/services/api";
+import { appointmentAPI, patientAPI, doctorAPI } from "@/services/api";
 
 const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
   const [formData, setFormData] = useState({
     patientId: "",
+    doctorId: "",
     appointmentType: "",
     date: "",
     time: "",
@@ -29,12 +30,15 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
 
   const [errors, setErrors] = useState({});
   const [patients, setPatients] = useState([]);
+  const [doctors, setDoctors] = useState([]);
   const [loadingPatients, setLoadingPatients] = useState(false);
+  const [loadingDoctors, setLoadingDoctors] = useState(false);
 
-  // Load patients when modal opens
+  // Load patients and doctors when modal opens
   useEffect(() => {
     if (isOpen) {
       loadPatients();
+      loadDoctors();
     }
   }, [isOpen]);
 
@@ -49,6 +53,20 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
       setPatients([]);
     } finally {
       setLoadingPatients(false);
+    }
+  };
+
+  const loadDoctors = async () => {
+    setLoadingDoctors(true);
+    try {
+      const response = await doctorAPI.getAll(1, 100); // Get up to 100 doctors
+      const list = response.doctors || response.data || [];
+      setDoctors(list);
+    } catch (error) {
+      console.error('Failed to load doctors:', error);
+      setDoctors([]);
+    } finally {
+      setLoadingDoctors(false);
     }
   };
 
@@ -95,6 +113,9 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
     if (!formData.patientId) {
       newErrors.patientId = "Please select a patient";
     }
+    if (!formData.doctorId) {
+      newErrors.doctorId = "Please select a doctor";
+    }
     if (!formData.appointmentType) {
       newErrors.appointmentType = "Appointment type is required";
     }
@@ -117,6 +138,7 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
         // Prepare appointment data
         const appointmentData = {
           patientId: formData.patientId,
+          doctorId: formData.doctorId,
           appointmentType: formData.appointmentType,
           date: formData.date,
           time: formData.time,
@@ -143,6 +165,7 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
   const handleClose = () => {
     setFormData({
       patientId: "",
+      doctorId: "",
       appointmentType: "",
       date: "",
       time: "",
@@ -203,6 +226,32 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
                 )}
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="doctorId">Select Doctor *</Label>
+                <Select value={formData.doctorId} onValueChange={(value) => handleInputChange("doctorId", value)}>
+                  <SelectTrigger className={errors.doctorId ? "border-red-500" : ""}>
+                    <SelectValue placeholder={loadingDoctors ? "Loading doctors..." : "Choose a doctor"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {doctors.map((doctor) => (
+                      <SelectItem key={doctor._id} value={doctor._id}>
+                        <div className="flex flex-col">
+                          <span className="font-medium">Dr. {doctor.fullName}</span>
+                          <span className="text-sm text-muted-foreground">
+                            {doctor.specialty} • {doctor.phone}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.doctorId && (
+                  <p className="text-sm text-red-600">{errors.doctorId}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="priority">Priority</Label>
                 <Select value={formData.priority} onValueChange={(value) => handleInputChange("priority", value)}>
@@ -309,12 +358,15 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
           </div>
 
           {/* Summary */}
-          {formData.patientId && formData.appointmentType && formData.date && formData.time && (
+          {formData.patientId && formData.doctorId && formData.appointmentType && formData.date && formData.time && (
             <div className="p-4 bg-teal-50 rounded-lg border border-teal-200">
               <h4 className="font-medium text-teal-900 mb-2">Appointment Summary</h4>
               <div className="grid grid-cols-2 gap-2 text-sm text-teal-800">
                 <div>
                   <span className="font-medium">Patient:</span> {patients.find(p => p._id === formData.patientId)?.fullName}
+                </div>
+                <div>
+                  <span className="font-medium">Doctor:</span> Dr. {doctors.find(d => d._id === formData.doctorId)?.fullName}
                 </div>
                 <div>
                   <span className="font-medium">Type:</span> {formData.appointmentType}

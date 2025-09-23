@@ -58,6 +58,20 @@ const referralSchema = new mongoose.Schema({
     }
   },
   
+  // Referral Type
+  referralType: {
+    type: String,
+    required: [true, 'Referral type is required'],
+    enum: ['inbound', 'outbound'],
+    default: 'outbound'
+  },
+  
+  // External Clinic (for outbound referrals)
+  externalClinic: {
+    type: String,
+    trim: true
+  },
+  
   // Referral Details
   reason: {
     type: String,
@@ -133,7 +147,7 @@ const referralSchema = new mongoose.Schema({
   referringProvider: {
     name: {
       type: String,
-      default: 'Dr. Johnson',
+      required: [true, 'Referring provider name is required'],
       trim: true
     },
     npi: {
@@ -148,6 +162,19 @@ const referralSchema = new mongoose.Schema({
       type: String,
       trim: true
     }
+  },
+
+  // Referred By (Doctor who created the referral) - Optional
+  referredBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Doctor'
+  },
+  
+  // Clinic Reference
+  clinicId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Clinic',
+    required: [true, 'Clinic ID is required']
   },
   
   // Additional Information
@@ -173,6 +200,37 @@ const referralSchema = new mongoose.Schema({
       default: Date.now
     }
   }],
+  
+  // Shareable Link Information
+  shareableLink: {
+    code: {
+      type: String,
+      trim: true,
+      unique: true,
+      sparse: true
+    },
+    url: {
+      type: String,
+      trim: true
+    },
+    generatedAt: {
+      type: Date
+    },
+    isActive: {
+      type: Boolean,
+      default: false
+    },
+    accessCount: {
+      type: Number,
+      default: 0
+    },
+    lastAccessedAt: {
+      type: Date
+    },
+    deactivatedAt: {
+      type: Date
+    }
+  },
   
   // Timestamps
   createdAt: {

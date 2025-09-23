@@ -18,19 +18,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FileText, User, DollarSign, Calendar, CreditCard } from "lucide-react";
+import { FileText, User, DollarSign, Plus, Minus, MapPin } from "lucide-react";
 import { invoiceAPI, patientAPI } from "@/services/api";
 
 const InvoiceModal = ({ isOpen, onClose, onSubmit }) => {
   const [formData, setFormData] = useState({
     patientId: "",
-    serviceType: "",
-    description: "",
-    amount: "",
-    dueDate: "",
-    paymentMethod: "Insurance",
-    status: "Pending",
-    notes: ""
+    patientName: "",
+    lineItems: [{ description: "", qty: 1, unitPrice: 0 }],
+    address: {
+      line1: "",
+      line2: "",
+      city: "",
+      state: "",
+      zipCode: ""
+    },
+    phone: "",
+    email: "",
+    remarks: "",
+    discount: 0,
+    tax: 0,
+    shipping: 0
   });
 
   const [errors, setErrors] = useState({});
@@ -71,19 +79,23 @@ const InvoiceModal = ({ isOpen, onClose, onSubmit }) => {
     if (!formData.patientId) {
       newErrors.patientId = "Please select a patient";
     }
-    if (!formData.serviceType) {
-      newErrors.serviceType = "Service type is required";
+    if (!formData.patientName.trim()) {
+      newErrors.patientName = "Patient name is required";
     }
-    if (!formData.description.trim()) {
-      newErrors.description = "Description is required";
+    if (!formData.lineItems.length || !formData.lineItems[0].description.trim()) {
+      newErrors.lineItems = "At least one line item with description is required";
     }
-    if (!formData.amount) {
-      newErrors.amount = "Amount is required";
-    } else if (isNaN(parseFloat(formData.amount)) || parseFloat(formData.amount) <= 0) {
-      newErrors.amount = "Please enter a valid amount";
+    if (!formData.address.line1.trim()) {
+      newErrors.addressLine1 = "Address line 1 is required";
     }
-    if (!formData.dueDate) {
-      newErrors.dueDate = "Due date is required";
+    if (!formData.address.city.trim()) {
+      newErrors.addressCity = "City is required";
+    }
+    if (!formData.address.state.trim()) {
+      newErrors.addressState = "State is required";
+    }
+    if (!formData.address.zipCode.trim()) {
+      newErrors.addressZipCode = "Zip code is required";
     }
 
     setErrors(newErrors);
@@ -96,29 +108,27 @@ const InvoiceModal = ({ isOpen, onClose, onSubmit }) => {
     if (validateForm()) {
       try {
         // Generate invoice number
-        const invoiceNumber = `INV-${Date.now()}`;
+        const invoiceNo = Date.now();
         
-        // Prepare invoice data to match backend structure
+        // Calculate total from line items
+        const subtotal = formData.lineItems.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0);
+        const total = subtotal - formData.discount + formData.tax + formData.shipping;
+        
+        // Prepare invoice data to match new backend structure
         const invoiceData = {
           patientId: formData.patientId,
-          patientName: selectedPatient?.fullName || '',
-          invoiceNumber: invoiceNumber,
-          invoiceDate: new Date().toISOString().split('T')[0],
-          dueDate: formData.dueDate,
-          status: formData.status,
-          terms: 'Net 30',
-          items: [{
-            description: `${formData.serviceType}: ${formData.description.trim()}`,
-            quantity: 1,
-            rate: parseFloat(formData.amount),
-            amount: parseFloat(formData.amount)
-          }],
-          subtotal: parseFloat(formData.amount),
-          taxRate: 0,
-          taxAmount: 0,
-          total: parseFloat(formData.amount),
-          notes: formData.notes.trim(),
-          paymentMethod: formData.paymentMethod
+          patientName: formData.patientName || selectedPatient?.fullName || '',
+          invoiceNo: invoiceNo,
+          date: new Date().toISOString().split('T')[0],
+          lineItems: formData.lineItems,
+          address: formData.address,
+          phone: formData.phone || selectedPatient?.phone || '',
+          email: formData.email || selectedPatient?.email || '',
+          remarks: formData.remarks,
+          discount: formData.discount,
+          tax: formData.tax,
+          shipping: formData.shipping,
+          total: total
         };
         
         // Send to backend API
@@ -138,20 +148,80 @@ const InvoiceModal = ({ isOpen, onClose, onSubmit }) => {
   const handleClose = () => {
     setFormData({
       patientId: "",
-      serviceType: "",
-      description: "",
-      amount: "",
-      dueDate: "",
-      paymentMethod: "Insurance",
-      status: "Pending",
-      notes: ""
+      patientName: "",
+      lineItems: [{ description: "", qty: 1, unitPrice: 0 }],
+      address: {
+        line1: "",
+        line2: "",
+        city: "",
+        state: "",
+        zipCode: ""
+      },
+      phone: "",
+      email: "",
+      remarks: "",
+      discount: 0,
+      tax: 0,
+      shipping: 0
     });
     setErrors({});
     onClose();
   };
 
-  const today = new Date().toISOString().split('T')[0];
+  const addLineItem = () => {
+    setFormData(prev => ({
+      ...prev,
+      lineItems: [...prev.lineItems, { description: "", qty: 1, unitPrice: 0 }]
+    }));
+  };
+
+  const removeLineItem = (index) => {
+    if (formData.lineItems.length > 1) {
+      setFormData(prev => ({
+        ...prev,
+        lineItems: prev.lineItems.filter((_, i) => i !== index)
+      }));
+    }
+  };
+
+  const updateLineItem = (index, field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      lineItems: prev.lineItems.map((item, i) => 
+        i === index ? { ...item, [field]: value } : item
+      )
+    }));
+  };
+
+  const updateAddress = (field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      address: { ...prev.address, [field]: value }
+    }));
+  };
+
   const selectedPatient = patients.find(p => p._id === formData.patientId);
+  const subtotal = formData.lineItems.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0);
+  const total = subtotal - formData.discount + formData.tax + formData.shipping;
+
+  // Auto-populate patient data when patient is selected
+  useEffect(() => {
+    if (selectedPatient) {
+      setFormData(prev => ({
+        ...prev,
+        patientName: selectedPatient.fullName || '',
+        phone: selectedPatient.phone || '',
+        email: selectedPatient.email || '',
+        address: {
+          line1: selectedPatient.address?.street || '',
+          line2: '',
+          city: selectedPatient.address?.city || '',
+          state: selectedPatient.address?.state || '',
+          zipCode: selectedPatient.address?.zipCode || ''
+        }
+      }));
+    }
+  }, [selectedPatient]);
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
@@ -174,183 +244,319 @@ const InvoiceModal = ({ isOpen, onClose, onSubmit }) => {
               Patient Information
             </h3>
 
-            <div className="space-y-2">
-              <Label htmlFor="patientId">Select Patient *</Label>
-              <Select value={formData.patientId} onValueChange={(value) => handleInputChange("patientId", value)}>
-                <SelectTrigger className={errors.patientId ? "border-red-500" : ""}>
-                  <SelectValue placeholder={loadingPatients ? "Loading patients..." : "Choose a patient"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {patients.map((patient) => (
-                    <SelectItem key={patient._id} value={patient._id}>
-                      <div className="flex flex-col">
-                        <span className="font-medium">{patient.fullName}</span>
-                        <span className="text-sm text-muted-foreground">
-                          {patient.phone} • {patient.email}
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {errors.patientId && (
-                <p className="text-sm text-red-600">{errors.patientId}</p>
-              )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="patientId">Select Patient *</Label>
+                <Select value={formData.patientId} onValueChange={(value) => handleInputChange("patientId", value)}>
+                  <SelectTrigger className={errors.patientId ? "border-red-500" : ""}>
+                    <SelectValue placeholder={loadingPatients ? "Loading patients..." : "Choose a patient"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {patients.map((patient) => (
+                      <SelectItem key={patient._id} value={patient._id}>
+                        <div className="flex flex-col">
+                          <span className="font-medium">{patient.fullName}</span>
+                          <span className="text-sm text-muted-foreground">
+                            {patient.phone} • {patient.email}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.patientId && (
+                  <p className="text-sm text-red-600">{errors.patientId}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="patientName">Patient Name *</Label>
+                <Input
+                  id="patientName"
+                  placeholder="Patient full name"
+                  value={formData.patientName}
+                  onChange={(e) => handleInputChange("patientName", e.target.value)}
+                  className={errors.patientName ? "border-red-500" : ""}
+                />
+                {errors.patientName && (
+                  <p className="text-sm text-red-600">{errors.patientName}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone</Label>
+                <Input
+                  id="phone"
+                  placeholder="Patient phone number"
+                  value={formData.phone}
+                  onChange={(e) => handleInputChange("phone", e.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="Patient email address"
+                  value={formData.email}
+                  onChange={(e) => handleInputChange("email", e.target.value)}
+                />
+              </div>
             </div>
           </div>
 
-          {/* Service Details */}
+          {/* Address Information */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <MapPin className="w-5 h-5 text-teal-600" />
+              Address Information
+            </h3>
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="addressLine1">Address Line 1 *</Label>
+                <Input
+                  id="addressLine1"
+                  placeholder="Street address"
+                  value={formData.address.line1}
+                  onChange={(e) => updateAddress("line1", e.target.value)}
+                  className={errors.addressLine1 ? "border-red-500" : ""}
+                />
+                {errors.addressLine1 && (
+                  <p className="text-sm text-red-600">{errors.addressLine1}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="addressLine2">Address Line 2</Label>
+                <Input
+                  id="addressLine2"
+                  placeholder="Apartment, suite, etc. (optional)"
+                  value={formData.address.line2}
+                  onChange={(e) => updateAddress("line2", e.target.value)}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="city">City *</Label>
+                  <Input
+                    id="city"
+                    placeholder="City"
+                    value={formData.address.city}
+                    onChange={(e) => updateAddress("city", e.target.value)}
+                    className={errors.addressCity ? "border-red-500" : ""}
+                  />
+                  {errors.addressCity && (
+                    <p className="text-sm text-red-600">{errors.addressCity}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="state">State *</Label>
+                  <Input
+                    id="state"
+                    placeholder="State"
+                    value={formData.address.state}
+                    onChange={(e) => updateAddress("state", e.target.value)}
+                    className={errors.addressState ? "border-red-500" : ""}
+                  />
+                  {errors.addressState && (
+                    <p className="text-sm text-red-600">{errors.addressState}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="zipCode">Zip Code *</Label>
+                  <Input
+                    id="zipCode"
+                    placeholder="Zip code"
+                    value={formData.address.zipCode}
+                    onChange={(e) => updateAddress("zipCode", e.target.value)}
+                    className={errors.addressZipCode ? "border-red-500" : ""}
+                  />
+                  {errors.addressZipCode && (
+                    <p className="text-sm text-red-600">{errors.addressZipCode}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Line Items */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <DollarSign className="w-5 h-5 text-teal-600" />
+                Line Items
+              </h3>
+              <Button type="button" onClick={addLineItem} variant="outline" size="sm">
+                <Plus className="w-4 h-4 mr-1" />
+                Add Item
+              </Button>
+            </div>
+
+            {formData.lineItems.map((item, index) => (
+              <div key={index} className="p-4 border rounded-lg space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">Item {index + 1}</span>
+                  {formData.lineItems.length > 1 && (
+                    <Button
+                      type="button"
+                      onClick={() => removeLineItem(index)}
+                      variant="outline"
+                      size="sm"
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      <Minus className="w-4 h-4 mr-1" />
+                      Remove
+                    </Button>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Description *</Label>
+                  <Textarea
+                    placeholder="Item description"
+                    value={item.description}
+                    onChange={(e) => updateLineItem(index, "description", e.target.value)}
+                    rows={2}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label>Quantity *</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={item.qty}
+                      onChange={(e) => updateLineItem(index, "qty", parseInt(e.target.value) || 1)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Unit Price (₹) *</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={item.unitPrice}
+                      onChange={(e) => updateLineItem(index, "unitPrice", parseFloat(e.target.value) || 0)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Total</Label>
+                    <Input
+                      value={`₹${(item.qty * item.unitPrice).toFixed(2)}`}
+                      readOnly
+                      className="bg-gray-50"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {errors.lineItems && (
+              <p className="text-sm text-red-600">{errors.lineItems}</p>
+            )}
+          </div>
+
+          {/* Additional Charges */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
               <FileText className="w-5 h-5 text-teal-600" />
-              Service Details
+              Additional Charges
             </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="serviceType">Service Type *</Label>
-                <Select value={formData.serviceType} onValueChange={(value) => handleInputChange("serviceType", value)}>
-                  <SelectTrigger className={errors.serviceType ? "border-red-500" : ""}>
-                    <SelectValue placeholder="Select service type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Consultation">General Consultation</SelectItem>
-                    <SelectItem value="Follow-up">Follow-up Visit</SelectItem>
-                    <SelectItem value="Physical Exam">Physical Examination</SelectItem>
-                    <SelectItem value="Lab Work">Laboratory Work</SelectItem>
-                    <SelectItem value="Imaging">Medical Imaging</SelectItem>
-                    <SelectItem value="Vaccination">Vaccination</SelectItem>
-                    <SelectItem value="Emergency">Emergency Visit</SelectItem>
-                    <SelectItem value="Specialist">Specialist Consultation</SelectItem>
-                    <SelectItem value="Therapy">Physical Therapy</SelectItem>
-                    <SelectItem value="Mental Health">Mental Health Session</SelectItem>
-                  </SelectContent>
-                </Select>
-                {errors.serviceType && (
-                  <p className="text-sm text-red-600">{errors.serviceType}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="amount">Amount ($) *</Label>
+                <Label htmlFor="discount">Discount (₹)</Label>
                 <Input
-                  id="amount"
+                  id="discount"
                   type="number"
                   step="0.01"
                   min="0"
-                  placeholder="0.00"
-                  value={formData.amount}
-                  onChange={(e) => handleInputChange("amount", e.target.value)}
-                  className={errors.amount ? "border-red-500" : ""}
+                  value={formData.discount}
+                  onChange={(e) => handleInputChange("discount", parseFloat(e.target.value) || 0)}
                 />
-                {errors.amount && (
-                  <p className="text-sm text-red-600">{errors.amount}</p>
-                )}
               </div>
-            </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="description">Service Description *</Label>
-              <Textarea
-                id="description"
-                placeholder="Describe the service provided..."
-                value={formData.description}
-                onChange={(e) => handleInputChange("description", e.target.value)}
-                className={errors.description ? "border-red-500" : ""}
-                rows={3}
-              />
-              {errors.description && (
-                <p className="text-sm text-red-600">{errors.description}</p>
-              )}
-            </div>
-          </div>
-
-          {/* Payment & Billing */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-teal-600" />
-              Payment & Billing
-            </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="dueDate">Due Date *</Label>
+                <Label htmlFor="tax">Tax (₹)</Label>
                 <Input
-                  id="dueDate"
-                  type="date"
-                  min={today}
-                  value={formData.dueDate}
-                  onChange={(e) => handleInputChange("dueDate", e.target.value)}
-                  className={errors.dueDate ? "border-red-500" : ""}
+                  id="tax"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={formData.tax}
+                  onChange={(e) => handleInputChange("tax", parseFloat(e.target.value) || 0)}
                 />
-                {errors.dueDate && (
-                  <p className="text-sm text-red-600">{errors.dueDate}</p>
-                )}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="paymentMethod">Payment Method</Label>
-                <Select value={formData.paymentMethod} onValueChange={(value) => handleInputChange("paymentMethod", value)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Insurance">Insurance</SelectItem>
-                    <SelectItem value="Cash">Cash</SelectItem>
-                    <SelectItem value="Credit Card">Credit Card</SelectItem>
-                    <SelectItem value="Check">Check</SelectItem>
-                    <SelectItem value="Medicare">Medicare</SelectItem>
-                    <SelectItem value="Medicaid">Medicaid</SelectItem>
-                    <SelectItem value="Self-Pay">Self-Pay</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="shipping">Shipping (₹)</Label>
+                <Input
+                  id="shipping"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={formData.shipping}
+                  onChange={(e) => handleInputChange("shipping", parseFloat(e.target.value) || 0)}
+                />
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="status">Invoice Status</Label>
-              <Select value={formData.status} onValueChange={(value) => handleInputChange("status", value)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Pending">Pending</SelectItem>
-                  <SelectItem value="Sent">Sent</SelectItem>
-                  <SelectItem value="Paid">Paid</SelectItem>
-                  <SelectItem value="Overdue">Overdue</SelectItem>
-                  <SelectItem value="Cancelled">Cancelled</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="notes">Additional Notes</Label>
+              <Label htmlFor="remarks">Remarks</Label>
               <Textarea
-                id="notes"
-                placeholder="Any additional notes or special instructions..."
-                value={formData.notes}
-                onChange={(e) => handleInputChange("notes", e.target.value)}
+                id="remarks"
+                placeholder="Any additional remarks or notes..."
+                value={formData.remarks}
+                onChange={(e) => handleInputChange("remarks", e.target.value)}
                 rows={2}
               />
             </div>
           </div>
 
           {/* Summary */}
-          {formData.patientId && formData.serviceType && formData.amount && formData.dueDate && (
+          {formData.patientId && formData.lineItems[0]?.description && (
             <div className="p-4 bg-teal-50 rounded-lg border border-teal-200">
               <h4 className="font-medium text-teal-900 mb-2">Invoice Summary</h4>
-              <div className="grid grid-cols-2 gap-2 text-sm text-teal-800">
-                <div>
-                  <span className="font-medium">Patient:</span> {selectedPatient?.fullName}
+              <div className="space-y-2 text-sm text-teal-800">
+                <div className="flex justify-between">
+                  <span>Patient:</span>
+                  <span className="font-medium">{formData.patientName}</span>
                 </div>
-                <div>
-                  <span className="font-medium">Service:</span> {formData.serviceType}
+                <div className="flex justify-between">
+                  <span>Subtotal:</span>
+                  <span>₹{subtotal.toFixed(2)}</span>
                 </div>
-                <div>
-                  <span className="font-medium">Amount:</span> ${formData.amount}
-                </div>
-                <div>
-                  <span className="font-medium">Due Date:</span> {new Date(formData.dueDate).toLocaleDateString()}
+                {formData.discount > 0 && (
+                  <div className="flex justify-between">
+                    <span>Discount:</span>
+                    <span>-₹{formData.discount.toFixed(2)}</span>
+                  </div>
+                )}
+                {formData.tax > 0 && (
+                  <div className="flex justify-between">
+                    <span>Tax:</span>
+                    <span>₹{formData.tax.toFixed(2)}</span>
+                  </div>
+                )}
+                {formData.shipping > 0 && (
+                  <div className="flex justify-between">
+                    <span>Shipping:</span>
+                    <span>₹{formData.shipping.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold border-t pt-2">
+                  <span>Total:</span>
+                  <span>₹{total.toFixed(2)}</span>
                 </div>
               </div>
             </div>

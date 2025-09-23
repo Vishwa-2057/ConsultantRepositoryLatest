@@ -73,8 +73,7 @@ const complianceAlertSchema = new mongoose.Schema({
   },
   recurrencePattern: {
     type: String,
-    enum: ['Daily', 'Weekly', 'Monthly', 'Quarterly'],
-    default: null
+    enum: ['Daily', 'Weekly', 'Monthly', 'Quarterly']
   },
   
   // Resolution Information
@@ -94,12 +93,16 @@ const complianceAlertSchema = new mongoose.Schema({
   // System Fields
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Doctor',
-    required: [true, 'Created by is required']
+    ref: 'Doctor'
   },
   assignedTo: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Doctor'
+  },
+  clinicId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Clinic',
+    required: [true, 'Clinic ID is required']
   },
   
   // Timestamps

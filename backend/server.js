@@ -5,6 +5,8 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
+const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
 
 const app = express();
@@ -21,6 +23,11 @@ const authRoutes = require('./routes/auth');
 const complianceAlertRoutes = require('./routes/complianceAlerts');
 const otpRoutes = require('./routes/otp');
 const emailConfigRoutes = require('./routes/emailConfig');
+const doctorRoutes = require('./routes/doctors');
+const nurseRoutes = require('./routes/nurses');
+const superAdminRoutes = require('./routes/superadmin');
+const prescriptionRoutes = require('./routes/prescriptions');
+const vitalsRoutes = require('./routes/vitals');
 
 // Middleware
 app.use(helmet());
@@ -29,9 +36,11 @@ app.use(morgan('combined'));
 
 // CORS configuration
 const allowedOrigins = [
-  process.env.FRONTEND_URL || 'http://localhost:8080',
+  process.env.FRONTEND_URL || 'http://localhost:8000',
   'http://localhost:5173',
+  'http://localhost:8080',
   'http://localhost:8081',
+  'http://127.0.0.1:8000',
   'http://127.0.0.1:8080',
   'http://127.0.0.1:8081',
   'http://127.0.0.1:5173'
@@ -42,8 +51,8 @@ const corsOptions = {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
-    // Allow all localhost origins for development
-    if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+    // Allow all localhost and local network origins for development
+    if (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('192.168.')) {
       return callback(null, true);
     }
     
@@ -77,6 +86,44 @@ app.use('/api/', limiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Legacy: Ensure uploads directory exists (keeping for backward compatibility)
+// Note: New uploads now use Cloudinary, but keeping local directory for existing files
+const uploadsDir = path.join(__dirname, 'uploads');
+const doctorsUploadsDir = path.join(uploadsDir, 'doctors');
+const nursesUploadsDir = path.join(uploadsDir, 'nurses');
+const patientsUploadsDir = path.join(uploadsDir, 'patients');
+const patientsDocumentsDir = path.join(patientsUploadsDir, 'documents');
+
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+if (!fs.existsSync(doctorsUploadsDir)) {
+  fs.mkdirSync(doctorsUploadsDir, { recursive: true });
+}
+if (!fs.existsSync(nursesUploadsDir)) {
+  fs.mkdirSync(nursesUploadsDir, { recursive: true });
+}
+if (!fs.existsSync(patientsUploadsDir)) {
+  fs.mkdirSync(patientsUploadsDir, { recursive: true });
+}
+if (!fs.existsSync(patientsDocumentsDir)) {
+  fs.mkdirSync(patientsDocumentsDir, { recursive: true });
+}
+
+// Serve static files for uploaded images with CORS headers
+app.use('/uploads', (req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.header('Cross-Origin-Embedder-Policy', 'unsafe-none');
+  next();
+}, express.static(path.join(__dirname, 'uploads'), {
+  setHeaders: (res, path) => {
+    res.header('Cache-Control', 'public, max-age=31536000');
+  }
+}));
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({ 
@@ -84,6 +131,48 @@ app.get('/health', (req, res) => {
     message: 'Healthcare Backend API is running',
     timestamp: new Date().toISOString()
   });
+});
+
+// Test endpoint to check uploads directory
+app.get('/test-uploads', (req, res) => {
+  const uploadsPath = path.join(__dirname, 'uploads', 'doctors');
+  try {
+    const files = fs.readdirSync(uploadsPath);
+    res.json({
+      success: true,
+      uploadsPath,
+      files: files.length > 0 ? files : 'No files found',
+      message: 'Uploads directory accessible'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      uploadsPath
+    });
+  }
+});
+
+// Test endpoint to check Cloudinary configuration
+app.get('/test-cloudinary', (req, res) => {
+  try {
+    const { cloudinary } = require('./config/cloudinary');
+    res.json({
+      success: true,
+      message: 'Cloudinary configuration loaded successfully',
+      config: {
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME ? 'Set' : 'Not set',
+        api_key: process.env.CLOUDINARY_API_KEY ? 'Set' : 'Not set',
+        api_secret: process.env.CLOUDINARY_API_SECRET ? 'Set' : 'Not set'
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      message: 'Failed to load Cloudinary configuration'
+    });
+  }
 });
 
 // API routes
@@ -97,6 +186,15 @@ app.use('/api/auth', authRoutes);
 app.use('/api/compliance-alerts', complianceAlertRoutes);
 app.use('/api/otp', otpRoutes);
 app.use('/api/email-config', emailConfigRoutes);
+app.use('/api/doctors', doctorRoutes);
+app.use('/api/nurses', nurseRoutes);
+app.use('/api/superadmin', superAdminRoutes);
+app.use('/api/prescriptions', prescriptionRoutes);
+app.use('/api/vitals', vitalsRoutes);
+
+app.get("/", (req, res) => {
+  res.send("Backend is running ✅");
+});   
 
 // 404 handler
 app.use('*', (req, res) => {

@@ -1,9 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
+import CreateReferralModal from "@/components/CreateReferralModal";
+import { useToast } from "@/hooks/use-toast";
+import { referralAPI } from "@/services/api";
 import { 
   ArrowRight, 
   ArrowLeft, 
@@ -16,87 +19,248 @@ import {
   Phone,
   Calendar,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Loader2,
+  Download
 } from "lucide-react";
+import { generateReferralPDF } from "@/utils/pdfGenerator";
 
 const ReferralSystem = () => {
+  const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [outboundReferrals, setOutboundReferrals] = useState([]);
+  const [inboundReferrals, setInboundReferrals] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [stats, setStats] = useState({
+    outboundPending: 0,
+    inboundNew: 0,
+    completedThisMonth: 0,
+    highPriority: 0
+  });
 
-  const outboundReferrals = [
+  // Calculate statistics from referrals
+  const calculateStats = (referrals) => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    const outboundPending = referrals.filter(r => 
+      r.referralType === 'outbound' && r.status === 'Pending'
+    ).length;
+
+    const inboundNew = referrals.filter(r => 
+      r.referralType === 'inbound' && r.status === 'New'
+    ).length;
+
+    const completedThisMonth = referrals.filter(r => {
+      if (r.status !== 'Completed') return false;
+      const completedDate = new Date(r.updatedAt || r.createdAt);
+      return completedDate.getMonth() === currentMonth && 
+             completedDate.getFullYear() === currentYear;
+    }).length;
+
+    const highPriority = referrals.filter(r => 
+      r.urgency === 'High' || r.urgency === 'Urgent'
+    ).length;
+
+    return {
+      outboundPending,
+      inboundNew,
+      completedThisMonth,
+      highPriority
+    };
+  };
+
+  // Fetch referrals from API
+  const fetchReferrals = async () => {
+    try {
+      setIsLoading(true);
+      const response = await referralAPI.getAll(1, 100);
+      
+      // Separate outbound and inbound referrals based on referralType field
+      const referrals = response.referrals || [];
+      const outbound = referrals.filter(r => r.referralType === 'outbound');
+      const inbound = referrals.filter(r => r.referralType === 'inbound');
+      
+      setOutboundReferrals(outbound);
+      setInboundReferrals(inbound);
+      
+      // Calculate and set statistics
+      const calculatedStats = calculateStats(referrals);
+      setStats(calculatedStats);
+    } catch (error) {
+      console.error('Error fetching referrals:', error);
+      // Use mock data as fallback
+      setOutboundReferrals(mockOutboundReferrals);
+      setInboundReferrals(mockInboundReferrals);
+      
+      // Calculate stats from mock data
+      const allMockReferrals = [...mockOutboundReferrals, ...mockInboundReferrals];
+      const mockStats = calculateStats(allMockReferrals);
+      setStats(mockStats);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchReferrals();
+  }, []);
+
+  const handleCreateSuccess = (newReferral) => {
+    // Add to appropriate list based on referral type
+    if (newReferral.referralType === 'outbound') {
+      setOutboundReferrals(prev => [newReferral, ...prev]);
+    } else {
+      setInboundReferrals(prev => [newReferral, ...prev]);
+    }
+    
+    // Recalculate stats with new referral
+    const allReferrals = [
+      newReferral,
+      ...outboundReferrals,
+      ...inboundReferrals
+    ];
+    const updatedStats = calculateStats(allReferrals);
+    setStats(updatedStats);
+    
+    toast({
+      title: "Success",
+      description: "Referral created successfully!",
+    });
+    setIsCreateModalOpen(false);
+  };
+
+  const handleCompleteReferral = async (referralId) => {
+    try {
+      // Update status to completed via API
+      await referralAPI.updateStatus(referralId, 'Completed');
+      
+      // Remove from both lists (since we're filtering out completed ones)
+      setOutboundReferrals(prev => prev.filter(r => r._id !== referralId));
+      setInboundReferrals(prev => prev.filter(r => r._id !== referralId));
+      
+      // Recalculate stats
+      const allReferrals = [
+        ...outboundReferrals.filter(r => r._id !== referralId),
+        ...inboundReferrals.filter(r => r._id !== referralId)
+      ];
+      const updatedStats = calculateStats(allReferrals);
+      setStats(updatedStats);
+      
+      toast({
+        title: "Success",
+        description: "Referral marked as completed!",
+      });
+    } catch (error) {
+      console.error('Error completing referral:', error);
+      toast({
+        title: "Error",
+        description: "Failed to complete referral. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDownloadReferralPDF = (referral, type) => {
+    try {
+      generateReferralPDF(referral, type);
+      toast({
+        title: "Success",
+        description: "Referral PDF downloaded successfully!",
+      });
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      toast({
+        title: "Error",
+        description: "Failed to generate PDF. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const mockOutboundReferrals = [
     {
       id: "OUT001",
-      patient: "Emma Thompson",
-      referredTo: "Dr. Michael Rodriguez",
+      patientName: "Emma Thompson",
+      specialistName: "Dr. Michael Rodriguez",
       specialty: "Cardiology",
-      hospital: "Central Medical Center",
+      externalClinic: "Central Medical Center",
       reason: "Suspected heart murmur",
-      date: "2024-01-15",
+      preferredDate: "2024-01-15",
       status: "Pending",
-      priority: "High",
-      notes: "Patient experiencing chest pains"
+      urgency: "High",
+      notes: "Patient experiencing chest pains",
+      referralType: "outbound"
     },
     {
       id: "OUT002", 
-      patient: "Robert Johnson",
-      referredTo: "Dr. Sarah Kim",
+      patientName: "Robert Johnson",
+      specialistName: "Dr. Sarah Kim",
       specialty: "Orthopedics",
-      hospital: "City Hospital",
+      externalClinic: "City Hospital",
       reason: "Chronic knee pain",
-      date: "2024-01-14",
+      preferredDate: "2024-01-14",
       status: "Scheduled",
-      priority: "Medium",
-      notes: "MRI results attached"
+      urgency: "Medium",
+      notes: "MRI results attached",
+      referralType: "outbound"
     },
     {
       id: "OUT003",
-      patient: "Maria Garcia",
-      referredTo: "Dr. James Wilson",
+      patientName: "Maria Garcia",
+      specialistName: "Dr. James Wilson",
       specialty: "Dermatology", 
-      hospital: "Skin Care Clinic",
+      externalClinic: "Skin Care Clinic",
       reason: "Suspicious mole",
-      date: "2024-01-13",
+      preferredDate: "2024-01-13",
       status: "Completed",
-      priority: "High",
-      notes: "Urgent evaluation needed"
+      urgency: "High",
+      notes: "Urgent evaluation needed",
+      referralType: "outbound"
     }
   ];
 
-  const inboundReferrals = [
+  const mockInboundReferrals = [
     {
       id: "IN001",
-      patient: "David Chen",
-      referredBy: "Dr. Lisa Anderson",
+      patientName: "David Chen",
+      specialistName: "Dr. Lisa Anderson",
       specialty: "General Practice",
       hospital: "Community Health Center",
       reason: "Follow-up care",
-      date: "2024-01-16",
+      preferredDate: "2024-01-16",
       status: "New",
-      priority: "Medium",
-      notes: "Patient needs ongoing management"
+      urgency: "Medium",
+      notes: "Patient needs ongoing management",
+      referralType: "inbound"
     },
     {
       id: "IN002",
-      patient: "Sarah Williams", 
-      referredBy: "Dr. Mark Thompson",
+      patientName: "Sarah Williams", 
+      specialistName: "Dr. Mark Thompson",
       specialty: "Emergency Medicine",
       hospital: "Emergency Department",
       reason: "Post-ER follow-up",
-      date: "2024-01-15",
+      preferredDate: "2024-01-15",
       status: "Scheduled",
-      priority: "High",
-      notes: "Recent hospital discharge"
+      urgency: "High",
+      notes: "Recent hospital discharge",
+      referralType: "inbound"
     },
     {
       id: "IN003",
-      patient: "Michael Brown",
-      referredBy: "Dr. Jennifer Lee",
+      patientName: "Michael Brown",
+      specialistName: "Dr. Jennifer Lee",
       specialty: "Psychiatry",
       hospital: "Mental Health Center",
       reason: "Primary care coordination",
-      date: "2024-01-14",
+      preferredDate: "2024-01-14",
       status: "In Progress",
-      priority: "Low",
-      notes: "Medication management needed"
+      urgency: "Low",
+      notes: "Medication management needed",
+      referralType: "inbound"
     }
   ];
 
@@ -111,8 +275,8 @@ const ReferralSystem = () => {
     }
   };
 
-  const getPriorityColor = (priority) => {
-    switch (priority) {
+  const getPriorityColor = (urgency) => {
+    switch (urgency) {
       case "High": return "destructive";
       case "Medium": return "warning";
       case "Low": return "success";
@@ -120,8 +284,8 @@ const ReferralSystem = () => {
     }
   };
 
-  const getPriorityIcon = (priority) => {
-    switch (priority) {
+  const getPriorityIcon = (urgency) => {
+    switch (urgency) {
       case "High": return AlertCircle;
       case "Medium": return Clock;
       case "Low": return CheckCircle;
@@ -129,18 +293,57 @@ const ReferralSystem = () => {
     }
   };
 
+  // Filter referrals based on search term and exclude completed ones
+  const filteredOutbound = outboundReferrals.filter(referral => 
+    referral.status !== 'Completed' && (
+      referral.patientName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      referral.specialistName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      referral.reason?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      referral.externalClinic?.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+  );
+
+  const filteredInbound = inboundReferrals.filter(referral => 
+    referral.status !== 'Completed' && (
+      referral.patientName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      referral.specialistName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      referral.reason?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      referral.hospital?.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+  );
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 space-y-6">
+      {/* Create Referral Modal */}
+      <CreateReferralModal 
+        isOpen={isCreateModalOpen} 
+        onClose={() => setIsCreateModalOpen(false)}
+        onSuccess={handleCreateSuccess}
+      />
+      
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-foreground">Referral System</h1>
           <p className="text-muted-foreground">Manage inbound and outbound patient referrals</p>
         </div>
-        <Button className="bg-gradient-primary shadow-soft">
-          <Plus className="w-4 h-4 mr-2" />
-          Create Referral
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            className="bg-gradient-primary shadow-soft"
+            onClick={() => setIsCreateModalOpen(true)}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Create Referral
+          </Button>
+        </div>
       </div>
 
       {/* Search */}
@@ -165,7 +368,7 @@ const ReferralSystem = () => {
             <div className="w-8 h-8 bg-gradient-primary rounded-full flex items-center justify-center mx-auto mb-2">
               <ArrowRight className="w-4 h-4 text-white" />
             </div>
-            <p className="text-2xl font-bold text-foreground">12</p>
+            <p className="text-2xl font-bold text-foreground">{stats.outboundPending}</p>
             <p className="text-sm text-muted-foreground">Outbound Pending</p>
           </CardContent>
         </Card>
@@ -175,7 +378,7 @@ const ReferralSystem = () => {
             <div className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center mx-auto mb-2">
               <ArrowLeft className="w-4 h-4 text-white" />
             </div>
-            <p className="text-2xl font-bold text-foreground">8</p>
+            <p className="text-2xl font-bold text-foreground">{stats.inboundNew}</p>
             <p className="text-sm text-muted-foreground">Inbound New</p>
           </CardContent>
         </Card>
@@ -185,7 +388,7 @@ const ReferralSystem = () => {
             <div className="w-8 h-8 bg-success rounded-full flex items-center justify-center mx-auto mb-2">
               <CheckCircle className="w-4 h-4 text-white" />
             </div>
-            <p className="text-2xl font-bold text-foreground">45</p>
+            <p className="text-2xl font-bold text-foreground">{stats.completedThisMonth}</p>
             <p className="text-sm text-muted-foreground">Completed This Month</p>
           </CardContent>
         </Card>
@@ -195,7 +398,7 @@ const ReferralSystem = () => {
             <div className="w-8 h-8 bg-warning rounded-full flex items-center justify-center mx-auto mb-2">
               <AlertCircle className="w-4 h-4 text-white" />
             </div>
-            <p className="text-2xl font-bold text-foreground">3</p>
+            <p className="text-2xl font-bold text-foreground">{stats.highPriority}</p>
             <p className="text-sm text-muted-foreground">High Priority</p>
           </CardContent>
         </Card>
@@ -221,35 +424,39 @@ const ReferralSystem = () => {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {outboundReferrals.map((referral) => {
-                  const PriorityIcon = getPriorityIcon(referral.priority);
+                {filteredOutbound.map((referral) => {
+                  const PriorityIcon = getPriorityIcon(referral.urgency);
                   return (
-                    <div key={referral.id} className="p-4 rounded-lg border border-border hover:bg-muted/30 transition-colors">
+                    <div key={referral._id || referral.id} className="p-4 rounded-lg border border-border hover:bg-muted/30 transition-colors">
                       <div className="flex items-start justify-between">
                         <div className="flex items-start space-x-4">
                           <div className="w-12 h-12 bg-gradient-primary rounded-full flex items-center justify-center">
-                            <User className="w-6 h-6 text-white" />
+                            <ArrowRight className="w-6 h-6 text-white" />
                           </div>
                           <div className="flex-1">
-                            <h3 className="font-semibold text-foreground">{referral.patient}</h3>
+                            <h3 className="font-semibold text-foreground">{referral.patientName}</h3>
                             <p className="text-sm text-muted-foreground mb-2">ID: {referral.id}</p>
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm mb-3">
                               <div className="flex items-center space-x-2">
                                 <Hospital className="w-4 h-4 text-muted-foreground" />
-                                <span>{referral.referredTo}</span>
+                                <span><strong>To:</strong> {referral.specialistName}</span>
                               </div>
                               <div className="flex items-center space-x-2">
                                 <FileText className="w-4 h-4 text-muted-foreground" />
                                 <span>{referral.specialty}</span>
                               </div>
                               <div className="flex items-center space-x-2">
+                                <Hospital className="w-4 h-4 text-muted-foreground" />
+                                <span>{referral.externalClinic}</span>
+                              </div>
+                              <div className="flex items-center space-x-2">
                                 <Calendar className="w-4 h-4 text-muted-foreground" />
-                                <span>{referral.date}</span>
+                                <span>{referral.preferredDate}</span>
                               </div>
                               <div className="flex items-center space-x-2">
                                 <PriorityIcon className="w-4 h-4 text-muted-foreground" />
-                                <span>{referral.priority} Priority</span>
+                                <span>{referral.urgency} Priority</span>
                               </div>
                             </div>
                             
@@ -264,15 +471,29 @@ const ReferralSystem = () => {
                           <Badge variant={getStatusColor(referral.status)}>
                             {referral.status}
                           </Badge>
-                          <Badge variant={getPriorityColor(referral.priority)}>
-                            {referral.priority}
+                          <Badge variant={getPriorityColor(referral.urgency)}>
+                            {referral.urgency}
                           </Badge>
                           <div className="flex space-x-2">
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => handleCompleteReferral(referral._id || referral.id)}
+                              className="text-green-600 border-green-600 hover:bg-green-50"
+                            >
+                              <CheckCircle className="w-4 h-4 mr-1" />
+                              Complete
+                            </Button>
                             <Button variant="ghost" size="sm">
                               <Phone className="w-4 h-4" />
                             </Button>
-                            <Button variant="ghost" size="sm">
-                              <FileText className="w-4 h-4" />
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => handleDownloadReferralPDF(referral, 'outbound')}
+                              title="Download Referral PDF"
+                            >
+                              <Download className="w-4 h-4" />
                             </Button>
                           </div>
                         </div>
@@ -293,35 +514,39 @@ const ReferralSystem = () => {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {inboundReferrals.map((referral) => {
-                  const PriorityIcon = getPriorityIcon(referral.priority);
+                {filteredInbound.map((referral) => {
+                  const PriorityIcon = getPriorityIcon(referral.urgency);
                   return (
-                    <div key={referral.id} className="p-4 rounded-lg border border-border hover:bg-muted/30 transition-colors">
+                    <div key={referral._id || referral.id} className="p-4 rounded-lg border border-border hover:bg-muted/30 transition-colors">
                       <div className="flex items-start justify-between">
                         <div className="flex items-start space-x-4">
                           <div className="w-12 h-12 bg-secondary rounded-full flex items-center justify-center">
-                            <User className="w-6 h-6 text-white" />
+                            <ArrowLeft className="w-6 h-6 text-white" />
                           </div>
                           <div className="flex-1">
-                            <h3 className="font-semibold text-foreground">{referral.patient}</h3>
+                            <h3 className="font-semibold text-foreground">{referral.patientName}</h3>
                             <p className="text-sm text-muted-foreground mb-2">ID: {referral.id}</p>
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm mb-3">
                               <div className="flex items-center space-x-2">
                                 <Hospital className="w-4 h-4 text-muted-foreground" />
-                                <span>{referral.referredBy}</span>
+                                <span><strong>From:</strong> {referral.specialistName}</span>
                               </div>
                               <div className="flex items-center space-x-2">
                                 <FileText className="w-4 h-4 text-muted-foreground" />
                                 <span>{referral.specialty}</span>
                               </div>
                               <div className="flex items-center space-x-2">
+                                <Hospital className="w-4 h-4 text-muted-foreground" />
+                                <span>{referral.hospital}</span>
+                              </div>
+                              <div className="flex items-center space-x-2">
                                 <Calendar className="w-4 h-4 text-muted-foreground" />
-                                <span>{referral.date}</span>
+                                <span>{referral.preferredDate}</span>
                               </div>
                               <div className="flex items-center space-x-2">
                                 <PriorityIcon className="w-4 h-4 text-muted-foreground" />
-                                <span>{referral.priority} Priority</span>
+                                <span>{referral.urgency} Priority</span>
                               </div>
                             </div>
                             
@@ -336,15 +561,29 @@ const ReferralSystem = () => {
                           <Badge variant={getStatusColor(referral.status)}>
                             {referral.status}
                           </Badge>
-                          <Badge variant={getPriorityColor(referral.priority)}>
-                            {referral.priority}
+                          <Badge variant={getPriorityColor(referral.urgency)}>
+                            {referral.urgency}
                           </Badge>
                           <div className="flex space-x-2">
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => handleCompleteReferral(referral._id || referral.id)}
+                              className="text-green-600 border-green-600 hover:bg-green-50"
+                            >
+                              <CheckCircle className="w-4 h-4 mr-1" />
+                              Complete
+                            </Button>
                             <Button variant="outline" size="sm">
                               Accept
                             </Button>
-                            <Button variant="ghost" size="sm">
-                              <Calendar className="w-4 h-4" />
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => handleDownloadReferralPDF(referral, 'inbound')}
+                              title="Download Referral PDF"
+                            >
+                              <Download className="w-4 h-4" />
                             </Button>
                           </div>
                         </div>
