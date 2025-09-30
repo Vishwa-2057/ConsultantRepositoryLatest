@@ -56,7 +56,7 @@ const Register = () => {
               <Input id="specialty" value={specialty} onChange={(e) => setSpecialty(e.target.value)} className="focus-visible:ring-teal-600" />
             </div>
             {error && <p className="text-sm text-red-600">{error}</p>}
-            <Button type="submit" className="w-full bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700" disabled={loading}>{loading ? 'Creating...' : 'Create Account'}</Button>
+            <Button type="submit" className="w-full gradient-button" disabled={loading}>{loading ? 'Creating...' : 'Create Account'}</Button>
           </form>
           <p className="text-sm text-teal-700 mt-4">
             Already have an account? <Link to="/login" className="text-teal-700 underline">Login</Link>

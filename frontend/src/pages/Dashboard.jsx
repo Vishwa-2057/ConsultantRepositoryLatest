@@ -31,8 +31,9 @@ import {
 import AppointmentModal from "@/components/AppointmentModal";
 import AppointmentViewModal from '../components/AppointmentViewModal';
 import ComplianceAlertModal from '../components/ComplianceAlertModal';
+import ActivityLogsModal from '../components/ActivityLogsModal';
 import Carousel from "@/components/Carousel";
-import { getCurrentUser, isDoctor, isNurse, isHeadNurse, isSupervisor } from "@/utils/roleUtils";
+import { getCurrentUser, isDoctor, isNurse, isHeadNurse, isSupervisor, isClinic } from "@/utils/roleUtils";
 
 // Import lab images
 import labPhoto1 from "@/assets/Images/labphoto1.jpg";
@@ -51,7 +52,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { patientAPI, appointmentAPI, consultationAPI, complianceAlertAPI, invoiceAPI, doctorAPI, nurseAPI } from "@/services/api";
+import { patientAPI, appointmentAPI, consultationAPI, complianceAlertAPI, invoiceAPI, revenueAPI, doctorAPI, nurseAPI } from "@/services/api";
  
 import { Link } from "react-router-dom";
 
@@ -69,6 +70,7 @@ const Dashboard = () => {
   const [isAppointmentModalOpen, setIsAppointmentModalOpen] = useState(false);
   const [isAppointmentViewModalOpen, setIsAppointmentViewModalOpen] = useState(false);
   const [isComplianceAlertModalOpen, setIsComplianceAlertModalOpen] = useState(false);
+  const [isActivityLogsModalOpen, setIsActivityLogsModalOpen] = useState(false);
   const [appointments, setAppointments] = useState([]);
   const [appointmentsLoading, setAppointmentsLoading] = useState(false);
   const [recentPatients, setRecentPatients] = useState([]);
@@ -198,7 +200,7 @@ const Dashboard = () => {
     const loadMonthlyRevenue = async () => {
       setMonthlyRevenueLoading(true);
       try {
-        const response = await invoiceAPI.getCurrentMonthRevenue();
+        const response = await revenueAPI.getCurrentMonth();
         setMonthlyRevenue(response.currentMonthRevenue || 0);
         
         // Format percentage change
@@ -506,10 +508,7 @@ const Dashboard = () => {
         const ageData = Object.entries(ageGroups).map(([range, count]) => ({
           ageRange: range,
           patients: count,
-          fill: range === '0-18' ? '#8884d8' : 
-                range === '19-35' ? '#82ca9d' :
-                range === '36-50' ? '#ffc658' :
-                range === '51-65' ? '#ff7c7c' : '#8dd1e1'
+          fill: '#8884d8' // Single color for all age groups
         }));
 
         setPatientAgeData(ageData);
@@ -667,9 +666,19 @@ const Dashboard = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Dashboard</h1>
           <p className="text-muted-foreground">Welcome back, {currentUser?.name || currentUser?.fullName || 'User'}. Here's your overview.</p>
         </div>
+        {isClinic() && (
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => setIsActivityLogsModalOpen(true)}
+            className="flex items-center gap-2 gradient-button-outline"
+          >
+            <Activity className="w-4 h-4" />
+            Check Logs
+          </Button>
+        )}
       </div>
 
       {/* Carousel Section */}
@@ -757,26 +766,7 @@ const Dashboard = () => {
                   config={{
                     patients: {
                       label: "Patients",
-                    },
-                    "0-18": {
-                      label: "0-18 years",
                       color: "#8884d8",
-                    },
-                    "19-35": {
-                      label: "19-35 years", 
-                      color: "#82ca9d",
-                    },
-                    "36-50": {
-                      label: "36-50 years",
-                      color: "#ffc658",
-                    },
-                    "51-65": {
-                      label: "51-65 years",
-                      color: "#ff7c7c",
-                    },
-                    "65+": {
-                      label: "65+ years",
-                      color: "#8dd1e1",
                     },
                   }}
                   className="h-[150px]"
@@ -934,14 +924,20 @@ const Dashboard = () => {
               {alertErrors.message && <p className="text-sm text-red-600">{alertErrors.message}</p>}
             </div>
             <DialogFooter className="gap-2">
-              <Button type="button" variant="outline" onClick={closeAlertModal} disabled={submittingAlert}>Cancel</Button>
-              <Button type="submit" className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700" disabled={submittingAlert}>
+              <Button type="button" variant="outline" onClick={closeAlertModal} disabled={submittingAlert} className="gradient-button-outline">Cancel</Button>
+              <Button type="submit" className="gradient-button" disabled={submittingAlert}>
                 {submittingAlert ? 'Adding Alert...' : 'Add Alert'}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Activity Logs Modal */}
+      <ActivityLogsModal
+        isOpen={isActivityLogsModalOpen}
+        onClose={() => setIsActivityLogsModalOpen(false)}
+      />
  
     </div>
   );

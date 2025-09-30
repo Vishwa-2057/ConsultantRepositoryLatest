@@ -134,7 +134,7 @@ const VitalsHistory = ({ isOpen, onClose, patient }) => {
               </DialogTitle>
               <Button
                 onClick={handleAddVitals}
-                className="bg-gradient-to-r from-blue-800 to-teal-500 hover:from-blue-900 hover:to-teal-600"
+                className="gradient-button"
                 size="sm"
               >
                 <Plus className="w-4 h-4 mr-2" />
@@ -156,7 +156,7 @@ const VitalsHistory = ({ isOpen, onClose, patient }) => {
                 <p className="text-muted-foreground">No vitals records found for this patient.</p>
                 <Button
                   onClick={handleAddVitals}
-                  className="bg-gradient-to-r from-blue-800 to-teal-500 hover:from-blue-900 hover:to-teal-600"
+                  className="gradient-button"
                 >
                   <Plus className="w-4 h-4 mr-2" />
                   Record First Vitals

@@ -7,6 +7,8 @@ const Nurse = require('../models/Nurse');
 const Clinic = require('../models/Clinic');
 const OTP = require('../models/OTP');
 const emailService = require('../services/emailService');
+const ActivityLogger = require('../utils/activityLogger');
+const auth = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -101,6 +103,22 @@ router.post('/login', loginValidation, async (req, res) => {
     }
 
     const token = jwt.sign({ id: user._id, role: user.role || userType }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    
+    // Log the login activity
+    try {
+      await ActivityLogger.logLogin({
+        _id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        role: user.role || userType,
+        clinicId: user.clinicId,
+        clinicName: user.clinicName || 'Unknown Clinic'
+      }, req, token);
+    } catch (logError) {
+      console.error('Failed to log login activity:', logError);
+      // Don't fail the login if logging fails
+    }
+    
     res.json({
       message: 'Login successful',
       token,
@@ -152,6 +170,22 @@ router.post('/clinic-login', loginValidation, async (req, res) => {
     }
 
     const token = jwt.sign({ id: user._id, role: user.role || 'clinic' }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    
+    // Log the clinic admin login activity
+    try {
+      await ActivityLogger.logLogin({
+        _id: user._id,
+        fullName: user.fullName || user.adminName,
+        email: user.adminEmail,
+        role: user.role || 'clinic',
+        clinicId: user._id, // For clinic admins, they are their own clinic
+        clinicName: user.name || user.fullName
+      }, req, token);
+    } catch (logError) {
+      console.error('Failed to log clinic login activity:', logError);
+      // Don't fail the login if logging fails
+    }
+    
     res.json({
       message: 'Login successful',
       token,
@@ -392,6 +426,21 @@ router.post('/login-otp', otpLoginValidation, async (req, res) => {
       { expiresIn: '7d' }
     );
     
+    // Log the OTP login activity
+    try {
+      await ActivityLogger.logLogin({
+        _id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        role: userRole,
+        clinicId: user.clinicId,
+        clinicName: user.clinicName || 'Unknown Clinic'
+      }, req, token);
+    } catch (logError) {
+      console.error('Failed to log OTP login activity:', logError);
+      // Don't fail the login if logging fails
+    }
+    
     res.json({
       success: true,
       message: 'Login successful',
@@ -468,6 +517,21 @@ router.post('/clinic-login-otp', otpLoginValidation, async (req, res) => {
       { expiresIn: '7d' }
     );
     
+    // Log the clinic OTP login activity
+    try {
+      await ActivityLogger.logLogin({
+        _id: user._id,
+        fullName: user.fullName || user.adminName,
+        email: user.adminEmail,
+        role: user.role || 'clinic',
+        clinicId: user._id, // For clinic admins, they are their own clinic
+        clinicName: user.name || user.fullName
+      }, req, token);
+    } catch (logError) {
+      console.error('Failed to log clinic OTP login activity:', logError);
+      // Don't fail the login if logging fails
+    }
+    
     res.json({
       success: true,
       message: 'Login successful',
@@ -515,6 +579,69 @@ router.get('/me', async (req, res) => {
   } catch (err) {
     console.error('Me error:', err);
     res.status(401).json({ error: 'Invalid token' });
+  }
+});
+
+// POST /logout - Log user logout and clear session
+router.post('/logout', auth, async (req, res) => {
+  try {
+    const currentUser = req.user;
+    
+    // Get user details for logging
+    let userDetails = null;
+    let userType = currentUser.role;
+    
+    if (userType === 'clinic') {
+      userDetails = await Clinic.findById(currentUser.id);
+    } else if (userType === 'doctor') {
+      userDetails = await Doctor.findById(currentUser.id).populate('clinicId');
+    } else if (userType === 'nurse' || userType === 'head_nurse' || userType === 'supervisor') {
+      userDetails = await Nurse.findById(currentUser.id).populate('clinicId');
+    }
+
+    if (userDetails) {
+      // Calculate session duration (if we have login time from token)
+      let sessionDuration = null;
+      try {
+        const token = req.headers.authorization?.slice(7); // Remove 'Bearer '
+        if (token) {
+          const decoded = jwt.verify(token, process.env.JWT_SECRET);
+          if (decoded.iat) {
+            const loginTime = decoded.iat * 1000; // Convert to milliseconds
+            const logoutTime = Date.now();
+            sessionDuration = Math.floor((logoutTime - loginTime) / (1000 * 60)); // Duration in minutes
+          }
+        }
+      } catch (error) {
+        console.log('Could not calculate session duration:', error.message);
+      }
+
+      // Log the logout activity
+      try {
+        await ActivityLogger.logLogout({
+          _id: userDetails._id,
+          fullName: userDetails.fullName || userDetails.adminName || userDetails.name,
+          email: userDetails.adminEmail || userDetails.email,
+          role: userType,
+          clinicId: userDetails.clinicId || userDetails._id,
+          clinicName: userDetails.clinicName || userDetails.name || 'Unknown Clinic'
+        }, req, null, sessionDuration);
+      } catch (logError) {
+        console.error('Failed to log logout activity:', logError);
+        // Don't fail the logout if logging fails
+      }
+    }
+
+    res.json({
+      message: 'Logged out successfully'
+    });
+
+  } catch (error) {
+    console.error('Logout error:', error);
+    // Even if there's an error, we should allow logout to proceed
+    res.json({
+      message: 'Logged out successfully'
+    });
   }
 });
 

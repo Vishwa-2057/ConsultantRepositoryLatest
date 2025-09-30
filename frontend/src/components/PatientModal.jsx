@@ -1045,7 +1045,7 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
               e.stopPropagation();
               handleSubmit();
             }} 
-            className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700"
+            className="gradient-button"
             type="button"
             disabled={submitting}
           >

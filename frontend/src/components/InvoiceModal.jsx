@@ -110,9 +110,23 @@ const InvoiceModal = ({ isOpen, onClose, onSubmit }) => {
         // Generate invoice number
         const invoiceNo = Date.now();
         
-        // Calculate total from line items
-        const subtotal = formData.lineItems.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0);
-        const total = subtotal - formData.discount + formData.tax + formData.shipping;
+        // Calculate total from line items with proper number validation
+        const subtotal = formData.lineItems.reduce((sum, item) => {
+          const qty = parseFloat(item.qty) || 0;
+          const unitPrice = parseFloat(item.unitPrice) || 0;
+          return sum + (qty * unitPrice);
+        }, 0);
+        
+        const discount = parseFloat(formData.discount) || 0;
+        const tax = parseFloat(formData.tax) || 0;
+        const shipping = parseFloat(formData.shipping) || 0;
+        const total = subtotal - discount + tax + shipping;
+        
+        // Validate that total is a valid number
+        if (isNaN(total) || total < 0) {
+          alert('Invalid total calculation. Please check your line items and additional charges.');
+          return;
+        }
         
         // Prepare invoice data to match new backend structure
         const invoiceData = {
@@ -120,14 +134,18 @@ const InvoiceModal = ({ isOpen, onClose, onSubmit }) => {
           patientName: formData.patientName || selectedPatient?.fullName || '',
           invoiceNo: invoiceNo,
           date: new Date().toISOString().split('T')[0],
-          lineItems: formData.lineItems,
+          lineItems: formData.lineItems.map(item => ({
+            description: item.description,
+            qty: parseFloat(item.qty) || 1,
+            unitPrice: parseFloat(item.unitPrice) || 0
+          })),
           address: formData.address,
           phone: formData.phone || selectedPatient?.phone || '',
           email: formData.email || selectedPatient?.email || '',
           remarks: formData.remarks,
-          discount: formData.discount,
-          tax: formData.tax,
-          shipping: formData.shipping,
+          discount: discount,
+          tax: tax,
+          shipping: shipping,
           total: total
         };
         
@@ -201,8 +219,15 @@ const InvoiceModal = ({ isOpen, onClose, onSubmit }) => {
   };
 
   const selectedPatient = patients.find(p => p._id === formData.patientId);
-  const subtotal = formData.lineItems.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0);
-  const total = subtotal - formData.discount + formData.tax + formData.shipping;
+  const subtotal = formData.lineItems.reduce((sum, item) => {
+    const qty = parseFloat(item.qty) || 0;
+    const unitPrice = parseFloat(item.unitPrice) || 0;
+    return sum + (qty * unitPrice);
+  }, 0);
+  const discount = parseFloat(formData.discount) || 0;
+  const tax = parseFloat(formData.tax) || 0;
+  const shipping = parseFloat(formData.shipping) || 0;
+  const total = subtotal - discount + tax + shipping;
 
   // Auto-populate patient data when patient is selected
   useEffect(() => {
@@ -536,22 +561,22 @@ const InvoiceModal = ({ isOpen, onClose, onSubmit }) => {
                   <span>Subtotal:</span>
                   <span>₹{subtotal.toFixed(2)}</span>
                 </div>
-                {formData.discount > 0 && (
+                {discount > 0 && (
                   <div className="flex justify-between">
                     <span>Discount:</span>
-                    <span>-₹{formData.discount.toFixed(2)}</span>
+                    <span>-₹{discount.toFixed(2)}</span>
                   </div>
                 )}
-                {formData.tax > 0 && (
+                {tax > 0 && (
                   <div className="flex justify-between">
                     <span>Tax:</span>
-                    <span>₹{formData.tax.toFixed(2)}</span>
+                    <span>₹{tax.toFixed(2)}</span>
                   </div>
                 )}
-                {formData.shipping > 0 && (
+                {shipping > 0 && (
                   <div className="flex justify-between">
                     <span>Shipping:</span>
-                    <span>₹{formData.shipping.toFixed(2)}</span>
+                    <span>₹{shipping.toFixed(2)}</span>
                   </div>
                 )}
                 <div className="flex justify-between font-bold border-t pt-2">
@@ -568,7 +593,7 @@ const InvoiceModal = ({ isOpen, onClose, onSubmit }) => {
             </Button>
             <Button
               type="submit"
-              className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700"
+              className="gradient-button"
             >
               <FileText className="w-4 h-4 mr-2" />
               Generate Invoice

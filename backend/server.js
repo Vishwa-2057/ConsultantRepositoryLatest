@@ -28,6 +28,10 @@ const nurseRoutes = require('./routes/nurses');
 const superAdminRoutes = require('./routes/superadmin');
 const prescriptionRoutes = require('./routes/prescriptions');
 const vitalsRoutes = require('./routes/vitals');
+const medicalImageRoutes = require('./routes/medicalImages');
+const clinicRoutes = require('./routes/clinics');
+const activityLogRoutes = require('./routes/activityLogs');
+const revenueRoutes = require('./routes/revenue');
 
 // Middleware
 app.use(helmet());
@@ -175,6 +179,27 @@ app.get('/test-cloudinary', (req, res) => {
   }
 });
 
+// Test endpoint to check email configuration
+app.get('/test-email-config', (req, res) => {
+  try {
+    res.json({
+      success: true,
+      message: 'Email configuration check',
+      config: {
+        email_user: process.env.EMAIL_USER ? 'Set' : 'Not set',
+        email_pass: process.env.EMAIL_PASS ? 'Set' : 'Not set',
+        email_service: process.env.EMAIL_SERVICE || 'gmail'
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      message: 'Failed to check email configuration'
+    });
+  }
+});
+
 // API routes
 app.use('/api/patients', patientRoutes);
 app.use('/api/appointments', appointmentRoutes);
@@ -191,6 +216,10 @@ app.use('/api/nurses', nurseRoutes);
 app.use('/api/superadmin', superAdminRoutes);
 app.use('/api/prescriptions', prescriptionRoutes);
 app.use('/api/vitals', vitalsRoutes);
+app.use('/api/medical-images', medicalImageRoutes);
+app.use('/api/clinics', clinicRoutes);
+app.use('/api/activity-logs', activityLogRoutes);
+app.use('/api/revenue', revenueRoutes);
 
 app.get("/", (req, res) => {
   res.send("Backend is running ✅");

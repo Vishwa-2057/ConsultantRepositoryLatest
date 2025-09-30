@@ -38,6 +38,13 @@ const postSchema = new mongoose.Schema({
     trim: true
   },
   
+  // Clinic Association
+  clinicId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Clinic',
+    required: [true, 'Clinic ID is required']
+  },
+  
   // Visibility and Access Control
   visibility: {
     type: String,
@@ -55,6 +62,20 @@ const postSchema = new mongoose.Schema({
     default: 0,
     min: [0, 'Likes cannot be negative']
   },
+  likedBy: [{
+    userId: {
+      type: String,
+      required: true
+    },
+    userRole: {
+      type: String,
+      required: true
+    },
+    likedAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
   views: {
     type: Number,
     default: 0,
@@ -270,11 +291,14 @@ postSchema.index({ status: 1 });
 postSchema.index({ publishDate: -1 });
 postSchema.index({ createdAt: -1 });
 postSchema.index({ slug: 1 });
+postSchema.index({ clinicId: 1 });
 
 // Compound indexes for common queries
 postSchema.index({ category: 1, status: 1, publishDate: -1 });
 postSchema.index({ visibility: 1, status: 1, publishDate: -1 });
 postSchema.index({ featured: 1, status: 1, publishDate: -1 });
+postSchema.index({ clinicId: 1, status: 1, publishDate: -1 });
+postSchema.index({ clinicId: 1, category: 1, publishDate: -1 });
 
 // Static method to find published posts
 postSchema.statics.findPublished = function() {
@@ -335,17 +359,45 @@ postSchema.methods.addReply = function(commentIndex, reply) {
 };
 
 // Instance method to like post
-postSchema.methods.like = function() {
-  this.likes += 1;
+postSchema.methods.like = function(userId, userRole) {
+  // Check if user already liked this post
+  const existingLike = this.likedBy.find(like => like.userId === userId);
+  if (existingLike) {
+    throw new Error('User has already liked this post');
+  }
+  
+  // Add user to likedBy array
+  this.likedBy.push({
+    userId: userId,
+    userRole: userRole,
+    likedAt: new Date()
+  });
+  
+  // Update likes count
+  this.likes = this.likedBy.length;
   this.updatedAt = new Date();
   return this.save();
 };
 
 // Instance method to unlike post
-postSchema.methods.unlike = function() {
-  this.likes = Math.max(0, this.likes - 1);
+postSchema.methods.unlike = function(userId) {
+  // Find and remove user from likedBy array
+  const likeIndex = this.likedBy.findIndex(like => like.userId === userId);
+  if (likeIndex === -1) {
+    throw new Error('User has not liked this post');
+  }
+  
+  this.likedBy.splice(likeIndex, 1);
+  
+  // Update likes count
+  this.likes = this.likedBy.length;
   this.updatedAt = new Date();
   return this.save();
+};
+
+// Instance method to check if user has liked post
+postSchema.methods.isLikedBy = function(userId) {
+  return this.likedBy.some(like => like.userId === userId);
 };
 
 // Instance method to increment views

@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Layout } from "./components/Layout.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import PatientManagement from "./pages/PatientManagement.jsx";
+import PatientDetails from "./pages/PatientDetails.jsx";
 import AppointmentManagement from "./pages/AppointmentManagement.jsx";
 import DoctorsManagement from "./pages/DoctorsManagement.jsx";
 import NursesManagement from "./pages/NursesManagement.jsx";
@@ -24,6 +25,7 @@ import CommunityHub from "./pages/CommunityHub.jsx";
 import NotFound from "./pages/NotFound.jsx";
 import APITest from "./components/APITest.jsx";
 import EmailSettings from "./pages/EmailSettings.jsx";
+import ActivityLogs from "./pages/ActivityLogs.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 
 const queryClient = new QueryClient();
@@ -62,6 +64,7 @@ const App = () => {
               <Route path="/superadmin/register" element={<SuperAdminRegister />} />
               <Route path="/" element={isAuthed ? <ProtectedRoute routeName="dashboard"><Dashboard /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/patients" element={isAuthed ? <ProtectedRoute routeName="patient-management"><PatientManagement /></ProtectedRoute> : <Navigate to="/login" replace />} />
+              <Route path="/patients/:patientId" element={isAuthed ? <ProtectedRoute routeName="patient-management"><PatientDetails /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/appointments" element={isAuthed ? <ProtectedRoute routeName="appointment-management"><AppointmentManagement /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/doctors" element={isAuthed ? <ProtectedRoute routeName="doctors-management"><DoctorsManagement /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/nurses" element={isAuthed ? <ProtectedRoute routeName="nurses-management"><NursesManagement /></ProtectedRoute> : <Navigate to="/login" replace />} />
@@ -73,6 +76,7 @@ const App = () => {
               <Route path="/billing" element={isAuthed ? <ProtectedRoute routeName="invoice-management"><Billing /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/community" element={isAuthed ? <ProtectedRoute routeName="community-hub"><CommunityHub /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/email-settings" element={isAuthed ? <ProtectedRoute routeName="email-settings"><EmailSettings /></ProtectedRoute> : <Navigate to="/login" replace />} />
+              <Route path="/activity-logs" element={isAuthed ? <ProtectedRoute routeName="activity-logs"><ActivityLogs /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/compliance" element={isAuthed ? <ProtectedRoute routeName="compliance-alerts"><Dashboard /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/api-test" element={<APITest />} />
               <Route path="/logout" element={<Logout />} />

@@ -11,6 +11,13 @@ class EmailService {
       // Use centralized email service - always use the same Gmail account
       const centralizedConfig = this.getCentralizedConfig();
       
+      console.log(`📧 EmailService: Checking centralized config:`, {
+        hasConfig: !!centralizedConfig,
+        emailUser: process.env.EMAIL_USER ? 'Set' : 'Not set',
+        emailPass: process.env.EMAIL_PASS ? 'Set' : 'Not set',
+        emailService: process.env.EMAIL_SERVICE || 'gmail'
+      });
+      
       if (!centralizedConfig) {
         throw new Error('Centralized email configuration not found. Please set up EMAIL_USER and EMAIL_PASS environment variables.');
       }
@@ -21,9 +28,14 @@ class EmailService {
       }
 
       // Create transporter from centralized configuration
+      console.log(`📧 EmailService: Creating new transporter with config:`, {
+        service: centralizedConfig.service,
+        user: centralizedConfig.auth.user
+      });
       const transporter = nodemailer.createTransport(centralizedConfig);
 
       // Verify transporter configuration
+      console.log(`📧 EmailService: Verifying transporter...`);
       await transporter.verify();
       
       // Cache the transporter
@@ -40,14 +52,23 @@ class EmailService {
   getCentralizedConfig() {
     // Use environment variables for centralized email service
     if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-      return {
+      const config = {
         service: process.env.EMAIL_SERVICE || 'gmail',
         auth: {
           user: process.env.EMAIL_USER,
           pass: process.env.EMAIL_PASS
+        },
+        // Add additional Gmail-specific settings
+        secure: true,
+        port: 465,
+        tls: {
+          rejectUnauthorized: false
         }
       };
+      console.log(`📧 EmailService: Created config for ${config.auth.user} using ${config.service}`);
+      return config;
     }
+    console.log(`📧 EmailService: Missing EMAIL_USER or EMAIL_PASS environment variables`);
     return null;
   }
 
@@ -208,7 +229,7 @@ class EmailService {
     <body>
         <div class="container">
             <div class="header">
-                <div class="logo">🏥 ${doctorName}</div>
+                <div class="logo">${doctorName}</div>
                 <h2>Verification Code</h2>
             </div>
             
@@ -222,7 +243,7 @@ class EmailService {
             </div>
             
             <div class="warning">
-                <strong>⚠️ Security Notice:</strong>
+                <strong>Security Notice:</strong>
                 <ul>
                     <li>Never share this code with anyone</li>
                     <li>Our team will never ask for your verification code</li>
@@ -334,25 +355,77 @@ This is an automated message from ${doctorName}. Please do not reply to this ema
   // Method to send referral notification emails
   async sendReferralNotification(referral) {
     try {
+      console.log(`📧 EmailService: Starting referral notification process`);
+      console.log(`📧 EmailService: Referral data:`, {
+        id: referral._id,
+        type: referral.referralType,
+        specialistId: referral.specialistId,
+        specialistName: referral.specialistName,
+        specialistContactEmail: referral.specialistContact?.email
+      });
+      
       const transporter = await this.getTransporter();
+      console.log(`📧 EmailService: Transporter obtained successfully`);
       
       let recipientEmail, emailType, recipientName;
       
       // Determine recipient based on referral type
       if (referral.referralType === 'outbound') {
         // For outbound referrals, send to external doctor
-        recipientEmail = referral.specialistContact?.email;
-        recipientName = referral.specialistName;
+        // First try to get email from specialistId (if it's a doctor in our system)
+        if (referral.specialistId) {
+          try {
+            const Doctor = require('../models/Doctor');
+            const externalDoctor = await Doctor.findById(referral.specialistId);
+            if (externalDoctor && externalDoctor.email) {
+              recipientEmail = externalDoctor.email;
+              recipientName = externalDoctor.fullName;
+            }
+          } catch (dbError) {
+            console.warn('Could not fetch external doctor from database:', dbError.message);
+          }
+        }
+        
+        // Fallback to specialistContact email if no doctor found
+        if (!recipientEmail) {
+          recipientEmail = referral.specialistContact?.email;
+          recipientName = referral.specialistName;
+        }
+        
         emailType = 'outbound';
       } else if (referral.referralType === 'inbound') {
-        // For inbound referrals, send to receiving doctor (referring provider)
-        recipientEmail = referral.referringProvider?.email;
-        recipientName = referral.referringProvider?.name;
+        // For inbound referrals, send to receiving doctor
+        // First try to get email from specialistId (if it's a doctor in our system)
+        if (referral.specialistId) {
+          try {
+            const Doctor = require('../models/Doctor');
+            const receivingDoctor = await Doctor.findById(referral.specialistId);
+            if (receivingDoctor && receivingDoctor.email) {
+              recipientEmail = receivingDoctor.email;
+              recipientName = receivingDoctor.fullName;
+            }
+          } catch (dbError) {
+            console.warn('Could not fetch receiving doctor from database:', dbError.message);
+          }
+        }
+        
+        // Fallback to specialistContact email if no doctor found
+        if (!recipientEmail) {
+          recipientEmail = referral.specialistContact?.email;
+          recipientName = referral.specialistName;
+        }
+        
         emailType = 'inbound';
       }
 
+      console.log(`📧 EmailService: Final recipient details:`, {
+        email: recipientEmail,
+        name: recipientName,
+        type: emailType
+      });
+
       if (!recipientEmail) {
-        console.warn(`No email address found for ${emailType} referral recipient`);
+        console.warn(`📧 EmailService: No email address found for ${emailType} referral recipient`);
         return { success: false, error: 'Recipient email address not found' };
       }
 
@@ -372,8 +445,9 @@ This is an automated message from ${doctorName}. Please do not reply to this ema
       };
 
       const result = await transporter.sendMail(mailOptions);
-      console.log(`✅ Referral notification sent successfully to ${recipientEmail} (${recipientName}):`, result.messageId);
-      return { success: true, messageId: result.messageId };
+      console.log(`✅ ${emailType.toUpperCase()} referral notification sent successfully to ${recipientEmail} (${recipientName}):`, result.messageId);
+      console.log(`📧 Email subject: ${subject}`);
+      return { success: true, messageId: result.messageId, recipient: recipientEmail, type: emailType };
     } catch (error) {
       console.error('❌ Failed to send referral notification:', error);
       return { success: false, error: error.message };
@@ -383,9 +457,9 @@ This is an automated message from ${doctorName}. Please do not reply to this ema
   getReferralEmailSubject(referral, emailType) {
     const urgencyText = referral.urgency === 'Urgent' || referral.urgency === 'High' ? '[URGENT] ' : '';
     if (emailType === 'outbound') {
-      return `${urgencyText}New Patient Referral - ${referral.patientName}`;
+      return `${urgencyText}New External Referral - ${referral.patientName} (${referral.specialty})`;
     } else {
-      return `${urgencyText}Incoming Patient Referral - ${referral.patientName}`;
+      return `${urgencyText}New Internal Referral - ${referral.patientName} (${referral.specialty})`;
     }
   }
 
@@ -486,8 +560,8 @@ This is an automated message from ${doctorName}. Please do not reply to this ema
     <body>
         <div class="container">
             <div class="header">
-                <div class="logo">🏥 Healthcare Management System</div>
-                <h2>${isOutbound ? 'New Patient Referral' : 'Incoming Patient Referral'}</h2>
+                <div class="logo">Healthcare Management System</div>
+                <h2>${isOutbound ? 'New External Patient Referral' : 'New Internal Patient Referral'}</h2>
                 <div class="urgency-badge">${urgencyBadge}</div>
             </div>
             
@@ -499,7 +573,7 @@ This is an automated message from ${doctorName}. Please do not reply to this ema
             }</p>
             
             <div class="patient-info">
-                <h3>👤 Patient Information</h3>
+                <h3>Patient Information</h3>
                 <div class="info-row">
                     <div class="info-label">Patient Name:</div>
                     <div class="info-value">${referral.patientName}</div>
@@ -527,7 +601,7 @@ This is an automated message from ${doctorName}. Please do not reply to this ema
             </div>
 
             <div class="referral-details">
-                <h3>📋 Referral Details</h3>
+                <h3>Referral Details</h3>
                 <div class="info-row">
                     <div class="info-label">Reason for Referral:</div>
                     <div class="info-value">${referral.reason}</div>
@@ -559,7 +633,7 @@ This is an automated message from ${doctorName}. Please do not reply to this ema
             </div>
 
             <div class="patient-info">
-                <h3>👨‍⚕️ Referring Provider</h3>
+                <h3>Referring Provider</h3>
                 <div class="info-row">
                     <div class="info-label">Provider Name:</div>
                     <div class="info-value">${referral.referringProvider?.name || 'Dr. Johnson'}</div>
@@ -580,7 +654,7 @@ This is an automated message from ${doctorName}. Please do not reply to this ema
 
             ${referral.insuranceInfo?.provider ? `
             <div class="patient-info">
-                <h3>🏥 Insurance Information</h3>
+                <h3>Insurance Information</h3>
                 <div class="info-row">
                     <div class="info-label">Insurance Provider:</div>
                     <div class="info-value">${referral.insuranceInfo.provider}</div>
@@ -601,7 +675,7 @@ This is an automated message from ${doctorName}. Please do not reply to this ema
             ` : ''}
 
             <div class="action-required">
-                <strong>📞 Next Steps:</strong>
+                <strong>Next Steps:</strong>
                 <ul>
                     <li>Please review the patient information and referral details</li>
                     <li>Contact the patient to schedule an appointment</li>
@@ -626,7 +700,7 @@ This is an automated message from ${doctorName}. Please do not reply to this ema
     const urgencyText = referral.urgency === 'Urgent' || referral.urgency === 'High' ? '[URGENT] ' : '';
 
     return `
-${urgencyText}Healthcare Management System - ${isOutbound ? 'New Patient Referral' : 'Incoming Patient Referral'}
+${urgencyText}Healthcare Management System - ${isOutbound ? 'New External Patient Referral' : 'New Internal Patient Referral'}
 
 Dear ${recipientName || 'Doctor'},
 

@@ -14,6 +14,11 @@ const referralSchema = new mongoose.Schema({
   },
   
   // Specialist Information
+  specialistId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Doctor',
+    required: false // Optional for backward compatibility
+  },
   specialistName: {
     type: String,
     required: [true, 'Specialist name is required'],

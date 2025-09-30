@@ -430,6 +430,106 @@ export const invoiceAPI = {
   },
 };
 
+// Activity Log API functions
+export const activityLogAPI = {
+  // Get all activity logs with pagination and filters
+  getAll: async (options = {}) => {
+    const {
+      page = 1,
+      limit = 20,
+      activityType,
+      userId,
+      startDate,
+      endDate,
+      sortBy = 'timestamp',
+      sortOrder = 'desc'
+    } = options;
+
+    const queryParams = new URLSearchParams({
+      page: page.toString(),
+      limit: limit.toString(),
+      sortBy,
+      sortOrder
+    });
+
+    if (activityType) queryParams.append('activityType', activityType);
+    if (userId) queryParams.append('userId', userId);
+    if (startDate) queryParams.append('startDate', startDate.toISOString());
+    if (endDate) queryParams.append('endDate', endDate.toISOString());
+
+    return apiRequest(`/activity-logs?${queryParams}`);
+  },
+
+  // Get activity statistics
+  getStats: async (options = {}) => {
+    const { startDate, endDate } = options;
+    const queryParams = new URLSearchParams();
+
+    if (startDate) queryParams.append('startDate', startDate.toISOString());
+    if (endDate) queryParams.append('endDate', endDate.toISOString());
+
+    return apiRequest(`/activity-logs/stats?${queryParams}`);
+  },
+
+  // Get users for filtering
+  getUsers: async () => {
+    return apiRequest('/activity-logs/users');
+  },
+
+  // Export activity logs
+  export: async (options = {}) => {
+    const {
+      activityType,
+      userId,
+      startDate,
+      endDate,
+      format = 'csv'
+    } = options;
+
+    const queryParams = new URLSearchParams({ format });
+
+    if (activityType) queryParams.append('activityType', activityType);
+    if (userId) queryParams.append('userId', userId);
+    if (startDate) queryParams.append('startDate', startDate.toISOString());
+    if (endDate) queryParams.append('endDate', endDate.toISOString());
+
+    // For file downloads, we need to handle the response differently
+    const currentToken = localStorage.getItem('authToken');
+    const url = `${API_BASE_URL}/activity-logs/export?${queryParams}`;
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        ...(currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {}),
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    // Create download link
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = `activity-logs-${Date.now()}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(downloadUrl);
+
+    return { success: true };
+  },
+
+  // Clean up old logs (admin only)
+  cleanup: async (days = 90) => {
+    return apiRequest(`/activity-logs/cleanup?days=${days}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
 // Post API functions
 export const postAPI = {
   // Get all posts
@@ -472,12 +572,48 @@ export const postAPI = {
 
   // Get post statistics
   getStats: async () => {
-    return apiRequest('/posts/stats');
+    return apiRequest('/posts/stats/summary');
   },
 
   // Search posts by tags
   searchByTags: async (tags) => {
     return apiRequest(`/posts/search?tags=${encodeURIComponent(tags.join(','))}`);
+  },
+
+  // Like a post
+  like: async (id) => {
+    return apiRequest(`/posts/${id}/like`, {
+      method: 'POST',
+    });
+  },
+
+  // Unlike a post
+  unlike: async (id) => {
+    return apiRequest(`/posts/${id}/unlike`, {
+      method: 'POST',
+    });
+  },
+
+  // Share a post
+  share: async (id) => {
+    return apiRequest(`/posts/${id}/share`, {
+      method: 'POST',
+    });
+  },
+
+  // Add comment to a post
+  addComment: async (id, content) => {
+    return apiRequest(`/posts/${id}/comments`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    });
+  },
+
+  // Record a view
+  recordView: async (id) => {
+    return apiRequest(`/posts/${id}/view`, {
+      method: 'POST',
+    });
   },
 };
 
@@ -595,6 +731,11 @@ export const doctorAPI = {
   // Get doctor by ID
   getById: async (id) => {
     return apiRequest(`/doctors/${id}`);
+  },
+
+  // Get doctors by clinic ID
+  getByClinic: async (clinicId) => {
+    return apiRequest(`/doctors/clinic/${clinicId}`);
   },
 
   // Create new doctor
@@ -775,7 +916,7 @@ export const clinicAPI = {
 
   // Get clinic profile
   getProfile: async () => {
-    return apiRequest('/auth/me');
+    return apiRequest('/clinics/profile');
   },
 
   // OTP-based authentication for clinics
@@ -853,6 +994,11 @@ export const authAPI = {
   },
   me: async () => {
     return apiRequest('/auth/me');
+  },
+  logout: async () => {
+    return apiRequest('/auth/logout', {
+      method: 'POST',
+    });
   }
 };
 
@@ -1015,6 +1161,110 @@ export const vitalsAPI = {
       method: 'DELETE',
     });
   },
+
+};
+
+// Medical Images API functions
+export const medicalImageAPI = {
+  // Get all medical images with pagination and filtering
+  getAll: async (page = 1, limit = 20, filters = {}) => {
+    const queryParams = new URLSearchParams({
+      page: page.toString(),
+      limit: limit.toString(),
+      ...filters
+    });
+    return apiRequest(`/medical-images?${queryParams}`);
+  },
+
+  // Get medical images for specific patient
+  getByPatient: async (patientId, filters = {}) => {
+    const queryParams = new URLSearchParams(filters);
+    return apiRequest(`/medical-images/patient/${patientId}?${queryParams}`);
+  },
+
+  // Upload new medical image
+  upload: async (formData) => {
+    const currentToken = localStorage.getItem('authToken');
+    const url = `${API_BASE_URL}/medical-images`;
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        ...(currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {}),
+        // Don't set Content-Type for FormData - browser will set it with boundary
+      },
+      body: formData,
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Medical image upload error:', errorData);
+      
+      let message = `HTTP error! status: ${response.status}`;
+      if (errorData) {
+        const backendMsg = errorData.message || errorData.error;
+        const details = Array.isArray(errorData.errors)
+          ? errorData.errors.map(e => e.msg || e).join('; ')
+          : (typeof errorData.errors === 'string' ? errorData.errors : undefined);
+        
+        if (backendMsg) {
+          message = details ? `${backendMsg}: ${details}` : backendMsg;
+        }
+      }
+      throw new Error(message);
+    }
+    
+    return response.json();
+  },
+
+  // Get specific medical image
+  getById: async (id) => {
+    return apiRequest(`/medical-images/${id}`);
+  },
+
+  // Update medical image metadata
+  update: async (id, imageData) => {
+    return apiRequest(`/medical-images/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(imageData),
+    });
+  },
+
+  // Delete medical image (archive)
+  delete: async (id) => {
+    return apiRequest(`/medical-images/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // Get medical images statistics
+  getStats: async () => {
+    return apiRequest('/medical-images/stats/summary');
+  }
+};
+
+// Revenue API functions
+export const revenueAPI = {
+  // Get current month revenue
+  getCurrentMonth: async () => {
+    return apiRequest('/revenue/current-month');
+  },
+
+  // Get yearly revenue breakdown
+  getYearly: async (year = null) => {
+    const endpoint = year ? `/revenue/yearly/${year}` : '/revenue/yearly';
+    return apiRequest(endpoint);
+  },
+
+  // Get revenue summary
+  getSummary: async () => {
+    return apiRequest('/revenue/summary');
+  },
+
+  // Get revenue audit trail for specific month
+  getAudit: async (year, month) => {
+    return apiRequest(`/revenue/audit/${year}/${month}`);
+  }
 };
 
 export default {
@@ -1023,13 +1273,15 @@ export default {
   consultationAPI,
   referralAPI,
   invoiceAPI,
+  activityLogAPI,
   postAPI,
   authAPI,
   complianceAlertAPI,
-  emailConfigAPI,
   doctorAPI,
   nurseAPI,
   clinicAPI,
   prescriptionAPI,
-  vitalsAPI
+  vitalsAPI,
+  medicalImageAPI,
+  revenueAPI
 };

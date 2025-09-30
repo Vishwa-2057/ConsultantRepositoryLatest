@@ -8,12 +8,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar, Clock, User, Phone, MapPin, AlertCircle, CheckCircle, XCircle, Plus, Search, Filter, Edit, Trash2, CalendarDays, Users, Activity, TrendingUp, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FileText, Calendar as CalendarIcon } from 'lucide-react';
+import { Calendar, Clock, User, Phone, MapPin, AlertCircle, CheckCircle, XCircle, Plus, Search, Filter, Edit, CalendarDays, Users, Activity, TrendingUp, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FileText, Calendar as CalendarIcon, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { appointmentAPI, patientAPI, doctorAPI } from '@/services/api';
 import { format, parseISO, isToday, isTomorrow, isYesterday } from 'date-fns';
+import RescheduleAppointmentModal from '@/components/RescheduleAppointmentModal';
 
 const AppointmentManagement = () => {
+  // Set page title immediately
+  document.title = "Appointment Management - Smart Healthcare";
+  
   const [appointments, setAppointments] = useState([]);
   const [patients, setPatients] = useState([]);
   const [doctors, setDoctors] = useState([]);
@@ -28,6 +32,7 @@ const AppointmentManagement = () => {
   const [stats, setStats] = useState({});
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [expandedAppointments, setExpandedAppointments] = useState(new Set());
   const [formData, setFormData] = useState({
@@ -123,7 +128,7 @@ const AppointmentManagement = () => {
         }
       }
 
-      const response = await appointmentAPI.getAll(currentPage, 10, filters);
+      const response = await appointmentAPI.getAll(currentPage, 5, filters);
       setAppointments(response.appointments || []);
       setTotalPages(response.pagination?.totalPages || 1);
       setTotalCount(response.pagination?.totalAppointments || 0);
@@ -160,15 +165,18 @@ const AppointmentManagement = () => {
       const response = await doctorAPI.getAll();
       setDoctors(response.doctors || response.data || []);
     } catch (error) {
-      console.error('Error loading doctors:', error);
     }
   };
 
   useEffect(() => {
-    loadAppointments();
-    loadStats();
+    document.title = "Appointment Management - Smart Healthcare";
     loadPatients();
     loadDoctors();
+  }, []);
+
+  useEffect(() => {
+    loadAppointments();
+    loadStats();
   }, [currentPage, statusFilter, typeFilter, dateFilter]);
 
   const handleCreateAppointment = async () => {
@@ -204,18 +212,17 @@ const AppointmentManagement = () => {
     }
   };
 
-  const handleDeleteAppointment = async (appointmentId) => {
-    if (window.confirm('Are you sure you want to delete this appointment?')) {
-      try {
-        await appointmentAPI.delete(appointmentId);
-        toast.success('Appointment deleted successfully');
-        loadAppointments();
-        loadStats();
-      } catch (error) {
-        console.error('Error deleting appointment:', error);
-        toast.error('Failed to delete appointment');
-      }
-    }
+
+  const handleRescheduleAppointment = (appointment) => {
+    setSelectedAppointment(appointment);
+    setIsRescheduleModalOpen(true);
+  };
+
+  const handleRescheduleSuccess = () => {
+    loadAppointments();
+    loadStats();
+    setIsRescheduleModalOpen(false);
+    setSelectedAppointment(null);
   };
 
   const toggleAppointmentExpansion = (appointmentId) => {
@@ -260,12 +267,11 @@ const AppointmentManagement = () => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Appointment Management</h1>
           <p className="text-gray-600 mt-1">Manage and track all patient appointments</p>
         </div>
         <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700">
+            <Button className="gradient-button">
               <Plus className="w-4 h-4 mr-2" />
               New Appointment
             </Button>
@@ -393,7 +399,7 @@ const AppointmentManagement = () => {
               <Button variant="outline" onClick={() => setIsCreateModalOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleCreateAppointment}>
+              <Button className="gradient-button" onClick={handleCreateAppointment}>
                 Create Appointment
               </Button>
             </DialogFooter>
@@ -538,7 +544,7 @@ const AppointmentManagement = () => {
                 setTypeFilter('all');
                 setDateFilter('all');
               }}
-              className="text-gray-500 hover:text-gray-700 h-9 px-3 text-sm"
+              className="text-gray-500 hover:text-gray-700 h-9 px-3 text-sm gradient-button-outline"
             >
               Clear
             </Button>
@@ -614,6 +620,15 @@ const AppointmentManagement = () => {
                           <ChevronDown className="w-4 h-4" />
                         )}
                       </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleRescheduleAppointment(appointment)}
+                        className="text-blue-600 hover:text-blue-700"
+                        title="Reschedule Appointment"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                      </Button>
                       <Select onValueChange={(value) => handleUpdateStatus(appointment._id, value)}>
                         <SelectTrigger className="w-32">
                           <SelectValue placeholder="Update Status" />
@@ -626,14 +641,6 @@ const AppointmentManagement = () => {
                           ))}
                         </SelectContent>
                       </Select>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDeleteAppointment(appointment._id)}
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
                     </div>
                   </div>
                   {appointment.reason && (
@@ -754,7 +761,7 @@ const AppointmentManagement = () => {
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
           <div className="text-sm text-gray-700">
-            Showing {((currentPage - 1) * 10) + 1} to {Math.min(currentPage * 10, totalCount)} of {totalCount} appointments
+            Showing {((currentPage - 1) * 5) + 1} to {Math.min(currentPage * 5, totalCount)} of {totalCount} appointments
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -762,6 +769,7 @@ const AppointmentManagement = () => {
               size="sm"
               onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
               disabled={currentPage === 1}
+              className="gradient-button-outline"
             >
               <ChevronLeft className="w-4 h-4 mr-1" />
               Previous
@@ -784,7 +792,7 @@ const AppointmentManagement = () => {
                     key={pageNum}
                     variant={currentPage === pageNum ? "default" : "outline"}
                     size="sm"
-                    className="w-8 h-8 p-0"
+                    className={`w-8 h-8 p-0 ${currentPage === pageNum ? "gradient-button" : "gradient-button-outline"}`}
                     onClick={() => setCurrentPage(pageNum)}
                   >
                     {pageNum}
@@ -797,6 +805,7 @@ const AppointmentManagement = () => {
               size="sm"
               onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
               disabled={currentPage === totalPages}
+              className="gradient-button-outline"
             >
               Next
               <ChevronRight className="w-4 h-4 ml-1" />
@@ -913,6 +922,14 @@ const AppointmentManagement = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Reschedule Appointment Modal */}
+      <RescheduleAppointmentModal
+        isOpen={isRescheduleModalOpen}
+        onClose={() => setIsRescheduleModalOpen(false)}
+        appointment={selectedAppointment}
+        onSuccess={handleRescheduleSuccess}
+      />
     </div>
   );
 };

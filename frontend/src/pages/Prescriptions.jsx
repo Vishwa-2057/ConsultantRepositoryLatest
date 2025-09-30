@@ -62,6 +62,9 @@ import { prescriptionAPI } from "@/services/api";
 import { isClinic, isDoctor } from "@/utils/roleUtils";
 
 const Prescriptions = () => {
+  // Set page title immediately
+  document.title = "Prescriptions - Smart Healthcare";
+  
   const { toast } = useToast();
   
   // State management
@@ -92,6 +95,7 @@ const Prescriptions = () => {
 
   // Load prescriptions
   useEffect(() => {
+    document.title = "Prescriptions - Smart Healthcare";
     loadPrescriptions();
   }, [searchTerm, statusFilter, currentPage]);
 
@@ -260,10 +264,6 @@ const Prescriptions = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-            <Pill className="w-8 h-8 text-primary" />
-            Prescriptions
-          </h1>
           <p className="text-muted-foreground">
             {isDoctor() ? "Manage your patient prescriptions" : "View and manage all prescriptions"}
           </p>

@@ -6,6 +6,39 @@ const emailService = require('../services/emailService');
 const auth = require('../middleware/auth');
 const router = express.Router();
 
+// Test email endpoint
+router.post('/test-email', auth, async (req, res) => {
+  try {
+    console.log('📧 Testing email service...');
+    const testReferral = {
+      _id: 'test-id',
+      referralType: 'inbound',
+      patientName: 'Test Patient',
+      specialistName: 'Test Doctor',
+      specialty: 'Cardiology',
+      urgency: 'Medium',
+      reason: 'Test referral for email functionality',
+      createdAt: new Date(),
+      specialistContact: {
+        email: 'vishwa27032004@gmail.com' // Test email
+      }
+    };
+    
+    const emailResult = await emailService.sendReferralNotification(testReferral);
+    res.json({
+      success: emailResult.success,
+      message: emailResult.success ? 'Test email sent successfully' : 'Failed to send test email',
+      details: emailResult
+    });
+  } catch (error) {
+    console.error('Test email error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // Validation middleware
 const validateReferral = [
   body('patientId').isMongoId().withMessage('Valid patient ID is required'),
@@ -36,7 +69,7 @@ router.get('/', auth, async (req, res) => {
     let total;
 
     if (req.user.role === 'doctor') {
-      // For doctors: use aggregation to filter by patient's assignedDoctors
+      // For doctors: filter referrals based on referral type
       const mongoose = require('mongoose');
       
       // Build match conditions for filtering
@@ -62,7 +95,7 @@ router.get('/', auth, async (req, res) => {
       const sortStage = {};
       sortStage[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
-      // Aggregation pipeline to join with patients and filter by assignedDoctors
+      // Aggregation pipeline with different logic for inbound vs outbound referrals
       const pipeline = [
         { $match: matchConditions },
         {
@@ -75,7 +108,18 @@ router.get('/', auth, async (req, res) => {
         },
         {
           $match: {
-            'patient.assignedDoctors': new mongoose.Types.ObjectId(req.user.id)
+            $or: [
+              // For inbound referrals: show only referrals where this doctor is the receiving specialist
+              {
+                referralType: 'inbound',
+                specialistId: new mongoose.Types.ObjectId(req.user.id)
+              },
+              // For outbound referrals: show referrals for patients assigned to this doctor
+              {
+                referralType: 'outbound',
+                'patient.assignedDoctors': new mongoose.Types.ObjectId(req.user.id)
+              }
+            ]
           }
         },
         {
@@ -123,7 +167,18 @@ router.get('/', auth, async (req, res) => {
         },
         {
           $match: {
-            'patient.assignedDoctors': new mongoose.Types.ObjectId(req.user.id)
+            $or: [
+              // For inbound referrals: show only referrals where this doctor is the receiving specialist
+              {
+                referralType: 'inbound',
+                specialistId: new mongoose.Types.ObjectId(req.user.id)
+              },
+              // For outbound referrals: show referrals for patients assigned to this doctor
+              {
+                referralType: 'outbound',
+                'patient.assignedDoctors': new mongoose.Types.ObjectId(req.user.id)
+              }
+            ]
           }
         },
         { $count: 'total' }
@@ -261,18 +316,26 @@ router.post('/', auth, validateReferral, async (req, res) => {
 
     const populatedReferral = await Referral.findById(referral._id)
       .populate('patientId', 'fullName phone email')
-      .populate('referredBy', 'fullName specialty phone email');
+      .populate('referredBy', 'fullName specialty phone email')
+      .populate('specialistId', 'fullName specialty phone email');
 
     // Send email notification to appropriate doctor
     try {
+      console.log(`📧 Attempting to send email notification for referral ${referral._id}`);
+      console.log(`📧 Referral type: ${populatedReferral.referralType}`);
+      console.log(`📧 Specialist ID: ${populatedReferral.specialistId}`);
+      console.log(`📧 Specialist name: ${populatedReferral.specialistName}`);
+      console.log(`📧 Specialist contact email: ${populatedReferral.specialistContact?.email}`);
+      
       const emailResult = await emailService.sendReferralNotification(populatedReferral);
       if (emailResult.success) {
-        console.log(`✅ Email notification sent for referral ${referral._id}`);
+        console.log(`✅ Email notification sent for referral ${referral._id} to ${emailResult.recipient} (${emailResult.type})`);
       } else {
         console.warn(`⚠️ Failed to send email notification for referral ${referral._id}:`, emailResult.error);
       }
     } catch (emailError) {
       console.error(`❌ Error sending email notification for referral ${referral._id}:`, emailError);
+      console.error(`❌ Email error stack:`, emailError.stack);
       // Don't fail the referral creation if email fails
     }
 

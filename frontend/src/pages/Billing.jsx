@@ -25,6 +25,9 @@ import {
 } from "lucide-react";
 
 const Billing = () => {
+  // Set page title immediately
+  document.title = "Billing Management - Smart Healthcare";
+  
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
@@ -32,20 +35,75 @@ const Billing = () => {
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const { toast } = useToast();
 
+  // Cache management functions
+  const clearBillingCache = () => {
+    localStorage.removeItem('billing_invoices');
+    localStorage.removeItem('billing_totalInvoices');
+    localStorage.removeItem('billing_revenueStats');
+    localStorage.removeItem('billing_cacheTimestamp');
+  };
+
+  const isCacheValid = () => {
+    const timestamp = localStorage.getItem('billing_cacheTimestamp');
+    if (!timestamp) return false;
+    
+    // Cache is valid for 1 hour (3600000 ms)
+    const cacheAge = Date.now() - parseInt(timestamp, 10);
+    return cacheAge < 3600000;
+  };
+
+  const setCacheTimestamp = () => {
+    localStorage.setItem('billing_cacheTimestamp', Date.now().toString());
+  };
+
   // Invoices state (fetched from API)
-  const [invoices, setInvoices] = useState([]);
+  const [invoices, setInvoices] = useState(() => {
+    const timestamp = localStorage.getItem('billing_cacheTimestamp');
+    const isCacheValid = timestamp && (Date.now() - parseInt(timestamp, 10)) < 3600000;
+    
+    if (isCacheValid) {
+      const cached = localStorage.getItem('billing_invoices');
+      return cached ? JSON.parse(cached) : [];
+    }
+    return [];
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [totalInvoices, setTotalInvoices] = useState(0);
+  const [totalInvoices, setTotalInvoices] = useState(() => {
+    // Initialize from localStorage if available and cache is valid
+    const timestamp = localStorage.getItem('billing_cacheTimestamp');
+    const isCacheValid = timestamp && (Date.now() - parseInt(timestamp, 10)) < 3600000;
+    
+    if (isCacheValid) {
+      const cached = localStorage.getItem('billing_totalInvoices');
+      return cached ? parseInt(cached, 10) : 0;
+    }
+    return 0;
+  });
 
   // Revenue statistics state
-  const [revenueStats, setRevenueStats] = useState({
-    totalRevenue: 0,
-    pendingApprovalCount: 0,
-    outstandingAmount: 0,
-    paidThisMonth: 0
+  const [revenueStats, setRevenueStats] = useState(() => {
+    // Initialize from localStorage if available and cache is valid
+    const timestamp = localStorage.getItem('billing_cacheTimestamp');
+    const isCacheValid = timestamp && (Date.now() - parseInt(timestamp, 10)) < 3600000;
+    
+    if (isCacheValid) {
+      const cached = localStorage.getItem('billing_revenueStats');
+      return cached ? JSON.parse(cached) : {
+        totalRevenue: 0,
+        pendingApprovalCount: 0,
+        outstandingAmount: 0,
+        paidThisMonth: 0
+      };
+    }
+    return {
+      totalRevenue: 0,
+      pendingApprovalCount: 0,
+      outstandingAmount: 0,
+      paidThisMonth: 0
+    };
   });
   const [statsLoading, setStatsLoading] = useState(true);
 
@@ -199,9 +257,43 @@ const Billing = () => {
   }, [currentPage, statusFilter]);
 
   useEffect(() => {
+    document.title = "Billing Management - Smart Healthcare";
+  }, []);
+
+  useEffect(() => {
     fetchInvoices();
     fetchRevenueStats();
   }, [fetchInvoices, fetchRevenueStats]);
+
+  // Clear cache when user changes (detect by checking if auth token changes)
+  useEffect(() => {
+    const currentUser = localStorage.getItem('authUser');
+    const cachedUser = localStorage.getItem('billing_cachedUser');
+    
+    if (currentUser !== cachedUser) {
+      // User has changed, clear the cache
+      clearBillingCache();
+      localStorage.setItem('billing_cachedUser', currentUser || '');
+    }
+  }, []);
+
+  // Cache totalInvoices to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('billing_totalInvoices', totalInvoices.toString());
+    setCacheTimestamp();
+  }, [totalInvoices]);
+
+  // Cache revenueStats to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('billing_revenueStats', JSON.stringify(revenueStats));
+    setCacheTimestamp();
+  }, [revenueStats]);
+
+  // Cache invoices to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('billing_invoices', JSON.stringify(invoices));
+    setCacheTimestamp();
+  }, [invoices]);
 
   // Pending approvals (fetch invoices that are effectively pending review)
   const [approvals, setApprovals] = useState([]);
@@ -521,11 +613,10 @@ const Billing = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Billing Management</h1>
           <p className="text-muted-foreground">Generate invoices, track payments, and manage billing workflow</p>
         </div>
         <Button 
-          className="bg-gradient-primary shadow-soft"
+          className="gradient-button"
           onClick={handleNewInvoice}
         >
           <Plus className="w-4 h-4 mr-2" />
@@ -776,7 +867,7 @@ const Billing = () => {
                             <Button 
                               variant="outline" 
                               size="sm" 
-                              className="text-success border-success"
+                              className="gradient-button-outline text-success border-success hover:bg-success hover:text-white"
                               onClick={() => handleApproveInvoice(approval)}
                             >
                               Approve
@@ -784,7 +875,7 @@ const Billing = () => {
                             <Button 
                               variant="outline" 
                               size="sm" 
-                              className="text-destructive border-destructive"
+                              className="gradient-button-outline text-destructive border-destructive hover:bg-destructive hover:text-white"
                               onClick={() => handleRejectInvoice(approval)}
                             >
                               Reject
@@ -864,6 +955,7 @@ const Billing = () => {
             variant="outline"
             onClick={() => currentPage > 1 && setCurrentPage(prev => prev - 1)}
             disabled={currentPage === 1 || loading}
+            className="gradient-button-outline"
           >
             Previous
           </Button>
@@ -874,6 +966,7 @@ const Billing = () => {
             variant="outline"
             onClick={() => currentPage < totalPages && setCurrentPage(prev => prev + 1)}
             disabled={currentPage === totalPages || loading}
+            className="gradient-button-outline"
           >
             Next
           </Button>

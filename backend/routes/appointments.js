@@ -5,7 +5,10 @@ const mongoose = require('mongoose');
 const Appointment = require('../models/Appointment');
 const Patient = require('../models/Patient');
 const Doctor = require('../models/Doctor');
+const Nurse = require('../models/Nurse');
+const Clinic = require('../models/Clinic');
 const auth = require('../middleware/auth');
+const ActivityLogger = require('../utils/activityLogger');
 
 // Validation middleware
 const validateAppointment = [
@@ -153,8 +156,21 @@ router.get('/', auth, async (req, res) => {
       const Nurse = require('../models/Nurse');
       const nurse = await Nurse.findById(req.user.id);
       
-      if (!nurse || !nurse.clinicId) {
-        return res.status(403).json({ error: 'Access denied. Nurse clinic information not found.' });
+      if (!nurse) {
+        console.error(`Nurse not found in database. User ID: ${req.user.id}, Role: ${req.user.role}`);
+        return res.status(403).json({ error: 'Access denied. Nurse record not found in database.' });
+      }
+      
+      if (!nurse.clinicId) {
+        console.error(`Nurse found but missing clinicId. Nurse: ${nurse.fullName} (${nurse.email}), ID: ${nurse._id}`);
+        return res.status(403).json({ 
+          error: 'Access denied. Nurse clinic information not found. Please contact administrator to assign you to a clinic.',
+          nurseInfo: {
+            name: nurse.fullName,
+            email: nurse.email,
+            role: nurse.role
+          }
+        });
       }
       
       // Add clinic filtering to existing query
@@ -286,6 +302,54 @@ router.post('/', auth, validateAppointment, async (req, res) => {
     const populatedAppointment = await Appointment.findById(appointment._id)
       .populate('patientId', 'fullName phone email')
       .populate('doctorId', 'fullName specialty phone');
+
+    // Log appointment creation activity
+    try {
+      // Get current user details for logging
+      let currentUser = null;
+      if (req.user.role === 'clinic') {
+        currentUser = await Clinic.findById(req.user.id);
+      } else if (req.user.role === 'doctor') {
+        currentUser = await Doctor.findById(req.user.id);
+      } else if (['nurse', 'head_nurse', 'supervisor'].includes(req.user.role)) {
+        currentUser = await Nurse.findById(req.user.id);
+      }
+
+      // Get clinic name for logging
+      let clinicName = 'Unknown Clinic';
+      if (appointment.clinicId) {
+        const clinic = await Clinic.findById(appointment.clinicId);
+        if (clinic) {
+          clinicName = clinic.name || clinic.fullName || 'Unknown Clinic';
+        }
+      }
+
+      console.log('Logging appointment creation:', {
+        patientName: patient.fullName,
+        doctorName: doctor.fullName,
+        appointmentType: appointment.appointmentType,
+        clinicName: clinicName
+      });
+
+      if (currentUser) {
+        await ActivityLogger.logAppointmentCreated(
+          appointment,
+          patient,
+          doctor,
+          {
+            id: req.user.id,
+            fullName: currentUser.fullName || currentUser.name,
+            email: currentUser.email,
+            role: req.user.role
+          },
+          req,
+          clinicName
+        );
+      }
+    } catch (logError) {
+      console.error('Failed to log appointment creation:', logError);
+      // Don't fail the appointment creation if logging fails
+    }
 
     res.status(201).json({
       message: 'Appointment created successfully',
@@ -475,12 +539,46 @@ router.patch('/:id/status', auth, async (req, res) => {
       }
     }
 
+    // Store old status for logging
+    const oldStatus = appointment.status;
+
     // Update status directly
     appointment.status = status;
     appointment.updatedAt = new Date();
     await appointment.save();
 
     console.log('Status updated successfully:', { appointmentId: req.params.id, newStatus: status });
+
+    // Log appointment status change activity
+    try {
+      // Get current user details for logging
+      let currentUser = null;
+      if (req.user.role === 'clinic') {
+        currentUser = await Clinic.findById(req.user.id);
+      } else if (req.user.role === 'doctor') {
+        currentUser = await Doctor.findById(req.user.id);
+      } else if (['nurse', 'head_nurse', 'supervisor'].includes(req.user.role)) {
+        currentUser = await Nurse.findById(req.user.id);
+      }
+
+      if (currentUser) {
+        await ActivityLogger.logAppointmentStatusChanged(
+          appointment,
+          oldStatus,
+          status,
+          {
+            id: req.user.id,
+            fullName: currentUser.fullName || currentUser.name,
+            email: currentUser.email,
+            role: req.user.role
+          },
+          req
+        );
+      }
+    } catch (logError) {
+      console.error('Failed to log appointment status change:', logError);
+      // Don't fail the status update if logging fails
+    }
 
     const updatedAppointment = await Appointment.findById(req.params.id)
       .populate('patientId', 'fullName phone email');

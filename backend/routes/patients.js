@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
 const Patient = require('../models/Patient');
 const auth = require('../middleware/auth');
+const { canEditPatients } = require('../middleware/roleAuth');
 // Try to load Cloudinary config, fallback to local upload if it fails
 let patientCombinedUpload, deleteFromCloudinary, extractPublicId;
 try {
@@ -642,8 +643,8 @@ router.post('/', auth, (req, res, next) => {
   }
 });
 
-// PUT /api/patients/:id - Update patient
-router.put('/:id', auth, validatePatient, async (req, res) => {
+// PUT /api/patients/:id - Update patient (clinic admin only)
+router.put('/:id', auth, canEditPatients, validatePatient, async (req, res) => {
   try {
     // Check for validation errors
     const errors = validationResult(req);
@@ -697,8 +698,8 @@ router.put('/:id', auth, validatePatient, async (req, res) => {
   }
 });
 
-// DELETE /api/patients/:id - Delete patient
-router.delete('/:id', auth, async (req, res) => {
+// DELETE /api/patients/:id - Delete patient (clinic admin only)
+router.delete('/:id', auth, canEditPatients, async (req, res) => {
   try {
     const patient = await Patient.findById(req.params.id);
     
@@ -718,8 +719,8 @@ router.delete('/:id', auth, async (req, res) => {
   }
 });
 
-// PATCH /api/patients/:id/status - Update patient status
-router.patch('/:id/status', auth, async (req, res) => {
+// PATCH /api/patients/:id/status - Update patient status (clinic admin only)
+router.patch('/:id/status', auth, canEditPatients, async (req, res) => {
   try {
     const { status } = req.body;
     

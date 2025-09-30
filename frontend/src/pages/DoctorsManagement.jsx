@@ -19,6 +19,7 @@ import {
   EyeOff,
   ChevronDown,
   ChevronRight,
+  ChevronLeft,
   Calendar,
   MapPin,
   Award,
@@ -40,6 +41,9 @@ const DoctorsManagement = () => {
   const [submitting, setSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [expandedDoctors, setExpandedDoctors] = useState(new Set());
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
   
   const [doctorForm, setDoctorForm] = useState({
     fullName: "",
@@ -77,7 +81,12 @@ const DoctorsManagement = () => {
   // Load doctors from API
   useEffect(() => {
     loadDoctors();
-  }, []);
+  }, [currentPage]);
+
+  // Reset to first page when search query changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
 
   const loadDoctors = async () => {
     setDoctorsLoading(true);
@@ -86,12 +95,14 @@ const DoctorsManagement = () => {
       console.log('Auth token:', localStorage.getItem('authToken') ? 'Present' : 'Missing');
       console.log('Current user:', JSON.parse(localStorage.getItem('authUser') || '{}'));
       
-      const response = await doctorAPI.getAll();
+      const response = await doctorAPI.getAll(currentPage, 5);
       console.log('Doctors API response:', response);
       
-      // Backend returns { success: true, data: [...] }
-      setDoctors(response.data || []);
-      console.log('Doctors set:', response.data?.length || 0, 'doctors');
+      // Backend returns { success: true, data: [...] } or { doctors: [...], pagination: {...} }
+      setDoctors(response.data || response.doctors || []);
+      setTotalPages(response.pagination?.totalPages || Math.ceil((response.data?.length || 0) / 5));
+      setTotalCount(response.pagination?.totalDoctors || response.data?.length || 0);
+      console.log('Doctors set:', (response.data || response.doctors || []).length, 'doctors');
     } catch (error) {
       console.error('Failed to load doctors:', error);
       console.error('Error details:', {
@@ -381,11 +392,20 @@ const DoctorsManagement = () => {
   };
 
   // Filter doctors based on search
-  const filteredDoctors = doctors.filter(doctor =>
+  const allFilteredDoctors = doctors.filter(doctor =>
     doctor.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
     doctor.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (doctor.specialty && doctor.specialty.toLowerCase().includes(searchQuery.toLowerCase()))
   );
+
+  // Apply pagination to filtered doctors
+  const startIndex = (currentPage - 1) * 5;
+  const endIndex = startIndex + 5;
+  const filteredDoctors = allFilteredDoctors.slice(startIndex, endIndex);
+
+  // Update pagination info based on filtered results
+  const filteredTotalPages = Math.ceil(allFilteredDoctors.length / 5);
+  const filteredTotalCount = allFilteredDoctors.length;
 
   const specialties = [
     "General Practitioner",
@@ -407,11 +427,10 @@ const DoctorsManagement = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Doctors Management</h1>
           <p className="text-muted-foreground">Manage doctor accounts and their information</p>
         </div>
         <Button 
-          className="bg-gradient-to-r from-blue-800 to-teal-500 hover:from-blue-900 hover:to-teal-600 shadow-lg shadow-blue-500/25" 
+          className="gradient-button"
           onClick={() => setIsAddModalOpen(true)}
         >
           <Plus className="w-4 h-4 mr-2" />
@@ -789,6 +808,63 @@ const DoctorsManagement = () => {
         </CardContent>
       </Card>
 
+      {/* Pagination */}
+      {filteredTotalPages > 1 && (
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-gray-700">
+            Showing {((currentPage - 1) * 5) + 1} to {Math.min(currentPage * 5, filteredTotalCount)} of {filteredTotalCount} doctors
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="gradient-button-outline"
+            >
+              <ChevronLeft className="w-4 h-4 mr-1" />
+              Previous
+            </Button>
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(5, filteredTotalPages) }, (_, i) => {
+                let pageNum;
+                if (filteredTotalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= filteredTotalPages - 2) {
+                  pageNum = filteredTotalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+                
+                return (
+                  <Button
+                    key={pageNum}
+                    variant={currentPage === pageNum ? "default" : "outline"}
+                    size="sm"
+                    className={`w-8 h-8 p-0 ${currentPage === pageNum ? "gradient-button" : "gradient-button-outline"}`}
+                    onClick={() => setCurrentPage(pageNum)}
+                  >
+                    {pageNum}
+                  </Button>
+                );
+              })}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, filteredTotalPages))}
+              disabled={currentPage === filteredTotalPages}
+              className="gradient-button-outline"
+            >
+              Next
+              <ChevronRight className="w-4 h-4 ml-1" />
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Add Doctor Modal */}
       <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -1007,6 +1083,7 @@ const DoctorsManagement = () => {
                       permanentAddress: { ...prev.currentAddress }
                     }));
                   }}
+                  className="gradient-button-outline"
                 >
                   Same as Current
                 </Button>
@@ -1091,7 +1168,7 @@ const DoctorsManagement = () => {
               </Button>
               <Button 
                 type="submit" 
-                className="bg-gradient-to-r from-blue-800 to-teal-500 hover:from-blue-900 hover:to-teal-600"
+                className="gradient-button"
                 disabled={submitting}
               >
                 {submitting ? 'Adding...' : 'Add Doctor'}

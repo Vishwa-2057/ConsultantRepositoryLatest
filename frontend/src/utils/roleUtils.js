@@ -22,7 +22,8 @@ export const ROLE_PERMISSIONS = {
       'community-hub',
       'invoice-management',
       'email-settings',
-      'compliance-alerts'
+      'compliance-alerts',
+      'activity-logs'
     ],
     canViewAllPatients: true,
     canManageDoctors: true,
@@ -161,4 +162,9 @@ export const canViewAllPatients = () => {
 export const getCurrentUserId = () => {
   const user = getCurrentUser();
   return user?._id || user?.id || null;
+};
+
+// Check if user can edit patient information (only clinic admins)
+export const canEditPatients = () => {
+  return isClinic();
 };

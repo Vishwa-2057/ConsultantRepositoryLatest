@@ -10,7 +10,6 @@ import {
   Plus,
   Search,
   Filter,
-  Download,
   Eye,
   Edit,
   Trash2,
@@ -18,11 +17,13 @@ import {
   Heart,
   FileText,
   Share2,
+  Stethoscope,
   ChevronUp,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   User,
+  UserCheck,
   MapPin,
   Clock,
   CalendarDays,
@@ -38,12 +39,13 @@ import AppointmentModal from "@/components/AppointmentModal";
 import { useToast } from "@/hooks/use-toast";
 import { patientAPI, appointmentAPI, complianceAlertAPI } from "@/services/api";
 import { isClinic, isDoctor } from "@/utils/roleUtils";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import AppointmentViewModal from '../components/AppointmentViewModal';
 import ComplianceAlertsModal from '../components/ComplianceAlertsModal';
 import VitalsHistory from '../components/VitalsHistory';
 
 const PatientManagement = () => {
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [isPatientModalOpen, setIsPatientModalOpen] = useState(false);
@@ -57,7 +59,6 @@ const PatientManagement = () => {
   const [activeTab, setActiveTab] = useState("list");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [expandedPatients, setExpandedPatients] = useState(new Set());
   
   
   // Appointments state
@@ -359,15 +360,9 @@ const PatientManagement = () => {
     setCurrentPage(1);
   };
 
-  // Toggle patient expansion
-  const togglePatientExpansion = (patientId) => {
-    const newExpanded = new Set(expandedPatients);
-    if (newExpanded.has(patientId)) {
-      newExpanded.delete(patientId);
-    } else {
-      newExpanded.add(patientId);
-    }
-    setExpandedPatients(newExpanded);
+  // Navigate to patient details
+  const handlePatientClick = (patientId) => {
+    navigate(`/patients/${patientId}`);
   };
 
 
@@ -376,14 +371,13 @@ const PatientManagement = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Patient Management</h1>
           <p className="text-muted-foreground">
             {isDoctor() ? "View your assigned patients" : "Manage patient records, onboarding, and information"}
           </p>
         </div>
         <div className="flex gap-3">
           <Button 
-            className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 shadow-lg shadow-teal-500/25" 
+            className="gradient-button" 
             onClick={handleNewAppointment}
           >
             <Plus className="w-4 h-4 mr-2" />
@@ -391,7 +385,7 @@ const PatientManagement = () => {
           </Button>
           {isClinic() && (
             <Button 
-              className="bg-gradient-primary shadow-soft" 
+              className="gradient-button-secondary" 
               onClick={handleNewPatient}
             >
               <Plus className="w-4 h-4 mr-2" />
@@ -426,10 +420,6 @@ const PatientManagement = () => {
                 <SelectItem value="completed">Completed</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline">
-              <Download className="w-4 h-4 mr-2" />
-              Export
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -455,11 +445,10 @@ const PatientManagement = () => {
               {error && <p className="text-sm text-red-600">{error}</p>}
               <div className="space-y-4">
                 {filteredPatients.map((patient) => {
-                  const isExpanded = expandedPatients.has(patient.id || patient._id);
                   const patientId = patient.id || patient._id;
                   
                   return (
-                    <div key={patientId} className="rounded-lg border border-border hover:bg-muted/30 transition-all duration-200">
+                    <div key={patientId} className="rounded-lg border border-border hover:bg-muted/30 transition-all duration-200 cursor-pointer" onClick={() => handlePatientClick(patientId)}>
                       {/* Main Patient Row */}
                       <div className="p-4">
                         <div className="flex items-center justify-between">
@@ -477,7 +466,7 @@ const PatientManagement = () => {
                                   }}
                                 />
                               ) : null}
-                              <div className={`w-full h-full bg-gradient-to-r from-blue-800 to-teal-500 rounded-full flex items-center justify-center ${patient.profileImage ? 'hidden' : ''}`}>
+                              <div className={`w-full h-full bg-blue-600 rounded-full flex items-center justify-center ${patient.profileImage ? 'hidden' : ''}`}>
                                 <User className="w-6 h-6 text-white" />
                               </div>
                             </div>
@@ -510,26 +499,33 @@ const PatientManagement = () => {
                               <Button 
                                 variant="ghost" 
                                 size="icon"
-                                onClick={() => handleVitalsHistory(patient)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleVitalsHistory(patient);
+                                }}
                                 title="View Vitals History"
                               >
                                 <Stethoscope className="w-4 h-4" />
                               </Button>
                               <Button 
-                                variant="ghost" 
-                                size="icon"
-                                onClick={() => togglePatientExpansion(patientId)}
-                                className="ml-2"
+                                variant="outline" 
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handlePatientClick(patientId);
+                                }}
+                                className="ml-2 gradient-button-outline"
                               >
-                                {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                <ArrowRight className="w-4 h-4 mr-1" />
+                                View Details
                               </Button>
                             </div>
                           </div>
                         </div>
                       </div>
 
-                      {/* Expanded Details */}
-                      {isExpanded && (
+                      {/* Expanded Details - Removed */}
+                      {false && (
                         <div className="px-4 pb-4 border-t border-border/50 bg-muted/20">
                           <div className="pt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                             {/* Patient Identification */}
@@ -857,7 +853,7 @@ const PatientManagement = () => {
         <TabsContent value="cards">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredPatients.map((patient) => (
-              <Card key={patient.id} className="border-0 shadow-soft hover:shadow-medical transition-all duration-200">
+              <Card key={patient.id} className="border-0 shadow-soft hover:shadow-medical transition-all duration-200 cursor-pointer" onClick={() => handlePatientClick(patient.id || patient._id)}>
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
@@ -874,7 +870,7 @@ const PatientManagement = () => {
                             }}
                           />
                         ) : null}
-                        <div className={`w-full h-full bg-gradient-to-r from-blue-800 to-teal-500 rounded-full flex items-center justify-center ${patient.profileImage ? 'hidden' : ''}`}>
+                        <div className={`w-full h-full bg-blue-600 rounded-full flex items-center justify-center ${patient.profileImage ? 'hidden' : ''}`}>
                           <User className="w-5 h-5 text-white" />
                         </div>
                       </div>
@@ -934,7 +930,10 @@ const PatientManagement = () => {
                       variant="outline" 
                       size="sm" 
                       className="flex-1"
-                      onClick={() => handleVitalsHistory(patient)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleVitalsHistory(patient);
+                      }}
                     >
                       <Stethoscope className="w-4 h-4 mr-1" />
                       Vitals

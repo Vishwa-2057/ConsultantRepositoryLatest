@@ -123,7 +123,7 @@ const PatientSelectionModal = ({ isOpen, onClose, onPatientSelect, title = "Sele
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
+                          <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center">
                             <User className="w-6 h-6 text-white" />
                           </div>
                           <div>
@@ -157,7 +157,7 @@ const PatientSelectionModal = ({ isOpen, onClose, onPatientSelect, title = "Sele
                           <Badge variant={patientStatus.color} className="text-xs">
                             {patientStatus.status}
                           </Badge>
-                          <Button size="sm" className="bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700">
+                          <Button size="sm" className="gradient-button">
                             <Video className="w-4 h-4 mr-1" />
                             Start Call
                           </Button>

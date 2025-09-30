@@ -1,15 +1,36 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
+const mongoose = require('mongoose');
 const Invoice = require('../models/Invoice');
 const Patient = require('../models/Patient');
+const Revenue = require('../models/Revenue');
 const auth = require('../middleware/auth');
 const router = express.Router();
+
+// Helper function to get user's clinic ID
+const getUserClinicId = async (user) => {
+  if (!user) return null;
+  
+  if (user.role === 'doctor') {
+    const Doctor = require('../models/Doctor');
+    const doctor = await Doctor.findById(user.id);
+    return doctor?.clinicId || null;
+  } else if (['nurse', 'head_nurse', 'supervisor'].includes(user.role)) {
+    const Nurse = require('../models/Nurse');
+    const nurse = await Nurse.findById(user.id);
+    return nurse?.clinicId || null;
+  } else if (user.role === 'clinic') {
+    return user.id; // Clinic admin's ID is the clinic ID
+  }
+  
+  return null;
+};
 
 // Validation middleware
 const validateInvoice = [
   body('patientId').isMongoId().withMessage('Valid patient ID is required'),
   body('patientName').trim().isLength({ min: 1 }).withMessage('Patient name is required'),
-  body('invoiceNo').isNumeric().withMessage('Valid invoice number is required'),
+  body('invoiceNo').optional().isNumeric().withMessage('Valid invoice number is required'),
   body('date').trim().isLength({ min: 1 }).withMessage('Invoice date is required'),
   body('lineItems').isArray({ min: 1 }).withMessage('At least one line item is required'),
   body('lineItems.*.description').trim().isLength({ min: 1 }).withMessage('Item description is required'),
@@ -116,9 +137,16 @@ router.get('/:id', auth, async (req, res) => {
 // POST /api/invoices - Create new invoice
 router.post('/', auth, validateInvoice, async (req, res) => {
   try {
+    console.log('=== Invoice Creation Debug ===');
+    console.log('User object from auth:', req.user);
+    console.log('User role:', req.user?.role);
+    console.log('User ID:', req.user?.id);
+    console.log('Request body clinicId:', req.body.clinicId);
+    
     // Check for validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.log('Validation errors:', errors.array());
       return res.status(400).json({ 
         error: 'Validation failed',
         details: errors.array()
@@ -131,16 +159,81 @@ router.post('/', auth, validateInvoice, async (req, res) => {
       return res.status(404).json({ error: 'Patient not found' });
     }
 
-    // Check if invoice number already exists
-    const existingInvoice = await Invoice.findOne({ invoiceNo: req.body.invoiceNo });
-    if (existingInvoice) {
-      return res.status(400).json({ error: 'Invoice number already exists' });
+    // Check if invoice number already exists (only if provided)
+    if (req.body.invoiceNo) {
+      const existingInvoice = await Invoice.findOne({ invoiceNo: req.body.invoiceNo });
+      if (existingInvoice) {
+        return res.status(400).json({ error: 'Invoice number already exists' });
+      }
     }
 
     // Create new invoice with clinic reference
+    let clinicId;
+    
+    console.log('=== Clinic Assignment Logic ===');
+    console.log('Checking user role:', req.user.role);
+    
+    if (req.user.role === 'clinic') {
+      // Clinic admin uses their own ID
+      clinicId = req.user.id;
+      console.log('Clinic admin - using user ID as clinicId:', clinicId);
+    } else if (['nurse', 'head_nurse', 'supervisor'].includes(req.user.role)) {
+      // Nursing staff uses their assigned clinic
+      console.log('Nurse detected - looking up nurse record');
+      const Nurse = require('../models/Nurse');
+      const nurse = await Nurse.findById(req.user.id);
+      
+      console.log('Nurse found:', nurse ? 'Yes' : 'No');
+      console.log('Nurse clinicId:', nurse?.clinicId);
+      
+      if (!nurse || !nurse.clinicId) {
+        console.log('ERROR: Nurse not found or missing clinicId');
+        return res.status(403).json({ 
+          error: 'Access denied. Nurse clinic information not found. Please contact administrator to assign you to a clinic.',
+          nurseInfo: {
+            name: nurse?.fullName,
+            email: nurse?.email,
+            role: nurse?.role
+          }
+        });
+      }
+      
+      clinicId = nurse.clinicId;
+      console.log('Nurse clinicId assigned:', clinicId);
+    } else if (req.user.role === 'doctor') {
+      // Doctors use their assigned clinic (if any) or the provided clinicId
+      console.log('Doctor detected - looking up doctor record');
+      const Doctor = require('../models/Doctor');
+      const doctor = await Doctor.findById(req.user.id);
+      
+      console.log('Doctor found:', doctor ? 'Yes' : 'No');
+      console.log('Doctor clinicId:', doctor?.clinicId);
+      
+      if (doctor && doctor.clinicId) {
+        clinicId = doctor.clinicId;
+        console.log('Using doctor clinicId:', clinicId);
+      } else {
+        clinicId = req.body.clinicId;
+        console.log('Using request body clinicId:', clinicId);
+      }
+    } else {
+      // Super admin or other roles use provided clinicId
+      clinicId = req.body.clinicId;
+      console.log('Other role - using request body clinicId:', clinicId);
+    }
+    
+    console.log('Final clinicId:', clinicId);
+    
+    if (!clinicId) {
+      console.log('ERROR: No clinicId determined');
+      return res.status(400).json({ 
+        error: 'Clinic ID is required. Please ensure you are assigned to a clinic or provide a clinic ID.' 
+      });
+    }
+    
     const invoiceData = {
       ...req.body,
-      clinicId: req.user.role === 'clinic' ? req.user.id : req.body.clinicId
+      clinicId: clinicId
     };
     const invoice = new Invoice(invoiceData);
     await invoice.save();
@@ -289,6 +382,20 @@ router.patch('/:id/approve', auth, async (req, res) => {
     .populate('patientId', 'fullName phone email')
     .select('-__v');
 
+    // Record revenue for the clinic
+    try {
+      await Revenue.addRevenue(
+        updatedInvoice.clinicId,
+        updatedInvoice._id,
+        updatedInvoice.total,
+        'approved'
+      );
+      console.log(`✅ Revenue recorded for invoice ${updatedInvoice._id}: ₹${updatedInvoice.total}`);
+    } catch (revenueError) {
+      console.error('❌ Failed to record revenue:', revenueError);
+      // Don't fail the invoice approval if revenue recording fails
+    }
+
     res.json({
       message: 'Invoice approved successfully',
       invoice: updatedInvoice
@@ -320,11 +427,14 @@ router.patch('/:id/reject', auth, async (req, res) => {
     }
 
     // Check if invoice is in a state that can be rejected
-    if (invoice.status !== 'Sent') {
+    if (!['Sent', 'Approved'].includes(invoice.status)) {
       return res.status(400).json({ 
         error: `Invoice cannot be rejected. Current status: ${invoice.status}` 
       });
     }
+
+    // Track if we need to subtract revenue (if invoice was previously approved)
+    const wasApproved = invoice.status === 'Approved';
 
     // Update invoice status to rejected
     const updatedInvoice = await Invoice.findOneAndUpdate(
@@ -339,6 +449,22 @@ router.patch('/:id/reject', auth, async (req, res) => {
     )
     .populate('patientId', 'fullName phone email')
     .select('-__v');
+
+    // Subtract revenue if invoice was previously approved
+    if (wasApproved) {
+      try {
+        await Revenue.subtractRevenue(
+          updatedInvoice.clinicId,
+          updatedInvoice._id,
+          updatedInvoice.total,
+          'rejected'
+        );
+        console.log(`✅ Revenue subtracted for rejected invoice ${updatedInvoice._id}: ₹${updatedInvoice.total}`);
+      } catch (revenueError) {
+        console.error('❌ Failed to subtract revenue:', revenueError);
+        // Don't fail the invoice rejection if revenue adjustment fails
+      }
+    }
 
     res.json({
       message: 'Invoice rejected successfully',
@@ -357,75 +483,33 @@ router.patch('/:id/reject', auth, async (req, res) => {
 // GET /api/invoices/stats/current-month-revenue - Get current month revenue
 router.get('/stats/current-month-revenue', auth, async (req, res) => {
   try {
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    // Get user's clinic ID for filtering
+    const userClinicId = await getUserClinicId(req.user);
 
-    // Get current month revenue with clinic filtering
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const matchStage = {
-      date: { $regex: `^${currentMonth}` }
-    };
-    
-    // Add clinic filtering for clinic admins
-    if (req.user.role === 'clinic') {
-      matchStage.clinicId = req.user.id;
+    if (!userClinicId) {
+      return res.status(403).json({ 
+        error: 'Access denied. User must be associated with a clinic to view revenue.' 
+      });
     }
-    
-    const currentMonthRevenue = await Invoice.aggregate([
-      {
-        $match: matchStage
-      },
-      {
-        $group: {
-          _id: null,
-          totalRevenue: { $sum: '$total' },
-          invoiceCount: { $sum: 1 }
-        }
-      }
-    ]);
 
-    // Get previous month revenue for comparison
-    const prevMonth = `${now.getFullYear()}-${String(now.getMonth()).padStart(2, '0')}`;
-    const prevMatchStage = {
-      date: { $regex: `^${prevMonth}` }
-    };
-    
-    // Add clinic filtering for clinic admins
-    if (req.user.role === 'clinic') {
-      prevMatchStage.clinicId = req.user.id;
-    }
-    
-    const prevMonthRevenue = await Invoice.aggregate([
-      {
-        $match: prevMatchStage
-      },
-      {
-        $group: {
-          _id: null,
-          totalRevenue: { $sum: '$total' }
-        }
-      }
-    ]);
-
-    const currentRevenue = currentMonthRevenue[0]?.totalRevenue || 0;
-    const previousRevenue = prevMonthRevenue[0]?.totalRevenue || 0;
-    const invoiceCount = currentMonthRevenue[0]?.invoiceCount || 0;
+    // Get current month revenue from Revenue model
+    const currentMonthData = await Revenue.getCurrentMonthRevenue(userClinicId);
+    const previousMonthRevenue = await Revenue.getPreviousMonthRevenue(userClinicId);
 
     // Calculate percentage change
     let percentageChange = 0;
-    if (previousRevenue > 0) {
-      percentageChange = ((currentRevenue - previousRevenue) / previousRevenue) * 100;
-    } else if (currentRevenue > 0) {
+    if (previousMonthRevenue > 0) {
+      percentageChange = ((currentMonthData.totalRevenue - previousMonthRevenue) / previousMonthRevenue) * 100;
+    } else if (currentMonthData.totalRevenue > 0) {
       percentageChange = 100; // If no previous revenue but current revenue exists
     }
 
     res.json({
-      currentMonthRevenue: currentRevenue,
-      previousMonthRevenue: previousRevenue,
+      currentMonthRevenue: currentMonthData.totalRevenue,
+      previousMonthRevenue: previousMonthRevenue,
       percentageChange: Math.round(percentageChange * 10) / 10, // Round to 1 decimal place
-      invoiceCount,
-      month: now.toLocaleString('default', { month: 'long', year: 'numeric' })
+      invoiceCount: currentMonthData.invoiceCount,
+      month: currentMonthData.month
     });
   } catch (error) {
     console.error('Error fetching current month revenue:', error);
@@ -434,40 +518,36 @@ router.get('/stats/current-month-revenue', auth, async (req, res) => {
 });
 
 // GET /api/invoices/stats/summary - Get invoice statistics
-router.get('/stats/summary', async (req, res) => {
+router.get('/stats/summary', auth, async (req, res) => {
   try {
-    const totalInvoices = await Invoice.countDocuments();
-    const totalRevenue = await Invoice.aggregate([
-      { $group: { _id: null, total: { $sum: '$total' } } }
-    ]);
+    // Get user's clinic ID for filtering
+    const userClinicId = await getUserClinicId(req.user);
 
-    // Get monthly revenue for current year
+    if (!userClinicId) {
+      return res.status(403).json({ 
+        error: 'Access denied. User must be associated with a clinic to view invoice statistics.' 
+      });
+    }
+
+    // Get yearly revenue data from Revenue model
     const currentYear = new Date().getFullYear();
-    const monthlyRevenue = await Invoice.aggregate([
-      {
-        $match: {
-          date: { $regex: `^${currentYear}` }
-        }
-      },
-      {
-        $addFields: {
-          month: { $toInt: { $substr: ['$date', 5, 2] } }
-        }
-      },
-      {
-        $group: {
-          _id: '$month',
-          total: { $sum: '$total' },
-          count: { $sum: 1 }
-        }
-      },
-      { $sort: { _id: 1 } }
-    ]);
+    const monthlyRevenue = await Revenue.getYearlyRevenue(userClinicId, currentYear);
+
+    // Calculate total revenue and invoice count from monthly data
+    const totalRevenue = monthlyRevenue.reduce((sum, month) => sum + month.totalRevenue, 0);
+    const totalInvoices = monthlyRevenue.reduce((sum, month) => sum + month.invoiceCount, 0);
+
+    // Format monthly revenue for frontend compatibility
+    const formattedMonthlyRevenue = monthlyRevenue.map(month => ({
+      _id: month.month,
+      total: month.totalRevenue,
+      count: month.invoiceCount
+    }));
 
     res.json({
       totalInvoices,
-      totalRevenue: totalRevenue[0]?.total || 0,
-      monthlyRevenue
+      totalRevenue,
+      monthlyRevenue: formattedMonthlyRevenue
     });
   } catch (error) {
     console.error('Error fetching invoice stats:', error);

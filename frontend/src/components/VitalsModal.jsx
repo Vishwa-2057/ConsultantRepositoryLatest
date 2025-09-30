@@ -505,7 +505,7 @@ const VitalsModal = ({ isOpen, onClose, patient, vitalsData = null, onSuccess })
             </Button>
             <Button 
               type="submit" 
-              className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700"
+              className="gradient-button"
               disabled={loading}
             >
               {loading ? 'Saving...' : vitalsData ? 'Update Vitals' : 'Record Vitals'}

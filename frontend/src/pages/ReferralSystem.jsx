@@ -32,6 +32,7 @@ const ReferralSystem = () => {
   const [outboundReferrals, setOutboundReferrals] = useState([]);
   const [inboundReferrals, setInboundReferrals] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("outbound");
   const [stats, setStats] = useState({
     outboundPending: 0,
     inboundNew: 0,
@@ -332,12 +333,14 @@ const ReferralSystem = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Referral System</h1>
           <p className="text-muted-foreground">Manage inbound and outbound patient referrals</p>
         </div>
         <div className="flex gap-2">
           <Button 
-            className="bg-gradient-primary shadow-soft"
+            className="shadow-lg"
+            style={{ backgroundColor: '#0059B3', color: 'white' }}
+            onMouseEnter={(e) => e.target.style.backgroundColor = '#004494'}
+            onMouseLeave={(e) => e.target.style.backgroundColor = '#0059B3'}
             onClick={() => setIsCreateModalOpen(true)}
           >
             <Plus className="w-4 h-4 mr-2" />
@@ -363,7 +366,10 @@ const ReferralSystem = () => {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="border-0 shadow-soft">
+        <Card 
+          className="border-0 shadow-soft cursor-pointer hover:shadow-lg transition-shadow" 
+          onClick={() => setActiveTab("outbound")}
+        >
           <CardContent className="p-4 text-center">
             <div className="w-8 h-8 bg-gradient-primary rounded-full flex items-center justify-center mx-auto mb-2">
               <ArrowRight className="w-4 h-4 text-white" />
@@ -373,7 +379,10 @@ const ReferralSystem = () => {
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-soft">
+        <Card 
+          className="border-0 shadow-soft cursor-pointer hover:shadow-lg transition-shadow" 
+          onClick={() => setActiveTab("inbound")}
+        >
           <CardContent className="p-4 text-center">
             <div className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center mx-auto mb-2">
               <ArrowLeft className="w-4 h-4 text-white" />
@@ -383,7 +392,16 @@ const ReferralSystem = () => {
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-soft">
+        <Card 
+          className="border-0 shadow-soft cursor-pointer hover:shadow-lg transition-shadow"
+          onClick={() => {
+            // Show completed referrals - could switch to a filtered view
+            toast({
+              title: "Completed Referrals",
+              description: `${stats.completedThisMonth} referrals completed this month`,
+            });
+          }}
+        >
           <CardContent className="p-4 text-center">
             <div className="w-8 h-8 bg-success rounded-full flex items-center justify-center mx-auto mb-2">
               <CheckCircle className="w-4 h-4 text-white" />
@@ -393,7 +411,16 @@ const ReferralSystem = () => {
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-soft">
+        <Card 
+          className="border-0 shadow-soft cursor-pointer hover:shadow-lg transition-shadow"
+          onClick={() => {
+            // Show high priority referrals - could switch to a filtered view
+            toast({
+              title: "High Priority Referrals",
+              description: `${stats.highPriority} high priority referrals require attention`,
+            });
+          }}
+        >
           <CardContent className="p-4 text-center">
             <div className="w-8 h-8 bg-warning rounded-full flex items-center justify-center mx-auto mb-2">
               <AlertCircle className="w-4 h-4 text-white" />
@@ -404,7 +431,7 @@ const ReferralSystem = () => {
         </Card>
       </div>
 
-      <Tabs defaultValue="outbound" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList>
           <TabsTrigger value="outbound">
             <ArrowRight className="w-4 h-4 mr-2" />
@@ -438,6 +465,10 @@ const ReferralSystem = () => {
                             <p className="text-sm text-muted-foreground mb-2">ID: {referral.id}</p>
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm mb-3">
+                              <div className="flex items-center space-x-2">
+                                <User className="w-4 h-4 text-muted-foreground" />
+                                <span><strong>From:</strong> {referral.referringProvider?.name || 'Unknown Provider'}</span>
+                              </div>
                               <div className="flex items-center space-x-2">
                                 <Hospital className="w-4 h-4 text-muted-foreground" />
                                 <span><strong>To:</strong> {referral.specialistName}</span>
@@ -530,7 +561,11 @@ const ReferralSystem = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm mb-3">
                               <div className="flex items-center space-x-2">
                                 <Hospital className="w-4 h-4 text-muted-foreground" />
-                                <span><strong>From:</strong> {referral.specialistName}</span>
+                                <span><strong>From:</strong> {referral.referringProvider?.name || 'Unknown Provider'}</span>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <User className="w-4 h-4 text-muted-foreground" />
+                                <span><strong>To:</strong> {referral.specialistName}</span>
                               </div>
                               <div className="flex items-center space-x-2">
                                 <FileText className="w-4 h-4 text-muted-foreground" />
@@ -573,9 +608,6 @@ const ReferralSystem = () => {
                             >
                               <CheckCircle className="w-4 h-4 mr-1" />
                               Complete
-                            </Button>
-                            <Button variant="outline" size="sm">
-                              Accept
                             </Button>
                             <Button 
                               variant="ghost" 

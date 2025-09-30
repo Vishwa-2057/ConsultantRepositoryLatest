@@ -448,7 +448,7 @@ const InvoiceViewModal = ({ isOpen, onClose, invoice }) => {
           </Button>
           <Button 
             onClick={handleDownload}
-            className="bg-gradient-to-r from-blue-800 to-teal-500 hover:from-blue-900 hover:to-teal-600"
+            className="gradient-button"
           >
             <Download className="w-4 h-4 mr-2" />
             Download Invoice

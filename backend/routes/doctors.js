@@ -34,6 +34,31 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
+// GET /api/doctors/clinic/:clinicId - Get doctors by clinic ID
+router.get('/clinic/:clinicId', auth, async (req, res) => {
+  try {
+    const { clinicId } = req.params;
+    
+    const doctors = await Doctor.find({ 
+      clinicId: clinicId,
+      isActive: true // Only get active doctors
+    })
+      .select('fullName email specialty phone role profileImage uhid qualification isActive')
+      .sort({ fullName: 1 });
+    
+    res.json({
+      success: true,
+      data: doctors
+    });
+  } catch (error) {
+    console.error('Error fetching doctors by clinic:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Internal server error' 
+    });
+  }
+});
+
 // GET /api/doctors/search - Search doctors by name or specialty
 router.get('/search', auth, async (req, res) => {
   try {

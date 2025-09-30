@@ -19,18 +19,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { referralAPI, patientAPI, doctorAPI } from "@/services/api";
+import { referralAPI, patientAPI, doctorAPI, clinicAPI, authAPI } from "@/services/api";
 
 const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [patients, setPatients] = useState([]);
   const [doctors, setDoctors] = useState([]);
+  const [currentClinicDoctors, setCurrentClinicDoctors] = useState([]);
+  const [clinics, setClinics] = useState([]);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [selectedDoctor, setSelectedDoctor] = useState(null);
+  const [selectedClinic, setSelectedClinic] = useState(null);
+  const [currentUserClinic, setCurrentUserClinic] = useState(null);
   const [formData, setFormData] = useState({
     patientId: "",
     patientName: "",
+    specialistId: "", // ID of the receiving doctor
     specialistName: "",
     specialty: "",
     urgency: "Medium",
@@ -40,42 +45,114 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
     hospital: "",
     referralType: "outbound", // inbound or outbound
     externalClinic: "", // for outbound referrals
+    referringProvider: {
+      name: "",
+      contact: "",
+      clinic: ""
+    },
     specialistContact: {
       phone: "",
       email: ""
     }
   });
 
-  // Fetch patients and doctors when modal opens
+  // Fetch patients, doctors, and clinics when modal opens
   useEffect(() => {
     if (isOpen) {
-      fetchPatientsAndDoctors();
+      fetchInitialData();
     }
   }, [isOpen]);
 
-  const fetchPatientsAndDoctors = async () => {
+  // Update doctors list when referral type changes and currentClinicDoctors is available
+  useEffect(() => {
+    console.log('Referral type changed:', formData.referralType);
+    console.log('Current clinic doctors available:', currentClinicDoctors.length);
+    if (formData.referralType === 'inbound' && currentClinicDoctors.length > 0) {
+      console.log('Setting doctors for inbound referral:', currentClinicDoctors);
+      setDoctors(currentClinicDoctors);
+    }
+  }, [formData.referralType, currentClinicDoctors]);
+
+  // Clear conflicting selections for inbound referrals
+  useEffect(() => {
+    if (formData.referralType === 'inbound') {
+      // If referring doctor is same as receiving doctor, clear referring doctor
+      if (formData.referringProvider.name && formData.specialistName && 
+          formData.referringProvider.name === formData.specialistName) {
+        setFormData(prev => ({
+          ...prev,
+          referringProvider: {
+            ...prev.referringProvider,
+            name: "",
+            contact: "",
+            clinic: ""
+          }
+        }));
+      }
+    }
+  }, [formData.referralType, formData.specialistName, formData.referringProvider.name]);
+
+  const fetchInitialData = async () => {
     try {
-      const [patientsResponse, doctorsResponse] = await Promise.all([
+      const [patientsResponse, clinicsResponse, userProfile] = await Promise.all([
         patientAPI.getAll(1, 100),
-        doctorAPI.getAll()
+        clinicAPI.getAll(),
+        clinicAPI.getProfile().catch(() => null)
       ]);
       
       // Patient API returns { patients: [...] } format
       setPatients(patientsResponse.patients || []);
-      // Doctor API returns { data: [...] } format
-      setDoctors(doctorsResponse.data || []);
+      
+      // Clinic API returns { data: [...] } format
+      const allClinics = clinicsResponse.data || clinicsResponse || [];
+      
+      // Get current user's clinic info and fetch clinic-specific doctors
+      let currentClinic = null;
+      if (userProfile && (userProfile.data || userProfile._id)) {
+        const profileData = userProfile.data || userProfile;
+        const clinicId = profileData._id || profileData.id;
+        currentClinic = { 
+          id: clinicId, 
+          name: profileData.name || profileData.fullName || profileData.adminName 
+        };
+        setCurrentUserClinic(currentClinic);
+        
+        // Fetch doctors only from current user's clinic
+        try {
+          const doctorsResponse = await doctorAPI.getByClinic(clinicId);
+          const currentDoctors = doctorsResponse.data || [];
+          console.log('Current clinic doctors loaded:', currentDoctors);
+          setCurrentClinicDoctors(currentDoctors);
+          // Initialize doctors array with current clinic doctors for inbound referrals
+          if (formData.referralType === 'inbound') {
+            setDoctors(currentDoctors);
+          }
+        } catch (error) {
+          console.error('Error fetching clinic doctors:', error);
+          setCurrentClinicDoctors([]);
+        }
+        
+        // Filter out current user's clinic from the list for outbound referrals
+        const otherClinics = allClinics.filter(clinic => clinic._id !== clinicId);
+        setClinics(otherClinics);
+      } else {
+        setClinics(allClinics);
+        setCurrentClinicDoctors([]);
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
       toast({
         title: "Warning",
-        description: "Could not load patients and doctors. You can still enter details manually.",
+        description: "Could not load all data. You can still enter details manually.",
         variant: "destructive",
       });
     }
   };
 
   const handlePatientSelect = (patientId) => {
+    console.log('Patient selected:', patientId);
     const patient = patients.find(p => p._id === patientId);
+    console.log('Found patient:', patient);
     if (patient) {
       setSelectedPatient(patient);
       setFormData(prev => ({
@@ -83,15 +160,49 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
         patientId: patient._id,
         patientName: patient.fullName
       }));
+      console.log('Updated form data with patient:', { patientId: patient._id, patientName: patient.fullName });
+    }
+  };
+
+  const handleClinicSelect = async (clinicId) => {
+    const clinic = clinics.find(c => c._id === clinicId);
+    if (clinic) {
+      setSelectedClinic(clinic);
+      const clinicName = clinic.name || clinic.fullName || clinic.adminName;
+      setFormData(prev => ({
+        ...prev,
+        externalClinic: clinicName,
+        hospital: clinicName, // Automatically set hospital field
+        specialistName: "", // Reset specialist selection
+        specialty: ""
+      }));
+      
+      // Fetch doctors for this clinic
+      try {
+        const doctorsResponse = await doctorAPI.getByClinic(clinicId);
+        setDoctors(doctorsResponse.data || []);
+        setSelectedDoctor(null); // Reset selected doctor
+      } catch (error) {
+        console.error('Error fetching doctors for clinic:', error);
+        setDoctors([]);
+        toast({
+          title: "Warning",
+          description: "Could not load doctors for this clinic.",
+          variant: "destructive",
+        });
+      }
     }
   };
 
   const handleDoctorSelect = (doctorId) => {
+    console.log('Doctor selected:', doctorId);
     const doctor = doctors.find(d => d._id === doctorId);
+    console.log('Found doctor:', doctor);
     if (doctor) {
       setSelectedDoctor(doctor);
       setFormData(prev => ({
         ...prev,
+        specialistId: doctor._id, // Add specialistId for backend filtering
         specialistName: doctor.fullName,
         specialty: doctor.specialty,
         specialistContact: {
@@ -99,6 +210,7 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
           email: doctor.email || ""
         }
       }));
+      console.log('Updated form data with doctor:', { specialistId: doctor._id, specialistName: doctor.fullName, specialty: doctor.specialty });
     }
   };
 
@@ -126,6 +238,18 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
     setIsLoading(true);
 
     try {
+      console.log('Form data being submitted:', formData);
+      console.log('Selected patient:', selectedPatient);
+      console.log('Selected doctor:', selectedDoctor);
+      
+      // Validate required fields before submission
+      if (!formData.patientId || !formData.patientName) {
+        throw new Error('Please select a patient');
+      }
+      if (!formData.specialistName || !formData.specialty) {
+        throw new Error('Please select a receiving doctor');
+      }
+      
       const response = await referralAPI.create(formData);
 
       toast({
@@ -140,6 +264,7 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
       setFormData({
         patientId: "",
         patientName: "",
+        specialistId: "",
         specialistName: "",
         specialty: "",
         urgency: "Medium",
@@ -149,6 +274,11 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
         hospital: "",
         referralType: "outbound",
         externalClinic: "",
+        referringProvider: {
+          name: "",
+          contact: "",
+          clinic: ""
+        },
         specialistContact: {
           phone: "",
           email: ""
@@ -156,6 +286,7 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
       });
       setSelectedPatient(null);
       setSelectedDoctor(null);
+      setSelectedClinic(null);
     } catch (error) {
       console.error("Error creating referral:", error);
       toast({
@@ -184,21 +315,37 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
             <Label htmlFor="referralType" className="text-sm">Referral Type *</Label>
             <Select
               value={formData.referralType}
-              onValueChange={(value) => 
-                setFormData(prev => ({ ...prev, referralType: value, externalClinic: "" }))
-              }
+              onValueChange={(value) => {
+                setFormData(prev => ({ 
+                  ...prev, 
+                  referralType: value, 
+                  externalClinic: "", 
+                  specialistId: "",
+                  specialistName: "", 
+                  specialty: "",
+                  hospital: value === 'inbound' && currentUserClinic ? currentUserClinic.name : ""
+                }));
+                setSelectedClinic(null);
+                setSelectedDoctor(null);
+                // For inbound/internal referrals, reset doctors to current clinic doctors
+                if (value === 'inbound') {
+                  setDoctors(currentClinicDoctors);
+                } else {
+                  setDoctors([]); // Clear doctors list for outbound referrals
+                }
+              }}
             >
               <SelectTrigger className="h-9">
                 <SelectValue placeholder="Select referral type" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="outbound">Outbound (Referring patient out)</SelectItem>
-                <SelectItem value="inbound">Inbound (Receiving referral)</SelectItem>
+                <SelectItem value="outbound">Outbound (Refer to external clinic)</SelectItem>
+                <SelectItem value="inbound">Internal (Refer within clinic)</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div className="space-y-1">
               <Label htmlFor="patient" className="text-sm">Select Patient *</Label>
               <Select
@@ -227,50 +374,71 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
               )}
             </div>
             
-            <div className="space-y-1">
-              <Label htmlFor="doctor" className="text-sm">
-                {formData.referralType === 'outbound' ? 'External Specialist *' : 'Receiving Doctor *'}
-              </Label>
-              {formData.referralType === 'outbound' ? (
-                <Input
-                  name="specialistName"
-                  value={formData.specialistName}
-                  onChange={handleChange}
-                  placeholder="Enter external specialist name"
-                  className="h-9 text-sm"
-                  required
-                />
-              ) : (
-                <>
-                  <Select
-                    value={selectedDoctor?._id || ""}
-                    onValueChange={handleDoctorSelect}
-                  >
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Choose receiving doctor" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {doctors
-                        .filter((doctor) => doctor.isActive !== false)
-                        .map((doctor) => (
-                          <SelectItem key={doctor._id} value={doctor._id}>
-                            {doctor.fullName} - {doctor.specialty}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                  {!selectedDoctor && (
-                    <Input
-                      name="specialistName"
-                      value={formData.specialistName}
-                      onChange={handleChange}
-                      placeholder="Or enter manually"
-                      className="h-9 text-sm"
-                    />
-                  )}
-                </>
-              )}
-            </div>
+            {formData.referralType === 'outbound' ? (
+              <div className="space-y-1">
+                <Label htmlFor="clinic" className="text-sm">Select External Clinic *</Label>
+                <Select
+                  value={selectedClinic?._id || ""}
+                  onValueChange={handleClinicSelect}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Choose external clinic" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clinics.map((clinic) => (
+                      <SelectItem key={clinic._id} value={clinic._id}>
+                        {clinic.name || clinic.fullName || clinic.adminName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <Label htmlFor="doctor" className="text-sm">Receiving Doctor (Internal) *</Label>
+                <Select
+                  value={selectedDoctor?._id || ""}
+                  onValueChange={handleDoctorSelect}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Choose doctor from your clinic" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {currentClinicDoctors
+                      .filter((doctor) => doctor.isActive !== false)
+                      .filter((doctor) => formData.referringProvider.name !== doctor.fullName)
+                      .map((doctor) => (
+                        <SelectItem key={doctor._id} value={doctor._id}>
+                          {doctor.fullName} - {doctor.specialty}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {formData.referralType === 'outbound' && selectedClinic && (
+              <div className="space-y-1">
+                <Label htmlFor="specialist" className="text-sm">Select Doctor *</Label>
+                <Select
+                  value={selectedDoctor?._id || ""}
+                  onValueChange={handleDoctorSelect}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Choose doctor from clinic" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {doctors
+                      .filter((doctor) => doctor.isActive !== false)
+                      .map((doctor) => (
+                        <SelectItem key={doctor._id} value={doctor._id}>
+                          {doctor.fullName} - {doctor.specialty}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <div className="space-y-1">
               <Label htmlFor="urgency" className="text-sm">Priority *</Label>
@@ -310,15 +478,22 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
 
             <div className="space-y-1">
               <Label htmlFor="hospital" className="text-sm">
-                {formData.referralType === 'outbound' ? 'Hospital/Clinic' : 'Referring Hospital'}
+                {formData.referralType === 'outbound' ? 'Hospital/Clinic' : 'Clinic (Internal)'}
               </Label>
               <Input
                 id="hospital"
                 name="hospital"
-                value={formData.hospital}
+                value={formData.referralType === 'outbound' && selectedClinic 
+                  ? (selectedClinic.name || selectedClinic.fullName || selectedClinic.adminName)
+                  : formData.referralType === 'inbound' && currentUserClinic
+                  ? currentUserClinic.name
+                  : formData.hospital
+                }
                 onChange={handleChange}
-                placeholder={formData.referralType === 'outbound' ? 'Hospital name' : 'Referring hospital name'}
+                placeholder={formData.referralType === 'outbound' ? 'Select external clinic first' : 'Current clinic'}
                 className="h-9 text-sm"
+                disabled={(formData.referralType === 'outbound' && selectedClinic) || (formData.referralType === 'inbound' && currentUserClinic)}
+                readOnly={(formData.referralType === 'outbound' && selectedClinic) || (formData.referralType === 'inbound' && currentUserClinic)}
               />
             </div>
 
@@ -335,19 +510,79 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
             </div>
           </div>
 
-          {/* External Clinic Field for Outbound Referrals */}
+          {/* Referring Provider Field for Outbound Referrals */}
           {formData.referralType === 'outbound' && (
-            <div className="space-y-1">
-              <Label htmlFor="externalClinic" className="text-sm">External Clinic Name *</Label>
-              <Input
-                id="externalClinic"
-                name="externalClinic"
-                value={formData.externalClinic}
-                onChange={handleChange}
-                placeholder="Enter the name of the external clinic you're referring to"
-                required
-                className="h-9 text-sm"
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="referringProvider.name" className="text-sm">Referring Doctor *</Label>
+                <Select
+                  value={formData.referringProvider.name}
+                  onValueChange={(value) => {
+                    const selectedDoc = currentClinicDoctors.find(doc => doc.fullName === value);
+                    setFormData(prev => ({
+                      ...prev,
+                      referringProvider: {
+                        ...prev.referringProvider,
+                        name: value,
+                        contact: selectedDoc ? `${selectedDoc.phone || ''} ${selectedDoc.email || ''}`.trim() : '',
+                        clinic: selectedDoc ? 'Current Clinic' : ''
+                      }
+                    }));
+                  }}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Select referring doctor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {currentClinicDoctors
+                      .filter((doctor) => doctor.isActive !== false)
+                      .map((doctor) => (
+                        <SelectItem key={doctor._id} value={doctor.fullName}>
+                          {doctor.fullName} - {doctor.specialty}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+            </div>
+          )}
+
+          {/* Referring Provider Fields for Inbound Referrals */}
+          {formData.referralType === 'inbound' && (
+            <div className="grid grid-cols-1 md:grid-cols-1 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="referringProvider.name" className="text-sm">Referring Doctor (Internal) *</Label>
+                <Select
+                  value={formData.referringProvider.name}
+                  onValueChange={(value) => {
+                    const selectedDoc = currentClinicDoctors.find(doc => doc.fullName === value);
+                    setFormData(prev => ({
+                      ...prev,
+                      referringProvider: {
+                        ...prev.referringProvider,
+                        name: value,
+                        contact: selectedDoc ? `${selectedDoc.phone || ''} ${selectedDoc.email || ''}`.trim() : '',
+                        clinic: currentUserClinic?.name || 'Current Clinic'
+                      }
+                    }));
+                  }}
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Select referring doctor from your clinic" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {currentClinicDoctors
+                      .filter((doctor) => doctor.isActive !== false)
+                      .filter((doctor) => formData.specialistName !== doctor.fullName)
+                      .map((doctor) => (
+                        <SelectItem key={doctor._id} value={doctor.fullName}>
+                          {doctor.fullName} - {doctor.specialty}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           )}
 
@@ -425,7 +660,10 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
             </Button>
             <Button 
               type="submit" 
-              className="bg-gradient-primary h-9"
+              className="h-9"
+              style={{ backgroundColor: '#0059B3', color: 'white' }}
+              onMouseEnter={(e) => !isLoading && (e.target.style.backgroundColor = '#004494')}
+              onMouseLeave={(e) => !isLoading && (e.target.style.backgroundColor = '#0059B3')}
               disabled={isLoading}
             >
               {isLoading ? "Creating..." : "Create Referral"}

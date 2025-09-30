@@ -156,10 +156,6 @@ const EmailSettings = () => {
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-4xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
-            <Settings className="w-8 h-8" />
-            Email Settings
-          </h1>
           <p className="text-gray-600 mt-2">
             Configure your email settings for sending OTP and notifications
           </p>

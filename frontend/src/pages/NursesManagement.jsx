@@ -308,11 +308,13 @@ const NursesManagement = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Nurses Management</h1>
           <p className="text-muted-foreground">Manage nurse accounts and their information</p>
         </div>
         <Button 
-          className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700 shadow-lg shadow-teal-500/25" 
+          className="shadow-lg" 
+          style={{ backgroundColor: '#0059B3', color: 'white' }}
+          onMouseEnter={(e) => e.target.style.backgroundColor = '#004494'}
+          onMouseLeave={(e) => e.target.style.backgroundColor = '#0059B3'}
           onClick={() => setIsAddModalOpen(true)}
         >
           <Plus className="w-4 h-4 mr-2" />
@@ -796,7 +798,7 @@ const NursesManagement = () => {
               </Button>
               <Button 
                 type="submit" 
-                className="bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-700 hover:to-cyan-700"
+                className="gradient-button"
                 disabled={submitting}
               >
                 {submitting ? 'Adding...' : 'Add Nurse'}

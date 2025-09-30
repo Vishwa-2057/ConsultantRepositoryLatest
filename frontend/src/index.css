@@ -8,46 +8,46 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 198 25% 25%;
+    --background: 0 0% 98%;
+    --foreground: 210 15% 20%;
 
     --card: 0 0% 100%;
-    --card-foreground: 198 25% 25%;
+    --card-foreground: 210 15% 20%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 198 25% 25%;
+    --popover-foreground: 210 15% 20%;
 
-    --primary: 212 100% 30%;
+    --primary: 210 100% 35%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 171 43% 46%;
+    --secondary: 195 85% 45%;
     --secondary-foreground: 0 0% 100%;
 
-    --muted: 212 20% 96%;
-    --muted-foreground: 212 15% 45%;
+    --muted: 210 20% 94%;
+    --muted-foreground: 210 10% 50%;
 
-    --accent: 171 50% 95%;
-    --accent-foreground: 212 100% 30%;
+    --accent: 210 30% 92%;
+    --accent-foreground: 210 100% 35%;
 
-    --destructive: 0 84% 60%;
+    --destructive: 0 75% 55%;
     --destructive-foreground: 0 0% 100%;
 
-    --success: 149 100% 35%;
+    --success: 142 75% 50%;
     --success-foreground: 0 0% 100%;
 
-    --warning: 45 93% 47%;
+    --warning: 38 95% 55%;
     --warning-foreground: 0 0% 100%;
 
-    --border: 212 20% 90%;
-    --input: 212 20% 94%;
-    --ring: 212 100% 30%;
+    --border: 210 20% 85%;
+    --input: 210 25% 93%;
+    --ring: 210 100% 35%;
 
-    --gradient-primary: linear-gradient(135deg, hsl(212 100% 30%), hsl(171 43% 46%));
-    --gradient-subtle: linear-gradient(180deg, hsl(0 0% 100%), hsl(212 15% 98%));
-    --shadow-soft: 0 4px 20px -2px hsl(212 100% 30% / 0.1);
-    --shadow-medical: 0 8px 32px -4px hsl(212 100% 30% / 0.15);
+    --gradient-primary: linear-gradient(135deg, hsl(210 100% 35%), hsl(195 85% 45%));
+    --gradient-subtle: linear-gradient(180deg, hsl(0 0% 100%), hsl(210 20% 96%));
+    --shadow-soft: 0 2px 8px -1px hsl(210 100% 35% / 0.12);
+    --shadow-medical: 0 4px 16px -2px hsl(210 100% 35% / 0.15);
 
-    --radius: 0.75rem;
+    --radius: 0.5rem;
 
     --sidebar-background: 0 0% 98%;
 
@@ -67,39 +67,39 @@ All colors MUST be HSL.
   }
 
   .dark {
-    --background: 198 25% 8%;
-    --foreground: 180 11% 96%;
+    --background: 210 15% 8%;
+    --foreground: 210 10% 92%;
 
-    --card: 198 25% 10%;
-    --card-foreground: 180 11% 96%;
+    --card: 210 15% 10%;
+    --card-foreground: 210 10% 92%;
 
-    --popover: 198 25% 10%;
-    --popover-foreground: 180 11% 96%;
+    --popover: 210 15% 10%;
+    --popover-foreground: 210 10% 92%;
 
-    --primary: 212 100% 40%;
+    --primary: 210 100% 45%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 171 43% 56%;
+    --secondary: 195 75% 55%;
     --secondary-foreground: 0 0% 100%;
 
-    --muted: 212 25% 15%;
-    --muted-foreground: 212 10% 65%;
+    --muted: 210 15% 18%;
+    --muted-foreground: 210 8% 70%;
 
-    --accent: 212 25% 15%;
-    --accent-foreground: 212 100% 40%;
+    --accent: 210 15% 18%;
+    --accent-foreground: 210 100% 45%;
 
-    --destructive: 0 84% 60%;
+    --destructive: 0 75% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --success: 149 100% 40%;
+    --success: 142 75% 55%;
     --success-foreground: 0 0% 100%;
 
-    --warning: 45 93% 52%;
+    --warning: 38 95% 60%;
     --warning-foreground: 0 0% 100%;
 
-    --border: 212 25% 20%;
-    --input: 212 25% 18%;
-    --ring: 212 100% 40%;
+    --border: 210 15% 25%;
+    --input: 210 15% 22%;
+    --ring: 210 100% 45%;
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
     --sidebar-primary: 224.3 76.3% 48%;
@@ -116,7 +116,46 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
+  html {
+    font-size: 90%; /* Reduce base font size by 10% to make everything 10% smaller */
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Professional medical interface improvements */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold tracking-tight;
+    letter-spacing: -0.025em;
+  }
+
+  .medical-card {
+    @apply bg-card border border-border rounded-lg shadow-sm;
+  }
+
+  .medical-button {
+    @apply bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2 font-medium transition-colors;
+  }
+
+  .medical-input {
+    @apply bg-background border border-input rounded-md px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+  }
+
+  .gradient-button {
+    @apply bg-blue-600 hover:bg-blue-700 text-white rounded-md px-4 py-2 font-medium transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105;
+  }
+
+  .gradient-button-secondary {
+    @apply bg-teal-500 hover:bg-teal-600 text-white rounded-md px-4 py-2 font-medium transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105;
+  }
+
+  .gradient-button-outline {
+    @apply bg-transparent border-2 border-blue-500 text-blue-600 hover:bg-blue-600 hover:text-white rounded-md px-4 py-2 font-medium transition-all duration-200;
   }
 }

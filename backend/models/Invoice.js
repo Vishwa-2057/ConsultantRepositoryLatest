@@ -30,7 +30,8 @@ const invoiceSchema = new mongoose.Schema({
   },
   invoiceNo: {
     type: Number,
-    required: true
+    required: true,
+    unique: true
   },
   address: {
     line1: { type: String, required: true },
@@ -73,15 +74,38 @@ const invoiceSchema = new mongoose.Schema({
   }
 });
 
-// Pre-save middleware to calculate total from line items
-invoiceSchema.pre('save', function(next) {
-  // Calculate subtotal from line items
-  const subtotal = this.lineItems.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0);
-  
-  // Calculate total with discount, tax, and shipping
-  this.total = subtotal - this.discount + this.tax + this.shipping;
-  
-  next();
+// Pre-save middleware to calculate total and ensure unique invoice number
+invoiceSchema.pre('save', async function(next) {
+  try {
+    // Calculate subtotal from line items
+    const subtotal = this.lineItems.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0);
+    
+    // Calculate total with discount, tax, and shipping
+    this.total = subtotal - this.discount + this.tax + this.shipping;
+    
+    // Generate unique invoice number if not provided or is null
+    if (!this.invoiceNo) {
+      let isUnique = false;
+      let invoiceNo;
+      
+      while (!isUnique) {
+        // Generate invoice number based on timestamp + random number
+        invoiceNo = Date.now() + Math.floor(Math.random() * 1000);
+        
+        // Check if this invoice number already exists
+        const existingInvoice = await this.constructor.findOne({ invoiceNo });
+        if (!existingInvoice) {
+          isUnique = true;
+        }
+      }
+      
+      this.invoiceNo = invoiceNo;
+    }
+    
+    next();
+  } catch (error) {
+    next(error);
+  }
 });
 
 // Indexes for better query performance
