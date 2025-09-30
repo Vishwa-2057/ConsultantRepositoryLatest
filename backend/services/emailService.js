@@ -748,6 +748,154 @@ This is an automated message from Healthcare Management System. Please do not re
 © ${new Date().getFullYear()} Healthcare Management System. All rights reserved.
     `;
   }
+
+  async sendPasswordResetOTP(email, userName, otpCode) {
+    try {
+      // Get the centralized transporter
+      const transporter = await this.getTransporter();
+
+      const mailOptions = {
+        from: `"Healthcare Management System" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: 'Password Reset Verification Code',
+        html: this.generatePasswordResetEmailHTML(otpCode, userName),
+        text: this.generatePasswordResetEmailText(otpCode, userName)
+      };
+
+      console.log(`📧 Sending password reset OTP to ${email} (${userName})`);
+      const result = await transporter.sendMail(mailOptions);
+      
+      console.log(`✅ Password reset email sent successfully to ${email} (${userName}):`, result.messageId);
+      return { success: true, messageId: result.messageId };
+    } catch (error) {
+      console.error('❌ Failed to send password reset email:', error);
+      return { success: false, error: error.message };
+    }
+  }
+
+  generatePasswordResetEmailHTML(otpCode, userName = 'User') {
+    return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Password Reset</title>
+        <style>
+            body {
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                line-height: 1.6;
+                color: #333;
+                max-width: 600px;
+                margin: 0 auto;
+                padding: 20px;
+                background-color: #f4f4f4;
+            }
+            .container {
+                background-color: #ffffff;
+                padding: 40px;
+                border-radius: 10px;
+                box-shadow: 0 0 20px rgba(0,0,0,0.1);
+            }
+            .header {
+                text-align: center;
+                margin-bottom: 30px;
+                padding-bottom: 20px;
+                border-bottom: 2px solid #e74c3c;
+            }
+            .logo {
+                font-size: 28px;
+                font-weight: bold;
+                color: #e74c3c;
+                margin-bottom: 10px;
+            }
+            .otp-code {
+                background: linear-gradient(135deg, #e74c3c, #c0392b);
+                color: white;
+                font-size: 32px;
+                font-weight: bold;
+                padding: 20px;
+                text-align: center;
+                border-radius: 10px;
+                margin: 30px 0;
+                letter-spacing: 8px;
+                box-shadow: 0 4px 15px rgba(231, 76, 60, 0.3);
+            }
+            .warning {
+                background-color: #fff3cd;
+                border: 1px solid #ffeaa7;
+                color: #856404;
+                padding: 15px;
+                border-radius: 5px;
+                margin: 20px 0;
+            }
+            .footer {
+                text-align: center;
+                margin-top: 30px;
+                padding-top: 20px;
+                border-top: 1px solid #eee;
+                color: #666;
+                font-size: 14px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <div class="logo">🏥 Healthcare System</div>
+                <h2 style="color: #e74c3c; margin: 0;">Password Reset Request</h2>
+            </div>
+            
+            <p>Hello <strong>${userName}</strong>,</p>
+            
+            <p>We received a request to reset your password for your Healthcare Management System account.</p>
+            
+            <p>Use the following verification code to reset your password:</p>
+            
+            <div class="otp-code">${otpCode}</div>
+            
+            <div class="warning">
+                <strong>⚠️ Security Notice:</strong>
+                <ul style="margin: 10px 0; padding-left: 20px;">
+                    <li>This code will expire in <strong>10 minutes</strong></li>
+                    <li>Never share this code with anyone</li>
+                    <li>If you didn't request this reset, please ignore this email</li>
+                </ul>
+            </div>
+            
+            <p>If you didn't request a password reset, please ignore this email or contact support if you have concerns.</p>
+            
+            <div class="footer">
+                <p>This is an automated message from Healthcare Management System.</p>
+                <p>© ${new Date().getFullYear()} Healthcare Management System. All rights reserved.</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    `;
+  }
+
+  generatePasswordResetEmailText(otpCode, userName = 'User') {
+    return `
+Healthcare Management System - Password Reset Request
+
+Hello ${userName},
+
+We received a request to reset your password for your Healthcare Management System account.
+
+Your password reset verification code is: ${otpCode}
+
+SECURITY NOTICE:
+- This code will expire in 10 minutes
+- Never share this code with anyone
+- If you didn't request this reset, please ignore this email
+
+If you didn't request a password reset, please ignore this email or contact support if you have concerns.
+
+This is an automated message from Healthcare Management System.
+© ${new Date().getFullYear()} Healthcare Management System. All rights reserved.
+    `;
+  }
 }
 
 // Create singleton instance

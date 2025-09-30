@@ -74,13 +74,13 @@ clinicSchema.methods.comparePassword = function(candidatePassword) {
     return Promise.resolve(false);
   }
   
-  // If adminPassword exists and is not hashed, compare directly
-  if (this.adminPassword && !this.adminPassword.startsWith('$2')) {
-    return Promise.resolve(candidatePassword === this.adminPassword);
+  // If password looks like a bcrypt hash (starts with $2a, $2b, $2x, $2y), use bcrypt
+  if (passwordToCompare.startsWith('$2')) {
+    return bcrypt.compare(candidatePassword, passwordToCompare);
   }
   
-  // Otherwise use bcrypt comparison for hashed passwords
-  return bcrypt.compare(candidatePassword, passwordToCompare);
+  // Otherwise compare directly (for legacy plain text passwords)
+  return Promise.resolve(candidatePassword === passwordToCompare);
 };
 
 clinicSchema.methods.incLoginAttempts = function() {

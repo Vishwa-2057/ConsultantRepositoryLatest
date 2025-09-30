@@ -37,6 +37,44 @@ import { toast } from "sonner";
 import { canEditPatients } from "@/utils/roleUtils";
 import EditPatientModal from "@/components/EditPatientModal";
 
+// Utility function to safely format dates
+const formatDate = (dateString, options = {}) => {
+  if (!dateString) return 'Not specified';
+  
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return 'Invalid date';
+  
+  const defaultOptions = {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  };
+  
+  return date.toLocaleDateString('en-US', { ...defaultOptions, ...options });
+};
+
+// Utility function to safely format date and time
+const formatDateTime = (dateString) => {
+  if (!dateString) return 'Not specified';
+  
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return 'Invalid date';
+  
+  const dateStr = date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  });
+  
+  const timeStr = date.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+  
+  return `${dateStr} at ${timeStr}`;
+};
+
 const PatientDetails = () => {
   const { patientId } = useParams();
   const navigate = useNavigate();
@@ -511,7 +549,7 @@ const PatientDetails = () => {
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-gray-600">Date of Birth:</span>
-                    <p className="font-medium">{patient.dateOfBirth ? new Date(patient.dateOfBirth).toLocaleDateString() : 'Not provided'}</p>
+                    <p className="font-medium">{formatDate(patient.dateOfBirth)}</p>
                   </div>
                   <div>
                     <span className="text-gray-600">Occupation:</span>
@@ -624,7 +662,7 @@ const PatientDetails = () => {
                           <div className="flex items-center justify-between mb-1">
                             <h4 className="font-medium text-gray-900 truncate">{log.title}</h4>
                             <span className="text-sm text-gray-500 flex-shrink-0 ml-2">
-                              {log.timestamp ? new Date(log.timestamp).toLocaleDateString() : 'No date'}
+                              {formatDate(log.timestamp)}
                             </span>
                           </div>
                           
@@ -638,7 +676,10 @@ const PatientDetails = () => {
                             <div className="flex items-center gap-1">
                               <Clock className="w-3 h-3" />
                               <span>
-                                {log.timestamp ? new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'No time'}
+                                {log.timestamp && !isNaN(new Date(log.timestamp)) 
+                                  ? new Date(log.timestamp).toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit', hour12: true})
+                                  : 'No time'
+                                }
                               </span>
                             </div>
                             {log.details.status && (
@@ -656,7 +697,7 @@ const PatientDetails = () => {
                               )}
                               {log.details.appointmentDate && (
                                 <span className="mr-3">
-                                  Appointment: {new Date(log.details.appointmentDate).toLocaleDateString()} 
+                                  Appointment: {formatDate(log.details.appointmentDate)} 
                                   {log.details.appointmentTime && ` at ${log.details.appointmentTime}`}
                                 </span>
                               )}
@@ -731,7 +772,7 @@ const PatientDetails = () => {
                             <div className="flex items-center gap-1">
                               <Clock className="w-4 h-4" />
                               <span>
-                                {prescription.date ? new Date(prescription.date).toLocaleDateString() : 'Date not specified'}
+                                {formatDate(prescription.date)}
                               </span>
                             </div>
                           </div>
@@ -1223,7 +1264,7 @@ const PatientDetails = () => {
                               Treatment #{prescription.prescriptionNumber || `T${index + 1}`}
                             </h3>
                             <p className="text-sm text-gray-600">
-                              {prescription.date ? new Date(prescription.date).toLocaleDateString() : 'Date not specified'}
+                              {formatDate(prescription.date)}
                             </p>
                           </div>
                         </div>
@@ -1292,7 +1333,7 @@ const PatientDetails = () => {
                           {prescription.followUpDate && (
                             <div className="flex items-center gap-1">
                               <CalendarDays className="w-4 h-4" />
-                              <span>Follow-up: {new Date(prescription.followUpDate).toLocaleDateString()}</span>
+                              <span>Follow-up: {formatDate(prescription.followUpDate)}</span>
                             </div>
                           )}
                         </div>
@@ -1376,9 +1417,9 @@ const PatientDetails = () => {
                                 </p>
                               </div>
                               <div>
-                                <span className="text-gray-600">Date:</span>
+                                <span className="text-gray-600">Date & Time:</span>
                                 <p className="font-medium">
-                                  {referral.createdAt ? new Date(referral.createdAt).toLocaleDateString() : 'Not specified'}
+                                  {formatDateTime(referral.createdAt)}
                                 </p>
                               </div>
                               <div>

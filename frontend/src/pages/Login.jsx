@@ -8,6 +8,7 @@ import { authAPI, clinicAPI } from "@/services/api";
 import { Link, useNavigate } from "react-router-dom";
 import { Mail, Lock, Shield, ArrowLeft } from "lucide-react";
 import Logo from "@/assets/Images/Logo.png";
+import ForgotPasswordModal from "@/components/ForgotPasswordModal";
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -20,6 +21,7 @@ const Login = () => {
   const [otpTimer, setOtpTimer] = useState(0);
   const [activeTab, setActiveTab] = useState("password");
   const [userType, setUserType] = useState("regular"); // "regular" or "clinic"
+  const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
   const navigate = useNavigate();
 
   const handlePasswordLogin = async (e) => {
@@ -176,11 +178,11 @@ const Login = () => {
 
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                 <TabsList className="grid w-full grid-cols-2 h-12 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
-                  <TabsTrigger value="password" className="flex items-center gap-2 h-10 text-base font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                  <TabsTrigger value="password" className="flex items-center gap-2 h-10 text-base font-medium data-[state=active]:bg-white dark:data-[state=active]:bg-gray-600 data-[state=active]:text-gray-900 dark:data-[state=active]:text-white data-[state=active]:shadow-sm text-gray-600 dark:text-gray-300">
                     <Lock className="w-4 h-4" />
                     Password Login
                   </TabsTrigger>
-                  <TabsTrigger value="otp" className="flex items-center gap-2 h-10 text-base font-medium data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                  <TabsTrigger value="otp" className="flex items-center gap-2 h-10 text-base font-medium data-[state=active]:bg-white dark:data-[state=active]:bg-gray-600 data-[state=active]:text-gray-900 dark:data-[state=active]:text-white data-[state=active]:shadow-sm text-gray-600 dark:text-gray-300">
                     <Mail className="w-4 h-4" />
                     OTP Login
                   </TabsTrigger>
@@ -212,6 +214,17 @@ const Login = () => {
                         placeholder="Enter your password"
                       />
                     </div>
+                    
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setForgotPasswordOpen(true)}
+                        className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
+                      >
+                        Forgot Password?
+                      </button>
+                    </div>
+                    
                     {error && <p className="text-sm text-red-600 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-200 dark:border-red-800">{error}</p>}
                     <Button 
                       type="submit" 
@@ -333,6 +346,13 @@ const Login = () => {
           </Card>
         </div>
       </div>
+      
+      {/* Forgot Password Modal */}
+      <ForgotPasswordModal
+        isOpen={forgotPasswordOpen}
+        onClose={() => setForgotPasswordOpen(false)}
+        userType={userType}
+      />
     </div>
   );
 };

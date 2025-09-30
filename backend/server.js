@@ -32,6 +32,7 @@ const medicalImageRoutes = require('./routes/medicalImages');
 const clinicRoutes = require('./routes/clinics');
 const activityLogRoutes = require('./routes/activityLogs');
 const revenueRoutes = require('./routes/revenue');
+const teleconsultationRoutes = require('./routes/teleconsultations');
 
 // Middleware
 app.use(helmet());
@@ -220,6 +221,7 @@ app.use('/api/medical-images', medicalImageRoutes);
 app.use('/api/clinics', clinicRoutes);
 app.use('/api/activity-logs', activityLogRoutes);
 app.use('/api/revenue', revenueRoutes);
+app.use('/api/teleconsultations', teleconsultationRoutes);
 
 app.get("/", (req, res) => {
   res.send("Backend is running ✅");

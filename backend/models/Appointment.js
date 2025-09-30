@@ -16,7 +16,7 @@ const appointmentSchema = new mongoose.Schema({
   appointmentType: {
     type: String,
     required: [true, 'Appointment type is required'],
-    enum: ['General Consultation', 'Follow-up Visit', 'Annual Checkup', 'Specialist Consultation', 'Emergency Visit', 'Lab Work', 'Imaging', 'Vaccination', 'Physical Therapy', 'Mental Health']
+    enum: ['General Consultation', 'Follow-up Visit', 'Annual Checkup', 'Specialist Consultation', 'Emergency Visit', 'Lab Work', 'Imaging', 'Vaccination', 'Physical Therapy', 'Mental Health', 'Teleconsultation']
   },
   date: {
     type: Date,
@@ -101,6 +101,24 @@ const appointmentSchema = new mongoose.Schema({
   },
   followUpDate: {
     type: Date
+  },
+  
+  // Teleconsultation Details
+  isVirtual: {
+    type: Boolean,
+    default: false
+  },
+  meetingLink: {
+    type: String,
+    trim: true
+  },
+  meetingId: {
+    type: String,
+    trim: true
+  },
+  teleconsultationId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Teleconsultation'
   },
   
   // Timestamps

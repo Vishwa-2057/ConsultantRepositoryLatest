@@ -307,11 +307,35 @@ class ActivityLogger {
   }
 
   /**
-   * Simple user agent parser (without external dependencies)
-   * @param {string} userAgent - User agent string
-   * @returns {Object} Parsed device information
+   * Log password reset activity
+   * @param {Object} user - User object
+   * @param {Object} req - Express request object
    */
-  static parseUserAgent(userAgent) {
+  static async logPasswordReset(user, req) {
+    try {
+      return await this.logActivity({
+        userId: user._id,
+        userName: user.fullName,
+        userEmail: user.email,
+        userRole: user.role,
+        clinicId: user.clinicId,
+        clinicName: user.clinicName,
+        activityType: 'password_reset',
+        req,
+        notes: 'Password reset successfully using OTP verification'
+      });
+    } catch (error) {
+      console.error('ActivityLogger: Failed to log password reset activity:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Parse user agent string to extract device information
+   * @param {string} userAgent - User agent string
+   * @returns {Object} Device information
+   */
+  static parseUserAgent(userAgent = '') {
     const ua = userAgent.toLowerCase();
     
     // Browser detection

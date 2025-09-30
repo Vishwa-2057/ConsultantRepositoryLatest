@@ -954,6 +954,22 @@ export const clinicAPI = {
   getAll: async () => {
     return apiRequest('/clinics/all');
   },
+  
+  // Forgot Password - Send reset OTP
+  forgotPassword: async (email) => {
+    return apiRequest('/auth/clinic-forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email })
+    });
+  },
+  
+  // Reset Password with OTP
+  resetPassword: async (email, otp, newPassword) => {
+    return apiRequest('/auth/clinic-reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ email, otp, newPassword })
+    });
+  },
 };
 
 // Auth API functions
@@ -998,6 +1014,20 @@ export const authAPI = {
   logout: async () => {
     return apiRequest('/auth/logout', {
       method: 'POST',
+    });
+  },
+  // Forgot Password - Send reset OTP
+  forgotPassword: async (email) => {
+    return apiRequest('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email })
+    });
+  },
+  // Reset Password with OTP
+  resetPassword: async (email, otp, newPassword) => {
+    return apiRequest('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ email, otp, newPassword })
     });
   }
 };
@@ -1267,6 +1297,84 @@ export const revenueAPI = {
   }
 };
 
+// Teleconsultation API
+export const teleconsultationAPI = {
+  // Get all teleconsultations with filtering and pagination
+  getAll: async (page = 1, limit = 10, filters = {}) => {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      limit: limit.toString(),
+      ...filters
+    });
+    return apiRequest(`/teleconsultations?${params}`);
+  },
+
+  // Get teleconsultation by ID
+  getById: async (id) => {
+    return apiRequest(`/teleconsultations/${id}`);
+  },
+
+  // Get teleconsultation by meeting ID
+  getByMeetingId: async (meetingId) => {
+    return apiRequest(`/teleconsultations/meeting/${meetingId}`);
+  },
+
+  // Create new teleconsultation
+  create: async (teleconsultationData) => {
+    return apiRequest('/teleconsultations', {
+      method: 'POST',
+      body: JSON.stringify(teleconsultationData)
+    });
+  },
+
+  // Start teleconsultation
+  start: async (id) => {
+    return apiRequest(`/teleconsultations/${id}/start`, {
+      method: 'PATCH'
+    });
+  },
+
+  // End teleconsultation
+  end: async (id, consultationData = {}) => {
+    return apiRequest(`/teleconsultations/${id}/end`, {
+      method: 'PATCH',
+      body: JSON.stringify(consultationData)
+    });
+  },
+
+  // Cancel teleconsultation
+  cancel: async (id, reason = '') => {
+    return apiRequest(`/teleconsultations/${id}/cancel`, {
+      method: 'PATCH',
+      body: JSON.stringify({ reason })
+    });
+  },
+
+  // Join teleconsultation (for tracking)
+  join: async (id, userType = 'Patient') => {
+    return apiRequest(`/teleconsultations/${id}/join`, {
+      method: 'POST',
+      body: JSON.stringify({ userType })
+    });
+  },
+
+  // Get teleconsultation statistics
+  getStats: async () => {
+    return apiRequest('/teleconsultations/stats/summary');
+  },
+
+  // Get upcoming teleconsultations
+  getUpcoming: async () => {
+    return apiRequest('/teleconsultations?status=Scheduled&sortBy=scheduledDate&sortOrder=asc');
+  },
+
+  // Get today's teleconsultations
+  getToday: async () => {
+    const today = new Date().toISOString().split('T')[0];
+    return apiRequest(`/teleconsultations?date=${today}`);
+  }
+};
+
 export default {
   patientAPI,
   appointmentAPI,
@@ -1283,5 +1391,6 @@ export default {
   prescriptionAPI,
   vitalsAPI,
   medicalImageAPI,
-  revenueAPI
+  revenueAPI,
+  teleconsultationAPI
 };

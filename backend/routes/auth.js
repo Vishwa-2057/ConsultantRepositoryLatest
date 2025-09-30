@@ -34,6 +34,16 @@ const requestOTPValidation = [
   body('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
 ];
 
+const forgotPasswordValidation = [
+  body('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
+];
+
+const resetPasswordValidation = [
+  body('email').isEmail().withMessage('Valid email is required').normalizeEmail(),
+  body('otp').isLength({ min: 6, max: 6 }).withMessage('OTP must be 6 digits'),
+  body('newPassword').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
+];
+
 router.post('/register', registerValidation, async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -642,6 +652,269 @@ router.post('/logout', auth, async (req, res) => {
     res.json({
       message: 'Logged out successfully'
     });
+  }
+});
+
+// Clinic Forgot Password - Send reset OTP
+router.post('/clinic-forgot-password', forgotPasswordValidation, async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ error: 'Validation failed', details: errors.array() });
+    }
+
+    const { email } = req.body;
+
+    // Check if clinic admin exists
+    const clinic = await Clinic.findOne({ adminEmail: email });
+
+    if (!clinic) {
+      // Don't reveal if email exists or not for security
+      return res.json({ 
+        message: 'If an account with this email exists, a password reset code has been sent.',
+        success: true 
+      });
+    }
+
+    // Generate OTP
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // Save OTP
+    await OTP.findOneAndUpdate(
+      { email, purpose: 'password_reset' },
+      { 
+        email, 
+        code: otpCode, 
+        expiresAt,
+        purpose: 'password_reset',
+        status: 'pending'
+      },
+      { upsert: true }
+    );
+
+    // Send email
+    try {
+      await emailService.sendPasswordResetOTP(email, clinic.adminName || clinic.name, otpCode);
+    } catch (emailError) {
+      console.error('Failed to send password reset email:', emailError);
+      return res.status(500).json({ error: 'Failed to send reset code. Please try again.' });
+    }
+
+    res.json({ 
+      message: 'Password reset code sent to your email address.',
+      success: true 
+    });
+
+  } catch (error) {
+    console.error('Clinic forgot password error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Clinic Reset Password with OTP
+router.post('/clinic-reset-password', resetPasswordValidation, async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ error: 'Validation failed', details: errors.array() });
+    }
+
+    const { email, otp, newPassword } = req.body;
+
+    // Verify OTP
+    const otpRecord = await OTP.findOne({ 
+      email, 
+      code: otp, 
+      purpose: 'password_reset',
+      status: 'pending',
+      expiresAt: { $gt: new Date() } 
+    });
+
+    if (!otpRecord) {
+      return res.status(400).json({ error: 'Invalid or expired reset code' });
+    }
+
+    // Find clinic
+    const clinic = await Clinic.findOne({ adminEmail: email });
+
+    if (!clinic) {
+      return res.status(404).json({ error: 'Clinic not found' });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+    // Update password
+    await Clinic.findByIdAndUpdate(clinic._id, { adminPassword: hashedPassword });
+    console.log(`✅ Password updated for clinic admin: ${clinic.adminEmail}`);
+
+    // Mark OTP as used
+    otpRecord.status = 'used';
+    await otpRecord.save();
+
+    // Log password reset activity
+    try {
+      await ActivityLogger.logPasswordReset({
+        _id: clinic._id,
+        fullName: clinic.adminName || clinic.name,
+        email: clinic.adminEmail,
+        role: 'clinic',
+        clinicId: clinic._id,
+        clinicName: clinic.name
+      }, req);
+    } catch (logError) {
+      console.error('Failed to log clinic password reset activity:', logError);
+    }
+
+    res.json({ 
+      message: 'Password reset successfully. You can now login with your new password.',
+      success: true 
+    });
+
+  } catch (error) {
+    console.error('Clinic reset password error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Forgot Password - Send reset OTP
+router.post('/forgot-password', forgotPasswordValidation, async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ error: 'Validation failed', details: errors.array() });
+    }
+
+    const { email } = req.body;
+
+    // Check if user exists in Doctor or Nurse collections
+    let user = await Doctor.findOne({ email });
+    let userType = 'doctor';
+    
+    if (!user) {
+      user = await Nurse.findOne({ email });
+      userType = 'nurse';
+    }
+
+    if (!user) {
+      // Don't reveal if email exists or not for security
+      return res.json({ 
+        message: 'If an account with this email exists, a password reset code has been sent.',
+        success: true 
+      });
+    }
+
+    // Generate OTP
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // Save OTP
+    await OTP.findOneAndUpdate(
+      { email, purpose: 'password_reset' },
+      { 
+        email, 
+        code: otpCode, 
+        expiresAt,
+        purpose: 'password_reset',
+        status: 'pending'
+      },
+      { upsert: true }
+    );
+
+    // Send email
+    try {
+      await emailService.sendPasswordResetOTP(email, user.fullName, otpCode);
+    } catch (emailError) {
+      console.error('Failed to send password reset email:', emailError);
+      return res.status(500).json({ error: 'Failed to send reset code. Please try again.' });
+    }
+
+    res.json({ 
+      message: 'Password reset code sent to your email address.',
+      success: true 
+    });
+
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Reset Password with OTP
+router.post('/reset-password', resetPasswordValidation, async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ error: 'Validation failed', details: errors.array() });
+    }
+
+    const { email, otp, newPassword } = req.body;
+
+    // Verify OTP
+    const otpRecord = await OTP.findOne({ 
+      email, 
+      code: otp, 
+      purpose: 'password_reset',
+      status: 'pending',
+      expiresAt: { $gt: new Date() } 
+    });
+
+    if (!otpRecord) {
+      return res.status(400).json({ error: 'Invalid or expired reset code' });
+    }
+
+    // Find user
+    let user = await Doctor.findOne({ email });
+    let userType = 'doctor';
+    
+    if (!user) {
+      user = await Nurse.findOne({ email });
+      userType = 'nurse';
+    }
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+    // Update password
+    if (userType === 'doctor') {
+      await Doctor.findByIdAndUpdate(user._id, { passwordHash: hashedPassword });
+      console.log(`✅ Password updated for doctor: ${user.email}`);
+    } else {
+      await Nurse.findByIdAndUpdate(user._id, { passwordHash: hashedPassword });
+      console.log(`✅ Password updated for nurse: ${user.email}`);
+    }
+
+    // Mark OTP as used
+    otpRecord.status = 'used';
+    await otpRecord.save();
+
+    // Log password reset activity
+    try {
+      await ActivityLogger.logPasswordReset({
+        _id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        role: userType,
+        clinicId: user.clinicId,
+        clinicName: 'Unknown Clinic'
+      }, req);
+    } catch (logError) {
+      console.error('Failed to log password reset activity:', logError);
+    }
+
+    res.json({ 
+      message: 'Password reset successfully. You can now login with your new password.',
+      success: true 
+    });
+
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
