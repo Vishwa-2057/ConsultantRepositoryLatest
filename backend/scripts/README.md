@@ -1,62 +1,70 @@
-# Database Migration Scripts
+# Database Scripts
 
-## Nurse Clinic ID Migration
+This directory contains utility scripts for database maintenance and fixes.
 
-### Problem
-Some nurses may not have a `clinicId` assigned, which prevents them from accessing appointments and other clinic-specific features.
+## Available Scripts
 
-### Solution
-Use the `fixNurseClinicIds.js` script to identify and fix nurses without clinic assignments.
+### fix-invoice-indexes.js
+Fixes invoice numbering by ensuring proper sequential indexing for each clinic.
 
-### Usage
+**Usage:**
+```bash
+node scripts/fix-invoice-indexes.js
+```
 
-#### 1. Check Current Status
+**What it does:**
+- Scans all invoices in the database
+- Groups them by clinic
+- Reorders invoice numbers sequentially for each clinic
+- Ensures no gaps or duplicates in invoice numbering
+
+### fixNurseClinicIds.js
+Updates nurse records to ensure proper clinic association.
+
+**Usage:**
+```bash
+node scripts/fixNurseClinicIds.js
+```
+
+**What it does:**
+- Finds nurses with missing or invalid clinic IDs
+- Updates clinic associations based on existing data
+- Ensures data consistency between nurses and clinics
+
+### fix-clinic-passwords.js
+Fixes clinic admin password encryption issues by hashing plain text passwords.
+
+**Usage:**
+```bash
+node scripts/fix-clinic-passwords.js
+```
+
+**What it does:**
+- Scans all clinic records for plain text passwords
+- Converts plain text passwords to bcrypt hashes
+- Ensures consistency between password storage and authentication
+- Fixes "invalid credentials" issues after password reset
+
+**When to use:**
+- When clinic admins can't login after using forgot password feature
+- After importing clinic data with plain text passwords
+- When migrating from older system versions
+
+## Running Scripts
+
+1. Make sure MongoDB is running
+2. Navigate to the backend directory
+3. Run the desired script using Node.js
+
+**Example:**
 ```bash
 cd backend
-node scripts/fixNurseClinicIds.js check
-```
-This will show:
-- Total number of nurses
-- How many have clinic assignments
-- Which nurses are missing clinic assignments
-- Distribution of nurses across clinics
-
-#### 2. Fix Missing Clinic IDs
-```bash
-cd backend
-node scripts/fixNurseClinicIds.js fix
-```
-This will:
-- Find all nurses without `clinicId`
-- Assign them to the first active clinic found
-- Verify the fix was successful
-
-#### 3. Manual Assignment (if needed)
-If you need to assign specific nurses to specific clinics, you can modify the script or use MongoDB directly:
-
-```javascript
-// In MongoDB shell or script
-db.nurses.updateOne(
-  { _id: ObjectId("nurse_id_here") },
-  { $set: { clinicId: ObjectId("clinic_id_here") } }
-)
+node scripts/fix-clinic-passwords.js
 ```
 
-### Environment Setup
-Make sure your MongoDB connection string is set in your environment:
-```bash
-export MONGODB_URI="mongodb://localhost:27017/consultant-system"
-```
+## Important Notes
 
-Or the script will use the default: `mongodb://localhost:27017/consultant-system`
-
-### Verification
-After running the migration:
-1. Check that nurses can access appointments
-2. Verify no more "Nurse clinic information not found" errors
-3. Run the check command again to confirm all nurses have clinic assignments
-
-### Troubleshooting
-- **No active clinic found**: Create at least one active clinic before running the migration
-- **Connection errors**: Verify MongoDB is running and connection string is correct
-- **Permission errors**: Ensure the script has database write permissions
+- Always backup your database before running any scripts
+- Scripts are designed to be idempotent (safe to run multiple times)
+- Check the console output for detailed information about changes made
+- The fix-clinic-passwords.js script is particularly important for resolving authentication issues

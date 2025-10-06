@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar, Clock, User, Phone, MapPin, AlertCircle, CheckCircle, XCircle, Plus, Search, Filter, Edit, CalendarDays, Users, Activity, TrendingUp, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FileText, Calendar as CalendarIcon, RotateCcw } from 'lucide-react';
+import { Calendar, Clock, User, Phone, MapPin, AlertCircle, CheckCircle, XCircle, Plus, Search, Filter, Edit, CalendarDays, Users, TrendingUp, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FileText, Calendar as CalendarIcon, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { appointmentAPI, patientAPI, doctorAPI } from '@/services/api';
 import { format, parseISO, isToday, isTomorrow, isYesterday, addMinutes } from 'date-fns';
@@ -90,7 +90,7 @@ const AppointmentManagement = () => {
     const statusConfig = {
       'Scheduled': { color: 'bg-blue-100 text-blue-800', icon: Clock },
       'Confirmed': { color: 'bg-green-100 text-green-800', icon: CheckCircle },
-      'In Progress': { color: 'bg-yellow-100 text-yellow-800', icon: Activity },
+      'In Progress': { color: 'bg-yellow-100 text-yellow-800', icon: Clock },
       'Completed': { color: 'bg-emerald-100 text-emerald-800', icon: CheckCircle },
       'Cancelled': { color: 'bg-red-100 text-red-800', icon: XCircle },
       'No Show': { color: 'bg-gray-100 text-gray-800', icon: AlertCircle }
@@ -550,7 +550,7 @@ const AppointmentManagement = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Appointments</CardTitle>
@@ -576,51 +576,6 @@ const AppointmentManagement = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.upcomingAppointments || 0}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Completion Rate</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {(() => {
-                const totalAppointments = stats.totalAppointments || 0;
-                const statusStats = stats.statusStats || [];
-                
-                // More detailed debugging
-                console.log('=== COMPLETION RATE DEBUG ===');
-                console.log('Total appointments:', totalAppointments);
-                console.log('Status stats array:', statusStats);
-                console.log('Status stats length:', statusStats.length);
-                
-                // Check all status values in the array
-                statusStats.forEach((stat, index) => {
-                  console.log(`Status ${index}:`, {
-                    id: stat._id,
-                    count: stat.count,
-                    idType: typeof stat._id,
-                    idLength: stat._id?.length,
-                    exactMatch: stat._id === 'Completed'
-                  });
-                });
-                
-                const completedStat = statusStats.find(s => s._id === 'Completed');
-                const completedCount = completedStat?.count || 0;
-                
-                console.log('Completed stat found:', completedStat);
-                console.log('Completed count:', completedCount);
-                
-                if (totalAppointments === 0) return '0%';
-                
-                const completionRate = Math.round((completedCount / totalAppointments) * 100);
-                console.log('Final completion rate:', completionRate);
-                console.log('=== END DEBUG ===');
-                
-                return `${completionRate}%`;
-              })()}
-            </div>
           </CardContent>
         </Card>
       </div>

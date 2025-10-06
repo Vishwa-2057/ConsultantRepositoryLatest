@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
 
 mongoose.connect('mongodb://localhost:27017/healthcare-management');
 
@@ -9,6 +10,9 @@ async function createTestClinic() {
     
     // Remove existing test clinic
     await collection.deleteOne({ adminEmail: 'admin@testclinic.com' });
+    
+    // Hash the password properly
+    const hashedPassword = await bcrypt.hash('admin123', 12);
     
     // Create new test clinic with proper schema
     const testClinic = {
@@ -31,7 +35,7 @@ async function createTestClinic() {
       adminContact: '+1234567890',
       adminEmail: 'admin@testclinic.com',
       adminUsername: 'admin',
-      adminPassword: 'admin123',
+      adminPassword: hashedPassword,
       tradeLicense: 'TL123456',
       specialties: ['General Medicine', 'Emergency Care'],
       services: ['Consultation', 'Emergency', 'Laboratory'],
