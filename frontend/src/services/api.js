@@ -163,6 +163,14 @@ export const patientAPI = {
     const queryParams = new URLSearchParams(filters);
     return apiRequest(`/patients/grouped-by-specialty?${queryParams}`);
   },
+
+  // Update patient assigned doctors
+  updateAssignedDoctors: async (id, assignedDoctors) => {
+    return apiRequest(`/patients/${id}/assigned-doctors`, {
+      method: 'PATCH',
+      body: JSON.stringify({ assignedDoctors }),
+    });
+  },
 };
 
 // Appointment API functions
@@ -226,6 +234,26 @@ export const appointmentAPI = {
       method: 'PATCH',
       body: JSON.stringify({ status }),
     });
+  },
+
+  // Check for appointment conflicts
+  checkConflicts: async (doctorId, date, time, duration = 30, excludeAppointmentId = null) => {
+    const queryParams = new URLSearchParams({
+      doctorId,
+      date: date instanceof Date ? date.toISOString().split('T')[0] : date,
+      time,
+      duration: duration.toString(),
+      ...(excludeAppointmentId && { excludeAppointmentId })
+    });
+    return apiRequest(`/appointments/check-conflicts?${queryParams}`);
+  },
+
+  // Get doctor's availability for a specific date
+  getDoctorAvailability: async (doctorId, date) => {
+    const queryParams = new URLSearchParams({
+      date: date instanceof Date ? date.toISOString().split('T')[0] : date
+    });
+    return apiRequest(`/appointments/doctor-availability/${doctorId}?${queryParams}`);
   },
 };
 

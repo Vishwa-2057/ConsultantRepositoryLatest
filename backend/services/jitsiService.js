@@ -15,12 +15,10 @@ class JitsiMeetService {
    * @returns {string} Unique room name
    */
   generateRoomName(appointmentId, patientName, doctorName) {
-    const timestamp = Date.now();
-    const patientInitials = this.getInitials(patientName);
-    const doctorInitials = this.getInitials(doctorName);
-    const appointmentShort = appointmentId.slice(-6);
-    
-    return `${this.appId}-${patientInitials}${doctorInitials}-${appointmentShort}-${timestamp}`;
+    // Use a completely random room name to avoid Jitsi authentication issues
+    // Add 'dr' prefix to indicate doctor-controlled room
+    const randomId = crypto.randomBytes(12).toString('hex');
+    return `dr${randomId}`;
   }
 
   /**
@@ -68,9 +66,9 @@ class JitsiMeetService {
       // Generate meeting ID (shorter, user-friendly version)
       const meetingId = this.generateMeetingId();
       
-      // Generate passwords if required
+      // Generate passwords - always generate both to ensure they're different
       const moderatorPassword = this.generateMeetingPassword();
-      const participantPassword = requirePassword ? this.generateMeetingPassword() : null;
+      const participantPassword = this.generateMeetingPassword(); // Always generate, even if not required
       
       // Create meeting URL
       const meetingUrl = this.generateMeetingUrl(roomName, {
@@ -112,11 +110,20 @@ class JitsiMeetService {
         urls: {
           patient: this.generateParticipantUrl(roomName, patientName, 'participant', participantPassword),
           doctor: this.generateParticipantUrl(roomName, doctorName, 'moderator', moderatorPassword),
-          direct: meetingUrl
+          direct: meetingUrl,
+          // Add URLs without moderator requirement - completely open rooms
+          doctorDirect: this.generateDoctorMeetingUrl(roomName, `Dr. ${doctorName}`),
+          patientDirect: this.generatePatientMeetingUrl(roomName, patientName)
         }
       };
 
       console.log(`✅ Jitsi Meet meeting created: ${meetingId} for room: ${roomName}`);
+      console.log(`🔐 Moderator password: ${moderatorPassword}`);
+      console.log(`🔐 Participant password: ${participantPassword}`);
+      console.log(`🔗 Doctor URL: ${meeting.urls.doctor}`);
+      console.log(`🔗 Patient URL: ${meeting.urls.patient}`);
+      console.log(`🔗 Doctor Direct URL (no auth): ${meeting.urls.doctorDirect}`);
+      console.log(`🔗 Patient Direct URL (no auth): ${meeting.urls.patientDirect}`);
       return {
         success: true,
         meeting
@@ -146,6 +153,74 @@ class JitsiMeetService {
   }
 
   /**
+   * Generate doctor meeting URL with full permissions
+   * @param {string} roomName - Room name
+   * @param {string} doctorName - Doctor's display name
+   * @returns {string} Doctor meeting URL
+   */
+  generateDoctorMeetingUrl(roomName, doctorName) {
+    const baseUrl = `https://${this.domain}/${roomName}`;
+    
+    const params = new URLSearchParams();
+    params.append('displayName', doctorName);
+    params.append('startWithAudioMuted', 'false');
+    params.append('startWithVideoMuted', 'false');
+    
+    // Add a special parameter to indicate this is the doctor joining
+    params.append('userInfo', JSON.stringify({
+      displayName: doctorName,
+      email: `doctor@${this.domain}`,
+      role: 'moderator'
+    }));
+
+    return `${baseUrl}?${params.toString()}`;
+  }
+
+  /**
+   * Generate patient meeting URL with restricted permissions
+   * @param {string} roomName - Room name
+   * @param {string} patientName - Patient's display name
+   * @returns {string} Patient meeting URL
+   */
+  generatePatientMeetingUrl(roomName, patientName) {
+    const baseUrl = `https://${this.domain}/${roomName}`;
+    
+    const params = new URLSearchParams();
+    params.append('displayName', patientName);
+    params.append('startWithAudioMuted', 'true');
+    params.append('startWithVideoMuted', 'false');
+    
+    // Add patient-specific parameters
+    params.append('userInfo', JSON.stringify({
+      displayName: patientName,
+      email: `patient@${this.domain}`,
+      role: 'participant'
+    }));
+
+    return `${baseUrl}?${params.toString()}`;
+  }
+
+  /**
+   * Generate open meeting URL (no authentication required) - Legacy method
+   * @param {string} roomName - Room name
+   * @param {string} displayName - Display name
+   * @param {boolean} audioMuted - Start with audio muted
+   * @param {boolean} videoMuted - Start with video muted
+   * @returns {string} Open meeting URL
+   */
+  generateOpenMeetingUrl(roomName, displayName, audioMuted = false, videoMuted = false) {
+    // Use the provided room name (which is now random) to ensure both participants join the same room
+    const baseUrl = `https://${this.domain}/${roomName}`;
+    
+    const params = new URLSearchParams();
+    params.append('displayName', displayName);
+    params.append('startWithAudioMuted', audioMuted.toString());
+    params.append('startWithVideoMuted', videoMuted.toString());
+
+    return `${baseUrl}?${params.toString()}`;
+  }
+
+  /**
    * Generate meeting URL with parameters
    * @param {string} roomName - Room name
    * @param {Object} options - URL options
@@ -167,6 +242,19 @@ class JitsiMeetService {
     if (options.startWithVideoMuted !== undefined) {
       params.append('startWithVideoMuted', options.startWithVideoMuted);
     }
+    if (options.userInfo) {
+      params.append('userInfo', options.userInfo);
+    }
+    if (options.jwt) {
+      params.append('jwt', options.jwt);
+    }
+    if (options.config) {
+      params.append('config', options.config);
+    }
+    if (options.skipPrejoin) {
+      params.append('config.prejoinPageEnabled', 'false');
+      params.append('config.requireDisplayName', 'false');
+    }
 
     return params.toString() ? `${baseUrl}?${params.toString()}` : baseUrl;
   }
@@ -180,12 +268,138 @@ class JitsiMeetService {
    * @returns {string} Participant URL
    */
   generateParticipantUrl(roomName, participantName, role = 'participant', password = null) {
-    return this.generateMeetingUrl(roomName, {
+    const options = {
       displayName: participantName,
-      password: password,
       startWithAudioMuted: role === 'participant',
       startWithVideoMuted: false
-    });
+    };
+
+    // For moderators (doctors), add moderator parameters to bypass waiting room
+    if (role === 'moderator') {
+      options.userInfo = JSON.stringify({
+        displayName: participantName,
+        email: `doctor@${this.domain}`,
+        moderator: true
+      });
+      // Add JWT token or moderator password
+      if (password) {
+        options.jwt = this.generateModeratorJWT(roomName, participantName);
+      }
+    } else {
+      // For participants (patients), use participant password
+      if (password) {
+        options.password = password;
+      }
+    }
+
+    return this.generateMeetingUrl(roomName, options);
+  }
+
+  /**
+   * Generate role-based JWT token
+   * @param {string} roomName - Room name
+   * @param {string} userName - User's name
+   * @param {string} role - User role (moderator/participant)
+   * @returns {string} JWT token with role-based permissions
+   */
+  generateRoleBasedJWT(roomName, userName, role = 'participant') {
+    const header = {
+      alg: 'HS256',
+      typ: 'JWT'
+    };
+
+    const isModerator = role === 'moderator';
+    const payload = {
+      iss: this.appId,
+      aud: 'jitsi',
+      exp: Math.floor(Date.now() / 1000) + (4 * 60 * 60), // 4 hours
+      room: roomName,
+      context: {
+        user: {
+          name: userName,
+          email: isModerator ? `doctor@${this.domain}` : `patient@${this.domain}`,
+          moderator: isModerator,
+          avatar: '',
+          id: crypto.randomUUID()
+        },
+        features: {
+          recording: isModerator, // Only moderators can record
+          livestreaming: false,
+          'outbound-call': false,
+          transcription: isModerator,
+          'screen-sharing': isModerator // Only moderators can share screen
+        }
+      },
+      moderator: isModerator,
+      // Add specific permissions for participants
+      ...(role === 'participant' && {
+        permissions: {
+          kick: false,
+          moderator: false,
+          recording: false,
+          'screen-sharing': false,
+          'invite-others': false
+        }
+      })
+    };
+
+    // Simple base64 encoding (use proper JWT library in production)
+    const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64url');
+    const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    
+    const signature = crypto
+      .createHmac('sha256', this.secretKey)
+      .update(`${encodedHeader}.${encodedPayload}`)
+      .digest('base64url');
+
+    return `${encodedHeader}.${encodedPayload}.${signature}`;
+  }
+
+  /**
+   * Generate moderator JWT token
+   * @param {string} roomName - Room name
+   * @param {string} moderatorName - Moderator's name
+   * @returns {string} JWT token for moderator
+   */
+  generateModeratorJWT(roomName, moderatorName) {
+    const header = {
+      alg: 'HS256',
+      typ: 'JWT'
+    };
+
+    const payload = {
+      iss: this.appId,
+      aud: 'jitsi',
+      exp: Math.floor(Date.now() / 1000) + (2 * 60 * 60), // 2 hours
+      room: roomName,
+      context: {
+        user: {
+          name: moderatorName,
+          email: `doctor@${this.domain}`,
+          moderator: true,
+          avatar: '',
+          id: crypto.randomUUID()
+        },
+        features: {
+          recording: true,
+          livestreaming: false,
+          'outbound-call': false,
+          transcription: false
+        }
+      },
+      moderator: true
+    };
+
+    // Simple base64 encoding (use proper JWT library in production)
+    const encodedHeader = Buffer.from(JSON.stringify(header)).toString('base64url');
+    const encodedPayload = Buffer.from(JSON.stringify(payload)).toString('base64url');
+    
+    const signature = crypto
+      .createHmac('sha256', this.secretKey)
+      .update(`${encodedHeader}.${encodedPayload}`)
+      .digest('base64url');
+
+    return `${encodedHeader}.${encodedPayload}.${signature}`;
   }
 
   /**

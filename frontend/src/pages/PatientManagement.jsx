@@ -43,6 +43,7 @@ import { Link, useNavigate } from "react-router-dom";
 import AppointmentViewModal from '../components/AppointmentViewModal';
 import ComplianceAlertsModal from '../components/ComplianceAlertsModal';
 import VitalsHistory from '../components/VitalsHistory';
+import AssignDoctorsModal from '../components/AssignDoctorsModal';
 
 const PatientManagement = () => {
   const navigate = useNavigate();
@@ -78,6 +79,10 @@ const PatientManagement = () => {
   // Vitals state
   const [isVitalsHistoryOpen, setIsVitalsHistoryOpen] = useState(false);
   const [selectedPatientForVitals, setSelectedPatientForVitals] = useState(null);
+  
+  // Assign Doctors state
+  const [isAssignDoctorsModalOpen, setIsAssignDoctorsModalOpen] = useState(false);
+  const [selectedPatientForDoctors, setSelectedPatientForDoctors] = useState(null);
 
   const { toast } = useToast();
 
@@ -235,9 +240,6 @@ const PatientManagement = () => {
     setIsPatientModalOpen(true);
   };
 
-  const handleNewAppointment = () => {
-    setIsAppointmentModalOpen(true);
-  };
 
   const handleAppointmentSubmit = (appointmentData) => {
     // Extract patient name from populated patient data
@@ -267,21 +269,28 @@ const PatientManagement = () => {
   };
 
   const handleVitalsHistory = (patient) => {
-    // Ensure the patient object has the correct ID structure
-    const patientWithId = {
-      ...patient,
-      _id: patient._id || patient.id,
-      id: patient.id || patient._id
-    };
-    setSelectedPatientForVitals(patientWithId);
+    setSelectedPatientForVitals(patient);
     setIsVitalsHistoryOpen(true);
+  };
+
+  const handleManageDoctors = (patient) => {
+    setSelectedPatientForDoctors(patient);
+    setIsAssignDoctorsModalOpen(true);
+  };
+
+  const handleDoctorAssignmentUpdate = (updatedPatient) => {
+    // Update the patient in the local state
+    setPatients(prevPatients => 
+      prevPatients.map(p => 
+        p._id === updatedPatient._id ? updatedPatient : p
+      )
+    );
   };
 
   const handleVitalsHistoryClose = () => {
     setIsVitalsHistoryOpen(false);
     setSelectedPatientForVitals(null);
   };
-
   // Handle solving compliance alert
   const handleSolveAlert = async (alertId) => {
     setSolvingAlerts(prev => new Set([...prev, alertId]));
@@ -376,16 +385,9 @@ const PatientManagement = () => {
           </p>
         </div>
         <div className="flex gap-3">
-          <Button 
-            className="gradient-button" 
-            onClick={handleNewAppointment}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            New Appointment
-          </Button>
           {isClinic() && (
             <Button 
-              className="gradient-button-secondary" 
+              className="gradient-button" 
               onClick={handleNewPatient}
             >
               <Plus className="w-4 h-4 mr-2" />
@@ -507,6 +509,20 @@ const PatientManagement = () => {
                               >
                                 <Stethoscope className="w-4 h-4" />
                               </Button>
+                              {isClinic() && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleManageDoctors(patient);
+                                  }}
+                                  title="Manage Assigned Doctors"
+                                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                >
+                                  <UserCheck className="w-4 h-4" />
+                                </Button>
+                              )}
                               <Button 
                                 variant="outline" 
                                 size="sm"
@@ -938,6 +954,20 @@ const PatientManagement = () => {
                       <Stethoscope className="w-4 h-4 mr-1" />
                       Vitals
                     </Button>
+                    {isClinic() && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="flex-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleManageDoctors(patient);
+                        }}
+                      >
+                        <UserCheck className="w-4 h-4 mr-1" />
+                        Doctors
+                      </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -1169,6 +1199,14 @@ const PatientManagement = () => {
         isOpen={isVitalsHistoryOpen}
         onClose={handleVitalsHistoryClose}
         patient={selectedPatientForVitals}
+      />
+
+      {/* Assign Doctors Modal */}
+      <AssignDoctorsModal
+        isOpen={isAssignDoctorsModalOpen}
+        onClose={() => setIsAssignDoctorsModalOpen(false)}
+        patient={selectedPatientForDoctors}
+        onUpdate={handleDoctorAssignmentUpdate}
       />
     </div>
   );

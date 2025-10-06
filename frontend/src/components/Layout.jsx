@@ -1,6 +1,5 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar.jsx";
 import { ConsultantSidebar } from "./ConsultantSidebar.jsx";
-import { TranslateDropdown } from "./TranslateDropdown.jsx";
 import { LogOut, Moon, Sun, User } from "lucide-react";
 import { Button } from "@/components/ui/button.jsx";
 import { Input } from "@/components/ui/input.jsx";
@@ -141,7 +140,6 @@ export function Layout({ children }) {
             <div className="flex items-center gap-3">
               {!hideActions && (
                 <>
-                  <TranslateDropdown />
                   <Button variant="ghost" size="icon" onClick={toggleDarkMode}>
                     {isDarkMode ? (
                       <Sun className="w-5 h-5" />

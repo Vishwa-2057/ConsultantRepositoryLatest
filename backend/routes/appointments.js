@@ -14,12 +14,70 @@ const ActivityLogger = require('../utils/activityLogger');
 const validateAppointment = [
   body('patientId').isMongoId().withMessage('Valid patient ID is required'),
   body('doctorId').isMongoId().withMessage('Valid doctor ID is required'),
-  body('appointmentType').isIn(['General Consultation', 'Follow-up Visit', 'Annual Checkup', 'Specialist Consultation', 'Emergency Visit', 'Lab Work', 'Imaging', 'Vaccination', 'Physical Therapy', 'Mental Health']).withMessage('Valid appointment type is required'),
+  body('appointmentType').isIn(['General Consultation', 'Follow-up Visit', 'Annual Checkup', 'Specialist Consultation', 'Emergency Visit', 'Lab Work', 'Imaging', 'Vaccination', 'Physical Therapy', 'Mental Health', 'Teleconsultation']).withMessage('Valid appointment type is required'),
   body('date').isISO8601().withMessage('Valid appointment date is required'),
   body('time').trim().isLength({ min: 1 }).withMessage('Appointment time is required'),
   body('duration').optional().isInt({ min: 15, max: 240 }).withMessage('Duration must be between 15 and 240 minutes'),
   body('priority').optional().isIn(['low', 'normal', 'high', 'urgent']).withMessage('Valid priority level is required')
 ];
+
+// GET /api/appointments/check-conflicts - Check for appointment conflicts
+router.get('/check-conflicts', auth, async (req, res) => {
+  try {
+    const { doctorId, date, time, duration = 30, excludeAppointmentId } = req.query;
+    
+    if (!doctorId || !date || !time) {
+      return res.status(400).json({ 
+        error: 'Doctor ID, date, and time are required' 
+      });
+    }
+
+    const appointmentDate = new Date(date);
+    const conflicts = await Appointment.checkForConflicts(
+      doctorId,
+      appointmentDate,
+      time,
+      parseInt(duration),
+      excludeAppointmentId
+    );
+
+    res.json({
+      hasConflicts: conflicts.length > 0,
+      conflicts: conflicts,
+      message: conflicts.length > 0 
+        ? `Found ${conflicts.length} conflicting appointment(s)` 
+        : 'No conflicts found'
+    });
+  } catch (error) {
+    console.error('Error checking conflicts:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/appointments/doctor-availability/:doctorId - Get doctor's availability for a specific date
+router.get('/doctor-availability/:doctorId', auth, async (req, res) => {
+  try {
+    const { doctorId } = req.params;
+    const { date } = req.query;
+    
+    if (!date) {
+      return res.status(400).json({ error: 'Date is required' });
+    }
+
+    const appointmentDate = new Date(date);
+    const bookedSlots = await Appointment.getDoctorAvailability(doctorId, appointmentDate);
+
+    res.json({
+      date: appointmentDate,
+      doctorId: doctorId,
+      bookedSlots: bookedSlots,
+      totalAppointments: bookedSlots.length
+    });
+  } catch (error) {
+    console.error('Error getting doctor availability:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 // GET /api/appointments - Get all appointments with filtering and pagination
 router.get('/', auth, async (req, res) => {
@@ -30,6 +88,7 @@ router.get('/', auth, async (req, res) => {
       status = '',
       date = '',
       patientId = '',
+      doctorId = '',
       provider = '',
       appointmentType = '',
       sortBy = 'date',
@@ -63,6 +122,10 @@ router.get('/', auth, async (req, res) => {
       query.patientId = patientId;
     }
     
+    if (doctorId) {
+      query.doctorId = doctorId;
+    }
+    
     if (provider) {
       query.provider = { $regex: provider, $options: 'i' };
     }
@@ -75,7 +138,8 @@ router.get('/', auth, async (req, res) => {
     let total;
 
     // Role-based filtering: doctors only see appointments for patients assigned to them
-    if (req.user.role === 'doctor') {
+    // UNLESS doctorId filter is explicitly provided (then filter by conducting doctor)
+    if (req.user.role === 'doctor' && !doctorId) {
       // Use aggregation to filter appointments based on patient's assignedDoctors array
       const pipeline = [
         { $match: query },
@@ -151,7 +215,20 @@ router.get('/', auth, async (req, res) => {
 
       const countResult = await Appointment.aggregate(countPipeline);
       total = countResult.length > 0 ? countResult[0].total : 0;
-    } else if (['nurse', 'head_nurse', 'supervisor'].includes(req.user.role)) {
+    } else {
+      // For all other cases (including when doctorId filter is provided), use simple filtering
+      appointments = await Appointment.find(query)
+        .populate('patientId', 'fullName phone email')
+        .populate('doctorId', 'fullName specialty phone')
+        .sort(sort)
+        .skip((page - 1) * limit)
+        .limit(parseInt(limit));
+
+      total = await Appointment.countDocuments(query);
+    }
+
+    // Handle nursing staff separately if needed
+    if (['nurse', 'head_nurse', 'supervisor'].includes(req.user.role) && !doctorId) {
       // Nursing staff see appointments for their clinic
       const Nurse = require('../models/Nurse');
       const nurse = await Nurse.findById(req.user.id);
@@ -264,21 +341,54 @@ router.post('/', auth, validateAppointment, async (req, res) => {
       return res.status(404).json({ error: 'Doctor not found' });
     }
 
-    // Check for scheduling conflicts
+    // Check for scheduling conflicts using enhanced conflict detection
     const appointmentDate = new Date(req.body.date);
     const appointmentTime = req.body.time;
+    const duration = req.body.duration || 30;
     
-    const conflictingAppointment = await Appointment.findOne({
-      date: appointmentDate,
-      time: appointmentTime,
-      doctorId: req.body.doctorId,
-      status: { $in: ['Scheduled', 'Confirmed'] }
-    });
+    const conflicts = await Appointment.checkForConflicts(
+      req.body.doctorId,
+      appointmentDate,
+      appointmentTime,
+      duration
+    );
 
-    if (conflictingAppointment) {
+    if (conflicts.length > 0) {
+      const conflictDetails = conflicts.map(conflict => 
+        `${conflict.time} - ${conflict.patientName} (${conflict.appointmentType}, ${conflict.duration} min)`
+      ).join(', ');
+      
       return res.status(400).json({ 
-        error: 'Time slot is already booked for this doctor' 
+        error: 'Time slot conflicts with existing appointment(s)',
+        conflicts: conflicts,
+        message: `Doctor is already booked during this time. Conflicting appointments: ${conflictDetails}`
       });
+    }
+
+    // Determine clinic ID based on user role
+    let clinicId;
+    if (req.user.role === 'clinic') {
+      clinicId = req.user.id;
+    } else if (req.user.role === 'doctor') {
+      // For doctors, get clinic ID from their doctor record
+      clinicId = doctor.clinicId;
+      if (!clinicId) {
+        return res.status(400).json({ error: 'Doctor clinic association not found' });
+      }
+    } else if (['nurse', 'head_nurse', 'supervisor'].includes(req.user.role)) {
+      // For nursing staff, get clinic ID from their nurse record
+      const nurse = await Nurse.findById(req.user.id);
+      if (!nurse || !nurse.clinicId) {
+        return res.status(400).json({ error: 'Nurse clinic association not found' });
+      }
+      clinicId = nurse.clinicId;
+    } else {
+      // For other roles, use provided clinicId or default
+      clinicId = req.body.clinicId;
+    }
+
+    if (!clinicId) {
+      return res.status(400).json({ error: 'Clinic ID is required' });
     }
 
     // Create new appointment with patient ID and name, doctor as provider, and clinic reference
@@ -287,7 +397,7 @@ router.post('/', auth, validateAppointment, async (req, res) => {
       patientId: patient._id,
       patientName: patient.fullName,
       provider: `Dr. ${doctor.fullName}`,
-      clinicId: req.user && req.user.role === 'clinic' ? req.user.id : req.body.clinicId
+      clinicId: clinicId
     };
     
     const appointment = new Appointment(appointmentData);
@@ -391,23 +501,30 @@ router.put('/:id', auth, validateAppointment, async (req, res) => {
       return res.status(404).json({ error: 'Appointment not found' });
     }
 
-    // Check for scheduling conflicts if date/time is being changed
-    if (req.body.date || req.body.time || req.body.provider) {
-      const appointmentDate = req.body.date || appointment.date;
+    // Check for scheduling conflicts if date/time/doctor is being changed
+    if (req.body.date || req.body.time || req.body.doctorId || req.body.duration) {
+      const appointmentDate = new Date(req.body.date || appointment.date);
       const appointmentTime = req.body.time || appointment.time;
-      const provider = req.body.provider || appointment.provider;
+      const doctorId = req.body.doctorId || appointment.doctorId;
+      const duration = req.body.duration || appointment.duration;
       
-      const conflictingAppointment = await Appointment.findOne({
-        date: appointmentDate,
-        time: appointmentTime,
-        provider: provider,
-        status: { $in: ['Scheduled', 'Confirmed'] },
-        _id: { $ne: req.params.id }
-      });
+      const conflicts = await Appointment.checkForConflicts(
+        doctorId,
+        appointmentDate,
+        appointmentTime,
+        duration,
+        req.params.id // Exclude current appointment from conflict check
+      );
 
-      if (conflictingAppointment) {
+      if (conflicts.length > 0) {
+        const conflictDetails = conflicts.map(conflict => 
+          `${conflict.time} - ${conflict.patientName} (${conflict.appointmentType}, ${conflict.duration} min)`
+        ).join(', ');
+        
         return res.status(400).json({ 
-          error: 'Time slot is already booked for this provider' 
+          error: 'Time slot conflicts with existing appointment(s)',
+          conflicts: conflicts,
+          message: `Doctor is already booked during this time. Conflicting appointments: ${conflictDetails}`
         });
       }
     }
@@ -818,239 +935,56 @@ router.get('/stats/summary', auth, async (req, res) => {
     const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
     
-    let totalAppointments, todayAppointments, upcomingAppointments, statusStats, typeStats;
-
+    // Build base query for filtering
+    let baseQuery = {};
+    
+    // For doctors, filter by doctorId
     if (req.user.role === 'doctor') {
-      // For doctors, use aggregation to filter by patient's assignedDoctors array
-      const doctorObjectId = new mongoose.Types.ObjectId(req.user.id);
-      
-      // Total appointments for assigned patients
-      const totalPipeline = [
-        {
-          $lookup: {
-            from: 'patients',
-            localField: 'patientId',
-            foreignField: '_id',
-            as: 'patient'
-          }
-        },
-        {
-          $match: {
-            'patient.assignedDoctors': doctorObjectId
-          }
-        },
-        { $count: 'total' }
-      ];
-      
-      const totalResult = await Appointment.aggregate(totalPipeline);
-      totalAppointments = totalResult.length > 0 ? totalResult[0].total : 0;
-
-      // Today's appointments for assigned patients
-      const todayPipeline = [
-        {
-          $match: {
-            date: { $gte: startOfDay, $lt: endOfDay }
-          }
-        },
-        {
-          $lookup: {
-            from: 'patients',
-            localField: 'patientId',
-            foreignField: '_id',
-            as: 'patient'
-          }
-        },
-        {
-          $match: {
-            'patient.assignedDoctors': doctorObjectId
-          }
-        },
-        { $count: 'total' }
-      ];
-      
-      const todayResult = await Appointment.aggregate(todayPipeline);
-      todayAppointments = todayResult.length > 0 ? todayResult[0].total : 0;
-
-      // Upcoming appointments for assigned patients
-      const upcomingPipeline = [
-        {
-          $match: {
-            date: { $gte: new Date() },
-            status: { $in: ['Scheduled', 'Confirmed'] }
-          }
-        },
-        {
-          $lookup: {
-            from: 'patients',
-            localField: 'patientId',
-            foreignField: '_id',
-            as: 'patient'
-          }
-        },
-        {
-          $match: {
-            'patient.assignedDoctors': doctorObjectId
-          }
-        },
-        { $count: 'total' }
-      ];
-      
-      const upcomingResult = await Appointment.aggregate(upcomingPipeline);
-      upcomingAppointments = upcomingResult.length > 0 ? upcomingResult[0].total : 0;
-
-      // Status stats for assigned patients
-      statusStats = await Appointment.aggregate([
-        {
-          $lookup: {
-            from: 'patients',
-            localField: 'patientId',
-            foreignField: '_id',
-            as: 'patient'
-          }
-        },
-        {
-          $match: {
-            'patient.assignedDoctors': doctorObjectId
-          }
-        },
-        {
-          $group: {
-            _id: '$status',
-            count: { $sum: 1 }
-          }
-        }
-      ]);
-      
-      console.log('Doctor statusStats aggregation result:', statusStats);
-
-      // Type stats for assigned patients
-      typeStats = await Appointment.aggregate([
-        {
-          $lookup: {
-            from: 'patients',
-            localField: 'patientId',
-            foreignField: '_id',
-            as: 'patient'
-          }
-        },
-        {
-          $match: {
-            'patient.assignedDoctors': doctorObjectId
-          }
-        },
-        {
-          $group: {
-            _id: '$appointmentType',
-            count: { $sum: 1 }
-          }
-        }
-      ]);
-    } else if (req.user.role === 'clinic') {
-      // Clinic admins see only their clinic's appointments
-      const clinicQuery = { clinicId: req.user.id };
-      
-      totalAppointments = await Appointment.countDocuments(clinicQuery);
-      todayAppointments = await Appointment.countDocuments({
-        ...clinicQuery,
-        date: { $gte: startOfDay, $lt: endOfDay }
-      });
-      upcomingAppointments = await Appointment.countDocuments({
-        ...clinicQuery,
-        date: { $gte: new Date() },
-        status: { $in: ['Scheduled', 'Confirmed'] }
-      });
-      
-      statusStats = await Appointment.aggregate([
-        { $match: clinicQuery },
-        {
-          $group: {
-            _id: '$status',
-            count: { $sum: 1 }
-          }
-        }
-      ]);
-      
-      console.log('Clinic statusStats aggregation result:', statusStats);
-
-      typeStats = await Appointment.aggregate([
-        { $match: clinicQuery },
-        {
-          $group: {
-            _id: '$appointmentType',
-            count: { $sum: 1 }
-          }
-        }
-      ]);
-    } else if (['nurse', 'head_nurse', 'supervisor'].includes(req.user.role)) {
-      // Nursing staff see appointments for their clinic
-      const Nurse = require('../models/Nurse');
-      const nurse = await Nurse.findById(req.user.id);
-      
-      if (!nurse || !nurse.clinicId) {
-        return res.status(403).json({ error: 'Access denied. Nurse clinic information not found.' });
-      }
-      
-      const clinicQuery = { clinicId: nurse.clinicId };
-      
-      totalAppointments = await Appointment.countDocuments(clinicQuery);
-      todayAppointments = await Appointment.countDocuments({
-        ...clinicQuery,
-        date: { $gte: startOfDay, $lt: endOfDay }
-      });
-      upcomingAppointments = await Appointment.countDocuments({
-        ...clinicQuery,
-        date: { $gte: new Date() },
-        status: { $in: ['Scheduled', 'Confirmed'] }
-      });
-      
-      statusStats = await Appointment.aggregate([
-        { $match: clinicQuery },
-        {
-          $group: {
-            _id: '$status',
-            count: { $sum: 1 }
-          }
-        }
-      ]);
-
-      typeStats = await Appointment.aggregate([
-        { $match: clinicQuery },
-        {
-          $group: {
-            _id: '$appointmentType',
-            count: { $sum: 1 }
-          }
-        }
-      ]);
-    } else {
-      // Super admin sees all appointments
-      totalAppointments = await Appointment.countDocuments({});
-      todayAppointments = await Appointment.countDocuments({
-        date: { $gte: startOfDay, $lt: endOfDay }
-      });
-      upcomingAppointments = await Appointment.countDocuments({
-        date: { $gte: new Date() },
-        status: { $in: ['Scheduled', 'Confirmed'] }
-      });
-      
-      statusStats = await Appointment.aggregate([
-        {
-          $group: {
-            _id: '$status',
-            count: { $sum: 1 }
-          }
-        }
-      ]);
-
-      typeStats = await Appointment.aggregate([
-        {
-          $group: {
-            _id: '$appointmentType',
-            count: { $sum: 1 }
-          }
-        }
-      ]);
+      baseQuery.doctorId = req.user.id;
     }
+    
+    // For clinic admins, filter by clinicId
+    if (req.user.role === 'clinic') {
+      baseQuery.clinicId = req.user.id;
+    }
+    
+    // Get total appointments
+    const totalAppointments = await Appointment.countDocuments(baseQuery);
+    
+    // Get today's appointments
+    const todayAppointments = await Appointment.countDocuments({
+      ...baseQuery,
+      date: { $gte: startOfDay, $lt: endOfDay }
+    });
+    
+    // Get upcoming appointments
+    const upcomingAppointments = await Appointment.countDocuments({
+      ...baseQuery,
+      date: { $gte: new Date() },
+      status: { $in: ['Scheduled', 'Confirmed'] }
+    });
+    
+    // Get status statistics
+    const statusStats = await Appointment.aggregate([
+      { $match: baseQuery },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+    
+    // Get type statistics
+    const typeStats = await Appointment.aggregate([
+      { $match: baseQuery },
+      {
+        $group: {
+          _id: '$appointmentType',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
 
     console.log('Appointment stats response:', {
       totalAppointments,

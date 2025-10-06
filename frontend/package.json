@@ -66,8 +66,12 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@babel/preset-react": "^7.27.1",
     "@eslint/js": "^9.32.0",
+    "@locator/babel-jsx": "^0.4.4",
+    "@locator/runtime": "^0.4.4",
     "@tailwindcss/typography": "^0.5.16",
+    "@vitejs/plugin-react": "^5.0.4",
     "@vitejs/plugin-react-swc": "^3.11.0",
     "autoprefixer": "^10.4.21",
     "eslint": "^9.32.0",

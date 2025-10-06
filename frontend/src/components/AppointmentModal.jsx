@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Calendar, Clock, User, Phone, Mail, MapPin, Stethoscope, X } from "lucide-react";
 import { appointmentAPI, patientAPI, doctorAPI } from "@/services/api";
+import { getCurrentUser, isDoctor } from "@/utils/roleUtils";
 
 const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
   const [formData, setFormData] = useState({
@@ -33,6 +34,21 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
   const [doctors, setDoctors] = useState([]);
   const [loadingPatients, setLoadingPatients] = useState(false);
   const [loadingDoctors, setLoadingDoctors] = useState(false);
+  
+  // Get current user info
+  const currentUser = getCurrentUser();
+  const isDoctorUser = currentUser?.role === 'doctor';
+  
+  // Additional debug - check localStorage directly
+  const rawAuthUser = localStorage.getItem('authUser');
+  console.log('Raw authUser from localStorage:', rawAuthUser);
+  
+  // Debug logging
+  console.log('Current user:', currentUser);
+  console.log('Is doctor user:', isDoctorUser);
+  console.log('User role:', currentUser?.role);
+  console.log('Role check result:', currentUser?.role === 'doctor');
+  console.log('Type of role:', typeof currentUser?.role);
 
   // Load patients and doctors when modal opens
   useEffect(() => {
@@ -62,6 +78,37 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
       const response = await doctorAPI.getAll(1, 100); // Get up to 100 doctors
       const list = response.doctors || response.data || [];
       setDoctors(list);
+      
+      // Auto-select current doctor if user is a doctor
+      if ((isDoctorUser || currentUser?.role === 'doctor') && currentUser) {
+        // Try both id and _id fields
+        const userId = currentUser.id || currentUser._id;
+        console.log('Attempting to auto-select doctor. Current user ID:', userId);
+        console.log('Current user object keys:', Object.keys(currentUser));
+        console.log('Available doctors:', list.map(d => ({ id: d._id, name: d.fullName })));
+        
+        const currentDoctorInList = list.find(doctor => doctor._id === userId);
+        console.log('Found current doctor in list:', currentDoctorInList);
+        
+        if (currentDoctorInList) {
+          console.log('Auto-selecting doctor:', userId);
+          setFormData(prev => ({ ...prev, doctorId: userId }));
+        } else {
+          console.log('Current doctor not found in list. Trying alternative matching...');
+          // Try to find by other fields if direct ID match fails
+          const altMatch = list.find(doctor => 
+            doctor.email === currentUser.email || 
+            doctor.fullName === currentUser.fullName ||
+            doctor.fullName === currentUser.name
+          );
+          if (altMatch) {
+            console.log('Found doctor by alternative matching:', altMatch);
+            setFormData(prev => ({ ...prev, doctorId: altMatch._id }));
+          }
+        }
+      } else {
+        console.log('Not auto-selecting doctor. isDoctorUser:', isDoctorUser, 'currentUser exists:', !!currentUser);
+      }
     } catch (error) {
       console.error('Failed to load doctors:', error);
       setDoctors([]);
@@ -113,7 +160,8 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
     if (!formData.patientId) {
       newErrors.patientId = "Please select a patient";
     }
-    if (!formData.doctorId) {
+    // Only require doctor selection if user is not a doctor (doctors are auto-selected)
+    if (!formData.doctorId && !isDoctorUser && currentUser?.role !== 'doctor') {
       newErrors.doctorId = "Please select a doctor";
     }
     if (!formData.appointmentType) {
@@ -163,9 +211,11 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
   };
 
   const handleClose = () => {
+    const userId = currentUser?.id || currentUser?._id;
+    const isDoctor = isDoctorUser || currentUser?.role === 'doctor';
     setFormData({
       patientId: "",
-      doctorId: "",
+      doctorId: isDoctor && userId ? userId : "", // Preserve doctor selection for doctors
       appointmentType: "",
       date: "",
       time: "",
@@ -201,7 +251,9 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
               Patient Selection
             </h3>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className={`grid gap-4 ${(isDoctorUser || currentUser?.role === 'doctor') ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'}`}>
+              {/* Debug info */}
+              {console.log('Rendering form. isDoctorUser:', isDoctorUser, 'currentUser:', currentUser)}
               <div className="space-y-2">
                 <Label htmlFor="patientId">Select Patient *</Label>
                 <Select value={formData.patientId} onValueChange={(value) => handleInputChange("patientId", value)}>
@@ -226,29 +278,54 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
                 )}
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="doctorId">Select Doctor *</Label>
-                <Select value={formData.doctorId} onValueChange={(value) => handleInputChange("doctorId", value)}>
-                  <SelectTrigger className={errors.doctorId ? "border-red-500" : ""}>
-                    <SelectValue placeholder={loadingDoctors ? "Loading doctors..." : "Choose a doctor"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {doctors.map((doctor) => (
-                      <SelectItem key={doctor._id} value={doctor._id}>
-                        <div className="flex flex-col">
-                          <span className="font-medium">Dr. {doctor.fullName}</span>
-                          <span className="text-sm text-muted-foreground">
-                            {doctor.specialty} • {doctor.phone}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.doctorId && (
-                  <p className="text-sm text-red-600">{errors.doctorId}</p>
-                )}
-              </div>
+              {/* Only show doctor selection for non-doctor users */}
+              {console.log('Conditional check: !isDoctorUser =', !isDoctorUser, 'currentUser.role =', currentUser?.role)}
+              {console.log('Should hide doctor dropdown:', isDoctorUser || currentUser?.role === 'doctor')}
+              {false && (  /* Temporarily force hide for testing */
+                <div className="space-y-2">
+                  <Label htmlFor="doctorId">Select Doctor *</Label>
+                  <Select value={formData.doctorId} onValueChange={(value) => handleInputChange("doctorId", value)}>
+                    <SelectTrigger className={errors.doctorId ? "border-red-500" : ""}>
+                      <SelectValue placeholder={loadingDoctors ? "Loading doctors..." : "Choose a doctor"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {doctors.map((doctor) => (
+                        <SelectItem key={doctor._id} value={doctor._id}>
+                          <div className="flex flex-col">
+                            <span className="font-medium">Dr. {doctor.fullName}</span>
+                            <span className="text-sm text-muted-foreground">
+                              {doctor.specialty} • {doctor.phone}
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {errors.doctorId && (
+                    <p className="text-sm text-red-600">{errors.doctorId}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Show selected doctor info for doctors */}
+              {true && (  /* Temporarily force show for testing */
+                <div className="space-y-2">
+                  <Label>Assigned Doctor</Label>
+                  <div className="p-3 bg-teal-50 border border-teal-200 rounded-md">
+                    <div className="flex items-center gap-2">
+                      <Stethoscope className="w-4 h-4 text-teal-600" />
+                      <div>
+                        <p className="font-medium text-teal-900">
+                          Dr. {doctors.find(d => d._id === formData.doctorId)?.fullName || 'Loading...'}
+                        </p>
+                        <p className="text-sm text-teal-700">
+                          {doctors.find(d => d._id === formData.doctorId)?.specialty || ''}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

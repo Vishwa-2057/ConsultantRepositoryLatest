@@ -97,7 +97,7 @@ const Teleconsultation = () => {
       status: teleconsultation.status,
       mode: "Video",
       meetingId: teleconsultation.meetingId,
-      meetingUrl: teleconsultation.meetingUrl,
+      meetingUrl: teleconsultation.doctorMeetingUrl || teleconsultation.meetingUrl,
       priority: "normal"
     };
   };
@@ -168,8 +168,10 @@ const Teleconsultation = () => {
   const loadUpcomingTeleconsultations = async () => {
     try {
       setTeleconsultationLoading(true);
+      // Include both Scheduled and Started teleconsultations in upcoming list
+      // Started teleconsultations should remain visible until explicitly completed
       const response = await teleconsultationAPI.getAll(1, 20, { 
-        status: 'Scheduled',
+        status: 'Scheduled,Started,In Progress',
         sortBy: 'scheduledDate',
         sortOrder: 'asc'
       });
@@ -269,18 +271,51 @@ const Teleconsultation = () => {
 
   const handleJoinTeleconsultation = async (teleconsultation) => {
     try {
+      // Debug: Log the teleconsultation object to see what data we have
+      console.log('Teleconsultation object:', teleconsultation);
+      console.log('Doctor meeting URL:', teleconsultation.doctorMeetingUrl);
+      console.log('Jitsi config:', teleconsultation.jitsiConfig);
+      console.log('Meeting URL:', teleconsultation.meetingUrl);
+      console.log('Moderator password from jitsiConfig:', teleconsultation.jitsiConfig?.moderatorPassword);
+      console.log('Participant password from jitsiConfig:', teleconsultation.jitsiConfig?.participantPassword);
+      
       // Start the teleconsultation
       await teleconsultationAPI.start(teleconsultation._id);
       
       // Join the teleconsultation for tracking
       await teleconsultationAPI.join(teleconsultation._id, 'Doctor');
       
-      // Open Jitsi Meet in a new window
-      const meetingUrl = teleconsultation.meetingUrl || teleconsultation.jitsiConfig?.roomName 
-        ? `https://meet.jit.si/${teleconsultation.jitsiConfig.roomName}` 
-        : null;
+      // Open Jitsi Meet in a new window with role-specific URL
+      let meetingUrl;
+      
+      // Priority 1: Use direct doctor URL (no moderator waiting required)
+      if (teleconsultation.doctorDirectUrl) {
+        meetingUrl = teleconsultation.doctorDirectUrl;
+        console.log('Using direct doctor URL (no moderator waiting):', meetingUrl);
+      }
+      // Priority 2: Use stored doctor URL 
+      else if (teleconsultation.doctorMeetingUrl) {
+        meetingUrl = teleconsultation.doctorMeetingUrl;
+        console.log('Using stored doctor meeting URL:', meetingUrl);
+      }
+      // Priority 3: Construct URL from jitsiConfig (fallback - no password for moderator access)
+      else if (teleconsultation.jitsiConfig?.roomName) {
+        const roomName = teleconsultation.jitsiConfig.roomName;
+        const doctorName = teleconsultation.doctorName || 'Doctor';
+        
+        console.log('Jitsi Config found, constructing password-free URL for moderator access');
+        // Use room without password - first person becomes moderator
+        meetingUrl = `https://meet.jit.si/${roomName}?displayName=${encodeURIComponent(doctorName)}&startWithAudioMuted=false&startWithVideoMuted=false`;
+        console.log('Constructed password-free moderator URL:', meetingUrl);
+      }
+      // Priority 4: Use general meeting URL
+      else if (teleconsultation.meetingUrl) {
+        meetingUrl = teleconsultation.meetingUrl;
+        console.log('Using general meeting URL (may require waiting for moderator):', meetingUrl);
+      }
       
       if (meetingUrl) {
+        console.log('Opening doctor meeting URL:', meetingUrl);
         window.open(meetingUrl, '_blank', 'width=1200,height=800');
         
         toast({
@@ -460,6 +495,37 @@ const Teleconsultation = () => {
                                 >
                                   <Video className="w-4 h-4 mr-1" />
                                   Join Meeting
+                                </Button>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => {
+                                    let url;
+                                    
+                                    // Use same logic as join meeting
+                                    if (teleconsultation.doctorMeetingUrl) {
+                                      url = teleconsultation.doctorMeetingUrl;
+                                    } else if (teleconsultation.jitsiConfig?.roomName && teleconsultation.jitsiConfig?.moderatorPassword) {
+                                      const roomName = teleconsultation.jitsiConfig.roomName;
+                                      const moderatorPassword = teleconsultation.jitsiConfig.moderatorPassword;
+                                      const doctorName = teleconsultation.doctorName || 'Doctor';
+                                      url = `https://meet.jit.si/${roomName}?password=${moderatorPassword}&displayName=${encodeURIComponent(doctorName)}&startWithAudioMuted=false&startWithVideoMuted=false`;
+                                    } else {
+                                      url = teleconsultation.meetingUrl;
+                                    }
+                                    
+                                    if (url) {
+                                      navigator.clipboard.writeText(url);
+                                      toast({
+                                        title: "Meeting URL Copied",
+                                        description: "Doctor meeting URL copied to clipboard",
+                                      });
+                                    }
+                                  }}
+                                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                >
+                                  <Share className="w-4 h-4 mr-1" />
+                                  Copy URL
                                 </Button>
                                 <Button 
                                   variant="outline" 

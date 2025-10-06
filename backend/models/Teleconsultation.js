@@ -51,6 +51,22 @@ const teleconsultationSchema = new mongoose.Schema({
     required: [true, 'Meeting URL is required'],
     trim: true
   },
+  doctorMeetingUrl: {
+    type: String,
+    trim: true
+  },
+  patientMeetingUrl: {
+    type: String,
+    trim: true
+  },
+  doctorDirectUrl: {
+    type: String,
+    trim: true
+  },
+  patientDirectUrl: {
+    type: String,
+    trim: true
+  },
   meetingPassword: {
     type: String,
     trim: true
@@ -292,12 +308,21 @@ teleconsultationSchema.virtual('durationFormatted').get(function() {
 
 // Virtual for scheduled date and time
 teleconsultationSchema.virtual('scheduledDateTime').get(function() {
-  return new Date(`${this.scheduledDate.toISOString().split('T')[0]}T${this.scheduledTime}`);
+  if (!this.scheduledDate || !this.scheduledTime) {
+    return null;
+  }
+  try {
+    return new Date(`${this.scheduledDate.toISOString().split('T')[0]}T${this.scheduledTime}`);
+  } catch (error) {
+    console.error('Error creating scheduledDateTime virtual:', error);
+    return null;
+  }
 });
 
 // Virtual for is upcoming
 teleconsultationSchema.virtual('isUpcoming').get(function() {
-  return this.scheduledDateTime > new Date() && this.status === 'Scheduled';
+  const scheduledDateTime = this.scheduledDateTime;
+  return scheduledDateTime && scheduledDateTime > new Date() && this.status === 'Scheduled';
 });
 
 // Virtual for is active

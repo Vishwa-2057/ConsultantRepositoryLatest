@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
+import reactBabel from "@vitejs/plugin-react";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 
@@ -8,8 +9,12 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8000,
+    hmr: {
+      overlay: false
+    }
   },
   plugins: [
+    // Temporarily use SWC for both dev and prod to avoid Babel issues
     react(),
     mode === 'development' &&
     componentTagger(),

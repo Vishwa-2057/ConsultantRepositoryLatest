@@ -1,4 +1,5 @@
 const ActivityLog = require('../models/ActivityLog');
+const mongoose = require('mongoose');
 
 /**
  * Utility class for logging user activities
@@ -66,11 +67,11 @@ class ActivityLogger {
 
       // Create activity log entry
       const activityData = {
-        userId,
+        userId: new mongoose.Types.ObjectId(userId),
         userName,
         userEmail,
         userRole,
-        clinicId,
+        clinicId: new mongoose.Types.ObjectId(clinicId),
         clinicName,
         activityType,
         timestamp: new Date(),
@@ -79,13 +80,22 @@ class ActivityLogger {
         userAgent,
         deviceInfo,
         duration,
-        notes,
-        // Include any additional fields passed in options (for appointment logging)
-        ...options
+        notes
       };
 
-      // Remove duplicate fields that were already extracted
-      delete activityData.req;
+      // Add appointment-specific fields if they exist in options
+      if (options.appointmentId) activityData.appointmentId = new mongoose.Types.ObjectId(options.appointmentId);
+      if (options.patientId) activityData.patientId = new mongoose.Types.ObjectId(options.patientId);
+      if (options.patientName) activityData.patientName = options.patientName;
+      if (options.doctorId) activityData.doctorId = new mongoose.Types.ObjectId(options.doctorId);
+      if (options.doctorName) activityData.doctorName = options.doctorName;
+      if (options.appointmentType) activityData.appointmentType = options.appointmentType;
+      if (options.appointmentDate) activityData.appointmentDate = options.appointmentDate;
+      if (options.appointmentTime) activityData.appointmentTime = options.appointmentTime;
+      if (options.oldStatus) activityData.oldStatus = options.oldStatus;
+      if (options.newStatus) activityData.newStatus = options.newStatus;
+
+      // Don't include the req object or any other complex objects
 
       // Save to database
       const log = await ActivityLog.logActivity(activityData);

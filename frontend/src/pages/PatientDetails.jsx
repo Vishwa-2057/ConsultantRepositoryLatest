@@ -636,86 +636,61 @@ const PatientDetails = () => {
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                 </div>
               ) : caseLogs.length > 0 ? (
-                <div className="space-y-4">
+                <div className="space-y-2">
                   {caseLogs.map((log, index) => {
                     const IconComponent = log.icon === 'pill' ? Pill : 
                                         log.icon === 'calendar' ? CalendarDays : 
                                         log.icon === 'activity' ? Activity : FileText;
                     
                     const colorClasses = {
-                      blue: 'bg-blue-100 text-blue-600 border-blue-200',
-                      green: 'bg-green-100 text-green-600 border-green-200',
-                      orange: 'bg-orange-100 text-orange-600 border-orange-200',
-                      red: 'bg-red-100 text-red-600 border-red-200',
-                      purple: 'bg-purple-100 text-purple-600 border-purple-200'
+                      blue: 'bg-blue-100 text-blue-600',
+                      green: 'bg-green-100 text-green-600',
+                      orange: 'bg-orange-100 text-orange-600',
+                      red: 'bg-red-100 text-red-600',
+                      purple: 'bg-purple-100 text-purple-600'
                     };
 
+                    // Build additional details string
+                    const additionalDetails = [];
+                    if (log.details.medications > 0) additionalDetails.push(`${log.details.medications} meds`);
+                    if (log.details.duration) additionalDetails.push(`${log.details.duration}min`);
+                    if (log.details.location) additionalDetails.push(log.details.location);
+                    if (log.details.reason) additionalDetails.push(log.details.reason);
+                    
+                    const detailsText = additionalDetails.length > 0 ? ` • ${additionalDetails.join(' • ')}` : '';
+
                     return (
-                      <div key={log.id} className="flex gap-4 p-4 border rounded-lg hover:bg-gray-50">
+                      <div key={log.id} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50 text-sm">
                         {/* Timeline Icon */}
-                        <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center border-2 ${colorClasses[log.color] || colorClasses.blue}`}>
-                          <IconComponent className="w-4 h-4" />
+                        <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${colorClasses[log.color] || colorClasses.blue}`}>
+                          <IconComponent className="w-3.5 h-3.5" />
+                        </div>
+                        
+                        {/* Date & Time */}
+                        <div className="flex-shrink-0 w-24 text-xs text-gray-500">
+                          <div>{formatDate(log.timestamp)}</div>
+                          <div>
+                            {log.timestamp && !isNaN(new Date(log.timestamp)) 
+                              ? new Date(log.timestamp).toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit', hour12: true})
+                              : 'No time'
+                            }
+                          </div>
                         </div>
                         
                         {/* Content */}
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-1">
-                            <h4 className="font-medium text-gray-900 truncate">{log.title}</h4>
-                            <span className="text-sm text-gray-500 flex-shrink-0 ml-2">
-                              {formatDate(log.timestamp)}
-                            </span>
-                          </div>
-                          
-                          <p className="text-sm text-gray-600 mb-2">{log.description}</p>
-                          
-                          <div className="flex items-center gap-4 text-xs text-gray-500">
-                            <div className="flex items-center gap-1">
-                              <User className="w-3 h-3" />
-                              <span>{log.doctor}</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              <span>
-                                {log.timestamp && !isNaN(new Date(log.timestamp)) 
-                                  ? new Date(log.timestamp).toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit', hour12: true})
-                                  : 'No time'
-                                }
-                              </span>
-                            </div>
-                            {log.details.status && (
-                              <Badge variant="outline" className="text-xs">
-                                {log.details.status}
-                              </Badge>
-                            )}
-                          </div>
-                          
-                          {/* Additional Details */}
-                          {(log.details.medications > 0 || log.details.duration || log.details.location || log.details.appointmentDate || log.details.reason) && (
-                            <div className="mt-2 text-xs text-gray-400">
-                              {log.details.medications > 0 && (
-                                <span className="mr-3">Medications: {log.details.medications}</span>
-                              )}
-                              {log.details.appointmentDate && (
-                                <span className="mr-3">
-                                  Appointment: {formatDate(log.details.appointmentDate)} 
-                                  {log.details.appointmentTime && ` at ${log.details.appointmentTime}`}
-                                </span>
-                              )}
-                              {log.details.duration && (
-                                <span className="mr-3">Duration: {log.details.duration} min</span>
-                              )}
-                              {log.details.location && (
-                                <span className="mr-3">Location: {log.details.location}</span>
-                              )}
-                              {log.details.reason && (
-                                <span className="mr-3">Reason: {log.details.reason}</span>
-                              )}
-                              {log.details.doctorName && log.type === 'appointment' && (
-                                <span>Doctor: {log.details.doctorName}</span>
-                              )}
-                            </div>
-                          )}
+                          <span className="font-medium text-gray-900">{log.title}</span>
+                          <span className="text-gray-600 ml-2">- {log.description}</span>
+                          <span className="text-gray-500 ml-2">by {log.doctor}</span>
+                          {detailsText && <span className="text-gray-400 ml-1">{detailsText}</span>}
                         </div>
+                        
+                        {/* Status Badge */}
+                        {log.details.status && (
+                          <Badge variant="outline" className="text-xs flex-shrink-0">
+                            {log.details.status}
+                          </Badge>
+                        )}
                       </div>
                     );
                   })}

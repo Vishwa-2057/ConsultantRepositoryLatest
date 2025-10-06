@@ -9,15 +9,20 @@ import { Switch } from '@/components/ui/switch';
 import { Calendar, Clock, Video, User, Settings } from 'lucide-react';
 import { patientAPI, appointmentAPI, teleconsultationAPI, doctorAPI } from '@/services/api';
 import { toast } from 'sonner';
+import { getCurrentUser, isDoctor } from '@/utils/roleUtils';
 
 const ScheduleTeleconsultationModal = ({ isOpen, onClose, onSuccess, selectedPatient = null }) => {
   const [loading, setLoading] = useState(false);
   const [patients, setPatients] = useState([]);
   const [doctors, setDoctors] = useState([]);
+  
+  // Get current user from localStorage
+  const user = getCurrentUser();
+  
   const [formData, setFormData] = useState({
     appointmentId: '',
     patientId: selectedPatient?._id || '',
-    doctorId: '',
+    doctorId: isDoctor() ? user?.id || '' : '',
     scheduledDate: '',
     scheduledTime: '',
     duration: 30,
@@ -37,7 +42,10 @@ const ScheduleTeleconsultationModal = ({ isOpen, onClose, onSuccess, selectedPat
       if (!selectedPatient) {
         loadPatients();
       }
-      loadDoctors();
+      // Only load doctors if user is not a doctor (clinic admins can choose doctors)
+      if (!isDoctor()) {
+        loadDoctors();
+      }
     }
   }, [isOpen, selectedPatient]);
 
@@ -47,7 +55,7 @@ const ScheduleTeleconsultationModal = ({ isOpen, onClose, onSuccess, selectedPat
       setFormData({
         appointmentId: '',
         patientId: selectedPatient?._id || '',
-        doctorId: '',
+        doctorId: isDoctor() ? user?.id || '' : '',
         scheduledDate: '',
         scheduledTime: '',
         duration: 30,
@@ -120,6 +128,11 @@ const ScheduleTeleconsultationModal = ({ isOpen, onClose, onSuccess, selectedPat
 
     // Check if date/time is in the future
     const selectedDateTime = new Date(`${formData.scheduledDate}T${formData.scheduledTime}`);
+    if (isNaN(selectedDateTime.getTime())) {
+      toast.error('Invalid date or time format');
+      return false;
+    }
+    
     if (selectedDateTime <= new Date()) {
       toast.error('Please select a future date and time');
       return false;
@@ -148,6 +161,8 @@ const ScheduleTeleconsultationModal = ({ isOpen, onClose, onSuccess, selectedPat
         reason: 'Teleconsultation via Jitsi Meet'
       };
 
+      // Note: Clinic ID will be determined automatically by the backend based on user role
+
       const appointmentResponse = await appointmentAPI.create(appointmentData);
       const appointment = appointmentResponse.appointment || appointmentResponse;
 
@@ -161,6 +176,9 @@ const ScheduleTeleconsultationModal = ({ isOpen, onClose, onSuccess, selectedPat
         enableRecording: formData.enableRecording,
         features: formData.features
       };
+
+      console.log('Sending teleconsultation data:', teleconsultationData);
+      console.log('Form data before sending:', formData);
 
       const response = await teleconsultationAPI.create(teleconsultationData);
       
@@ -221,18 +239,26 @@ const ScheduleTeleconsultationModal = ({ isOpen, onClose, onSuccess, selectedPat
           {/* Doctor Selection */}
           <div className="space-y-2">
             <Label htmlFor="doctor">Doctor</Label>
-            <Select value={formData.doctorId} onValueChange={(value) => handleInputChange('doctorId', value)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a doctor" />
-              </SelectTrigger>
-              <SelectContent>
-                {doctors.map((doctor) => (
-                  <SelectItem key={doctor._id} value={doctor._id}>
-                    Dr. {doctor.fullName} - {doctor.specialty}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {isDoctor() ? (
+              <div className="p-3 bg-blue-50 rounded-md flex items-center gap-3">
+                <User className="w-4 h-4 text-blue-600" />
+                <span className="font-medium">Dr. {user?.fullName || user?.name || 'Current Doctor'}</span>
+                <span className="text-sm text-blue-600">(You)</span>
+              </div>
+            ) : (
+              <Select value={formData.doctorId} onValueChange={(value) => handleInputChange('doctorId', value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a doctor" />
+                </SelectTrigger>
+                <SelectContent>
+                  {doctors.map((doctor) => (
+                    <SelectItem key={doctor._id} value={doctor._id}>
+                      Dr. {doctor.fullName} - {doctor.specialty}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           {/* Date and Time */}

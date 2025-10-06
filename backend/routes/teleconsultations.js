@@ -32,6 +32,9 @@ router.get('/', auth, async (req, res) => {
       sortOrder = 'desc'
     } = req.query;
 
+    console.log('Teleconsultation query params:', req.query);
+    console.log('Status parameter:', status, 'Type:', typeof status, 'Is Array:', Array.isArray(status));
+
     // Build query based on user role
     let query = {};
     
@@ -43,7 +46,16 @@ router.get('/', auth, async (req, res) => {
 
     // Apply filters
     if (status && status !== 'all') {
-      query.status = status;
+      // Support both single status and array of statuses
+      if (Array.isArray(status)) {
+        query.status = { $in: status };
+      } else if (status.includes(',')) {
+        // Handle comma-separated status values
+        const statusArray = status.split(',').map(s => s.trim());
+        query.status = { $in: statusArray };
+      } else {
+        query.status = status;
+      }
     }
     
     if (patientId) {
@@ -70,6 +82,16 @@ router.get('/', auth, async (req, res) => {
     sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
     // Execute query with pagination
+    let selectFields = '';
+    
+    // Only exclude passwords for non-doctors
+    if (req.user.role !== 'doctor') {
+      selectFields = '-jitsiConfig.moderatorPassword -jitsiConfig.participantPassword';
+    } else {
+      // Doctors can see both passwords to determine which one to use
+      selectFields = '';
+    }
+    
     const teleconsultations = await Teleconsultation.find(query)
       .populate('patientId', 'fullName phone email profileImage')
       .populate('doctorId', 'fullName specialty phone email')
@@ -77,10 +99,22 @@ router.get('/', auth, async (req, res) => {
       .sort(sort)
       .limit(limit * 1)
       .skip((page - 1) * limit)
-      .select('-jitsiConfig.moderatorPassword -jitsiConfig.participantPassword');
+      .select(selectFields);
 
     // Get total count for pagination
     const total = await Teleconsultation.countDocuments(query);
+
+    // Debug: Log password information for doctors
+    if (req.user.role === 'doctor' && teleconsultations.length > 0) {
+      console.log('🔍 Debug - Teleconsultation passwords for doctor:');
+      teleconsultations.forEach((tc, index) => {
+        console.log(`  Teleconsultation ${index + 1}:`);
+        console.log(`    Room: ${tc.jitsiConfig?.roomName}`);
+        console.log(`    Moderator Password: ${tc.jitsiConfig?.moderatorPassword}`);
+        console.log(`    Participant Password: ${tc.jitsiConfig?.participantPassword}`);
+        console.log(`    Doctor Meeting URL: ${tc.doctorMeetingUrl}`);
+      });
+    }
 
     res.json({
       teleconsultations,
@@ -138,9 +172,13 @@ router.get('/:id', auth, async (req, res) => {
 // POST /api/teleconsultations - Create new teleconsultation
 router.post('/', auth, validateTeleconsultation, async (req, res) => {
   try {
+    console.log('Creating teleconsultation with data:', req.body);
+    console.log('User object:', req.user);
+    
     // Check for validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.log('Validation errors:', errors.array());
       return res.status(400).json({
         error: 'Validation failed',
         details: errors.array()
@@ -157,14 +195,35 @@ router.post('/', auth, validateTeleconsultation, async (req, res) => {
       features = {}
     } = req.body;
 
+    // Validate date format
+    if (!scheduledDate) {
+      console.log('Missing scheduledDate in request body');
+      return res.status(400).json({ error: 'Scheduled date is required' });
+    }
+
+    const parsedDate = new Date(scheduledDate);
+    if (isNaN(parsedDate.getTime())) {
+      console.log('Invalid scheduledDate format:', scheduledDate);
+      return res.status(400).json({ error: 'Invalid date format for scheduledDate' });
+    }
+
     // Verify appointment exists and get details
+    console.log('Looking for appointment with ID:', appointmentId);
     const appointment = await Appointment.findById(appointmentId)
       .populate('patientId', 'fullName phone email')
       .populate('doctorId', 'fullName specialty phone email');
 
     if (!appointment) {
+      console.log('Appointment not found for ID:', appointmentId);
       return res.status(404).json({ error: 'Appointment not found' });
     }
+    
+    console.log('Found appointment:', {
+      id: appointment._id,
+      patientName: appointment.patientId?.fullName,
+      doctorName: appointment.doctorId?.fullName,
+      clinicId: appointment.clinicId
+    });
 
     // Check if teleconsultation already exists for this appointment
     const existingTeleconsultation = await Teleconsultation.findOne({ appointmentId });
@@ -173,6 +232,17 @@ router.post('/', auth, validateTeleconsultation, async (req, res) => {
     }
 
     // Create Jitsi Meet meeting
+    console.log('Creating Jitsi meeting with data:', {
+      appointmentId,
+      patientName: appointment.patientId.fullName,
+      doctorName: appointment.doctorId.fullName,
+      scheduledDate,
+      scheduledTime,
+      duration,
+      requirePassword,
+      enableRecording
+    });
+    
     const meetingResult = await jitsiService.createMeeting({
       appointmentId,
       patientName: appointment.patientId.fullName,
@@ -184,7 +254,10 @@ router.post('/', auth, validateTeleconsultation, async (req, res) => {
       enableRecording
     });
 
+    console.log('Jitsi meeting result:', meetingResult);
+
     if (!meetingResult.success) {
+      console.log('Failed to create Jitsi meeting:', meetingResult.error);
       return res.status(500).json({ error: 'Failed to create meeting: ' + meetingResult.error });
     }
 
@@ -200,6 +273,10 @@ router.post('/', auth, validateTeleconsultation, async (req, res) => {
       clinicId: appointment.clinicId,
       meetingId: meeting.meetingId,
       meetingUrl: meeting.meetingUrl,
+      doctorMeetingUrl: meeting.urls.doctorDirect || meeting.urls.doctor,
+      patientMeetingUrl: meeting.urls.patientDirect || meeting.urls.patient,
+      doctorDirectUrl: meeting.urls.doctorDirect,
+      patientDirectUrl: meeting.urls.patientDirect,
       meetingPassword: meeting.participantPassword,
       jitsiConfig: {
         roomName: meeting.roomName,
@@ -207,7 +284,7 @@ router.post('/', auth, validateTeleconsultation, async (req, res) => {
         moderatorPassword: meeting.moderatorPassword,
         participantPassword: meeting.participantPassword
       },
-      scheduledDate: new Date(scheduledDate),
+      scheduledDate: parsedDate,
       scheduledTime,
       duration,
       features: {
@@ -221,8 +298,12 @@ router.post('/', auth, validateTeleconsultation, async (req, res) => {
       }
     };
 
+    console.log('Creating teleconsultation with data:', teleconsultationData);
+    
     const teleconsultation = new Teleconsultation(teleconsultationData);
+    console.log('Saving teleconsultation to database...');
     await teleconsultation.save();
+    console.log('Teleconsultation saved successfully with ID:', teleconsultation._id);
 
     // Populate the response
     const populatedTeleconsultation = await Teleconsultation.findById(teleconsultation._id)
@@ -263,13 +344,31 @@ router.post('/', auth, validateTeleconsultation, async (req, res) => {
 
   } catch (error) {
     console.error('Error creating teleconsultation:', error);
+    console.error('Error stack:', error.stack);
+    console.error('Error name:', error.name);
+    console.error('Error message:', error.message);
+    
     if (error.name === 'ValidationError') {
+      console.log('Validation error details:', Object.values(error.errors).map(err => ({
+        field: err.path,
+        message: err.message,
+        value: err.value
+      })));
       return res.status(400).json({
         error: 'Validation failed',
         details: Object.values(error.errors).map(err => err.message)
       });
     }
-    res.status(500).json({ error: 'Internal server error' });
+    
+    if (error.name === 'MongoServerError' && error.code === 11000) {
+      console.log('Duplicate key error:', error.keyPattern);
+      return res.status(400).json({
+        error: 'Duplicate entry',
+        details: 'A teleconsultation with this meeting ID already exists'
+      });
+    }
+    
+    res.status(500).json({ error: 'Internal server error: ' + error.message });
   }
 });
 
@@ -290,8 +389,21 @@ router.patch('/:id/start', auth, async (req, res) => {
       return res.status(404).json({ error: 'Teleconsultation not found' });
     }
 
-    if (teleconsultation.status !== 'Scheduled') {
+    // Allow starting teleconsultations that are Scheduled, or return current state if already active
+    if (!['Scheduled', 'Started', 'In Progress'].includes(teleconsultation.status)) {
       return res.status(400).json({ error: 'Teleconsultation cannot be started in current status' });
+    }
+
+    // If already started or in progress, return current state without error
+    if (['Started', 'In Progress'].includes(teleconsultation.status)) {
+      const currentTeleconsultation = await Teleconsultation.findById(teleconsultation._id)
+        .populate('patientId', 'fullName phone email')
+        .populate('doctorId', 'fullName specialty phone email');
+
+      return res.json({
+        message: 'Teleconsultation is already active',
+        teleconsultation: currentTeleconsultation
+      });
     }
 
     // Start the meeting

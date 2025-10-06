@@ -750,6 +750,58 @@ router.patch('/:id/status', auth, canEditPatients, async (req, res) => {
   }
 });
 
+// PATCH /api/patients/:id/assigned-doctors - Update patient assigned doctors (clinic admin only)
+router.patch('/:id/assigned-doctors', auth, canEditPatients, async (req, res) => {
+  try {
+    const { assignedDoctors } = req.body;
+    
+    // Validate assignedDoctors array
+    if (!Array.isArray(assignedDoctors)) {
+      return res.status(400).json({ error: 'assignedDoctors must be an array' });
+    }
+
+    // Validate that all doctor IDs are valid ObjectIds
+    const mongoose = require('mongoose');
+    for (const doctorId of assignedDoctors) {
+      if (!mongoose.Types.ObjectId.isValid(doctorId)) {
+        return res.status(400).json({ error: `Invalid doctor ID: ${doctorId}` });
+      }
+    }
+
+    // Check if patient exists
+    const patient = await Patient.findById(req.params.id);
+    if (!patient) {
+      return res.status(404).json({ error: 'Patient not found' });
+    }
+
+    // Verify that all doctor IDs exist
+    const Doctor = require('../models/Doctor');
+    const doctorCount = await Doctor.countDocuments({ _id: { $in: assignedDoctors } });
+    if (doctorCount !== assignedDoctors.length) {
+      return res.status(400).json({ error: 'One or more doctor IDs are invalid' });
+    }
+
+    // Update assigned doctors
+    patient.assignedDoctors = assignedDoctors;
+    patient.updatedAt = new Date();
+    await patient.save();
+
+    // Populate the assigned doctors for the response
+    await patient.populate('assignedDoctors', 'fullName specialty');
+
+    res.json({
+      message: 'Patient assigned doctors updated successfully',
+      patient: patient.toJSON()
+    });
+  } catch (error) {
+    console.error('Error updating patient assigned doctors:', error);
+    if (error.kind === 'ObjectId') {
+      return res.status(400).json({ error: 'Invalid patient ID' });
+    }
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /api/patients/stats/summary - Get patient statistics
 router.get('/stats/summary', auth, async (req, res) => {
   try {

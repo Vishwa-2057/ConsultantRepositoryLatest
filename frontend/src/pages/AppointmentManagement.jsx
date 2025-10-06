@@ -11,12 +11,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { Calendar, Clock, User, Phone, MapPin, AlertCircle, CheckCircle, XCircle, Plus, Search, Filter, Edit, CalendarDays, Users, Activity, TrendingUp, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FileText, Calendar as CalendarIcon, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import { appointmentAPI, patientAPI, doctorAPI } from '@/services/api';
-import { format, parseISO, isToday, isTomorrow, isYesterday } from 'date-fns';
+import { format, parseISO, isToday, isTomorrow, isYesterday, addMinutes } from 'date-fns';
 import RescheduleAppointmentModal from '@/components/RescheduleAppointmentModal';
+import AppointmentConflictDialog from '@/components/AppointmentConflictDialog';
+import { getCurrentUser } from '@/utils/roleUtils';
 
 const AppointmentManagement = () => {
   // Set page title immediately
   document.title = "Appointment Management - Smart Healthcare";
+  
+  // Get current user info
+  const currentUser = getCurrentUser();
+  const isDoctorUser = currentUser?.role === 'doctor';
+  
   
   const [appointments, setAppointments] = useState([]);
   const [patients, setPatients] = useState([]);
@@ -33,8 +40,10 @@ const AppointmentManagement = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false);
+  const [isConflictDialogOpen, setIsConflictDialogOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [expandedAppointments, setExpandedAppointments] = useState(new Set());
+  const [conflictData, setConflictData] = useState(null);
   const [formData, setFormData] = useState({
     patientId: '',
     doctorId: '',
@@ -128,6 +137,12 @@ const AppointmentManagement = () => {
         }
       }
 
+      // For doctors, only show their own appointments
+      if (isDoctorUser && currentUser) {
+        const userId = currentUser.id || currentUser._id;
+        filters.doctorId = userId;
+      }
+
       const response = await appointmentAPI.getAll(currentPage, 5, filters);
       setAppointments(response.appointments || []);
       setTotalPages(response.pagination?.totalPages || 1);
@@ -142,6 +157,9 @@ const AppointmentManagement = () => {
 
   const loadStats = async () => {
     try {
+      // For doctors, we need to filter stats by their ID
+      // Note: This assumes the backend supports doctorId filtering for stats
+      // If not, we'll need to calculate stats client-side from filtered appointments
       const response = await appointmentAPI.getStats();
       console.log('Appointment stats response:', response);
       console.log('Status stats:', response.statusStats);
@@ -163,7 +181,18 @@ const AppointmentManagement = () => {
   const loadDoctors = async () => {
     try {
       const response = await doctorAPI.getAll();
-      setDoctors(response.doctors || response.data || []);
+      const doctorsList = response.doctors || response.data || [];
+      setDoctors(doctorsList);
+      
+      // Auto-select current doctor if user is a doctor
+      if (isDoctorUser && currentUser) {
+        const userId = currentUser.id || currentUser._id;
+        const currentDoctorInList = doctorsList.find(doctor => doctor._id === userId);
+        
+        if (currentDoctorInList) {
+          setFormData(prev => ({ ...prev, doctorId: userId }));
+        }
+      }
     } catch (error) {
     }
   };
@@ -179,18 +208,88 @@ const AppointmentManagement = () => {
     loadStats();
   }, [currentPage, statusFilter, typeFilter, dateFilter]);
 
-  const handleCreateAppointment = async () => {
+  const handleCreateAppointment = async (forceCreate = false) => {
     try {
-      await appointmentAPI.create(formData);
+      // Check for conflicts first (unless forcing creation)
+      if (!forceCreate) {
+        try {
+          const conflictCheck = await appointmentAPI.checkConflicts(
+            formData.doctorId,
+            formData.date,
+            formData.time,
+            formData.duration
+          );
+
+          if (conflictCheck.hasConflict) {
+            // Show conflict dialog
+            setConflictData(conflictCheck.conflictDetails);
+            setIsConflictDialogOpen(true);
+            return;
+          }
+        } catch (conflictError) {
+          console.log('Conflict check failed, proceeding with creation:', conflictError);
+          // If conflict check fails, proceed with creation and handle errors there
+        }
+      }
+
+      // No conflicts or force create - proceed with creation
+      const appointmentData = forceCreate ? { ...formData, forceCreate: true } : formData;
+      await appointmentAPI.create(appointmentData);
       toast.success('Appointment created successfully');
       setIsCreateModalOpen(false);
+      setIsConflictDialogOpen(false);
       resetForm();
       loadAppointments();
       loadStats();
     } catch (error) {
       console.error('Error creating appointment:', error);
-      toast.error('Failed to create appointment');
+      
+      // Check if error is conflict-related (status 400 or 409, or message contains conflict info)
+      console.log('Error details:', {
+        status: error.response?.status,
+        message: error.message,
+        includesBooked: error.message?.includes('booked'),
+        includesConflict: error.message?.includes('conflict')
+      });
+
+      if (error.response?.status === 400 || error.response?.status === 409 || 
+          error.message?.includes('booked') || error.message?.includes('conflict')) {
+        
+        console.log('Detected conflict error, parsing details...');
+        // Parse conflict details from error message
+        const conflictDetails = parseConflictFromError(error.message);
+        console.log('Parsed conflict details:', conflictDetails);
+        setConflictData(conflictDetails);
+        setIsConflictDialogOpen(true);
+      } else {
+        toast.error('Failed to create appointment');
+      }
     }
+  };
+
+  // Helper function to parse conflict information from error message
+  const parseConflictFromError = (errorMessage) => {
+    // Example message: "Doctor is already booked during this time. Conflicting appointments: 17:30 - Christopher Smith (Physical Therapy, 30 min)"
+    const timeMatch = errorMessage.match(/(\d{2}:\d{2})/);
+    const nameMatch = errorMessage.match(/- ([^(]+)/);
+    const typeMatch = errorMessage.match(/\(([^,]+),/);
+    const durationMatch = errorMessage.match(/(\d+) min\)/);
+
+    return {
+      time: timeMatch ? timeMatch[1] : formData.time,
+      endTime: timeMatch ? addMinutesToTime(timeMatch[1], parseInt(durationMatch?.[1] || 30)) : addMinutesToTime(formData.time, 30),
+      patientName: nameMatch ? nameMatch[1].trim() : 'Unknown Patient',
+      appointmentType: typeMatch ? typeMatch[1].trim() : 'Unknown Type',
+      duration: durationMatch ? parseInt(durationMatch[1]) : 30
+    };
+  };
+
+  // Helper function to add minutes to time string
+  const addMinutesToTime = (timeString, minutes) => {
+    const [hours, mins] = timeString.split(':').map(Number);
+    const date = new Date();
+    date.setHours(hours, mins + minutes);
+    return date.toTimeString().slice(0, 5);
   };
 
   const handleUpdateStatus = async (appointmentId, newStatus) => {
@@ -225,6 +324,22 @@ const AppointmentManagement = () => {
     setSelectedAppointment(null);
   };
 
+  const handleConflictSelectTime = (newTime) => {
+    setFormData(prev => ({ ...prev, time: newTime }));
+    setIsConflictDialogOpen(false);
+    // Automatically try to create with new time
+    handleCreateAppointment(false);
+  };
+
+  const handleConflictForceCreate = () => {
+    handleCreateAppointment(true);
+  };
+
+  const handleConflictClose = () => {
+    setIsConflictDialogOpen(false);
+    setConflictData(null);
+  };
+
   const toggleAppointmentExpansion = (appointmentId) => {
     setExpandedAppointments(prev => {
       const newSet = new Set(prev);
@@ -238,9 +353,12 @@ const AppointmentManagement = () => {
   };
 
   const resetForm = () => {
+    const userId = currentUser?.id || currentUser?._id;
+    const isDoctor = isDoctorUser || currentUser?.role === 'doctor';
+    
     setFormData({
       patientId: '',
-      doctorId: '',
+      doctorId: isDoctor && userId ? userId : '', // Preserve doctor selection for doctors
       appointmentType: '',
       date: '',
       time: '',
@@ -267,7 +385,7 @@ const AppointmentManagement = () => {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <p className="text-gray-600 mt-1">Manage and track all patient appointments</p>
+          <p className="text-muted-foreground mt-1">Manage and track all patient appointments</p>
         </div>
         <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
           <DialogTrigger asChild>
@@ -284,7 +402,7 @@ const AppointmentManagement = () => {
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className={`grid gap-4 ${isDoctorUser ? 'grid-cols-1' : 'grid-cols-2'}`}>
                 <div>
                   <Label htmlFor="patient">Patient</Label>
                   <Select value={formData.patientId} onValueChange={(value) => setFormData({...formData, patientId: value})}>
@@ -300,23 +418,47 @@ const AppointmentManagement = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <Label htmlFor="doctor">Doctor</Label>
-                  <Select value={formData.doctorId} onValueChange={(value) => setFormData({...formData, doctorId: value})}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select doctor" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {doctors
-                        .filter((doctor) => doctor.isActive !== false)
-                        .map((doctor) => (
-                          <SelectItem key={doctor._id} value={doctor._id}>
-                            Dr. {doctor.fullName} - {doctor.specialty}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                
+                {/* Only show doctor selection for non-doctor users */}
+                {!isDoctorUser && (
+                  <div>
+                    <Label htmlFor="doctor">Doctor</Label>
+                    <Select value={formData.doctorId} onValueChange={(value) => setFormData({...formData, doctorId: value})}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select doctor" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {doctors
+                          .filter((doctor) => doctor.isActive !== false)
+                          .map((doctor) => (
+                            <SelectItem key={doctor._id} value={doctor._id}>
+                              Dr. {doctor.fullName} - {doctor.specialty}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                
+                {/* Show selected doctor info for doctors */}
+                {isDoctorUser && formData.doctorId && (
+                  <div>
+                    <Label>Assigned Doctor</Label>
+                    <div className="p-3 bg-primary/10 border border-primary/20 rounded-md">
+                      <div className="flex items-center gap-2">
+                        <User className="w-4 h-4 text-primary" />
+                        <div>
+                          <p className="font-medium text-primary">
+                            Dr. {doctors.find(d => d._id === formData.doctorId)?.fullName || 'Loading...'}
+                          </p>
+                          <p className="text-sm text-primary/80">
+                            {doctors.find(d => d._id === formData.doctorId)?.specialty || ''}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -484,22 +626,22 @@ const AppointmentManagement = () => {
       </div>
 
       {/* Filters - Compact and Subtle */}
-      <div className="bg-gray-50/50 border border-gray-200/60 rounded-lg p-4 mb-4">
+      <div className="bg-muted/50 border border-border rounded-lg p-4 mb-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex-1 min-w-[200px]">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search appointments..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 h-9 bg-white/80 border-gray-200/60 text-sm"
+                className="pl-10 h-9 bg-background border-border text-sm"
               />
             </div>
           </div>
           <div className="flex items-center gap-2">
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-32 h-9 text-sm bg-white/80 border-gray-200/60">
+              <SelectTrigger className="w-32 h-9 text-sm bg-background border-border">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -512,7 +654,7 @@ const AppointmentManagement = () => {
               </SelectContent>
             </Select>
             <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-40 h-9 text-sm bg-white/80 border-gray-200/60">
+              <SelectTrigger className="w-40 h-9 text-sm bg-background border-border">
                 <SelectValue placeholder="Type" />
               </SelectTrigger>
               <SelectContent>
@@ -525,7 +667,7 @@ const AppointmentManagement = () => {
               </SelectContent>
             </Select>
             <Select value={dateFilter} onValueChange={setDateFilter}>
-              <SelectTrigger className="w-32 h-9 text-sm bg-white/80 border-gray-200/60">
+              <SelectTrigger className="w-32 h-9 text-sm bg-background border-border">
                 <SelectValue placeholder="Date" />
               </SelectTrigger>
               <SelectContent>
@@ -544,7 +686,7 @@ const AppointmentManagement = () => {
                 setTypeFilter('all');
                 setDateFilter('all');
               }}
-              className="text-gray-500 hover:text-gray-700 h-9 px-3 text-sm gradient-button-outline"
+              className="text-muted-foreground hover:text-foreground h-9 px-3 text-sm"
             >
               Clear
             </Button>
@@ -563,7 +705,7 @@ const AppointmentManagement = () => {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
             </div>
           ) : filteredAppointments.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-8 text-muted-foreground">
               No appointments found
             </div>
           ) : (
@@ -573,27 +715,27 @@ const AppointmentManagement = () => {
                   <div className="flex justify-between items-start">
                     <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-4">
                       <div>
-                        <div className="font-semibold text-gray-900">
+                        <div className="font-semibold text-foreground">
                           {appointment.patientId?.fullName || 'Unknown Patient'}
                         </div>
-                        <div className="text-sm text-gray-600 flex items-center gap-1">
+                        <div className="text-sm text-muted-foreground flex items-center gap-1">
                           <Phone className="w-3 h-3" />
                           {appointment.patientId?.phone || 'No phone'}
                         </div>
                       </div>
                       <div>
-                        <div className="font-medium text-gray-900">
+                        <div className="font-medium text-foreground">
                           Dr. {appointment.doctorId?.fullName || 'Unknown Doctor'}
                         </div>
-                        <div className="text-sm text-gray-600">
+                        <div className="text-sm text-muted-foreground">
                           {appointment.doctorId?.specialty || 'General'}
                         </div>
                       </div>
                       <div>
-                        <div className="font-medium text-gray-900">
+                        <div className="font-medium text-foreground">
                           {formatDate(appointment.date)}
                         </div>
-                        <div className="text-sm text-gray-600 flex items-center gap-1">
+                        <div className="text-sm text-muted-foreground flex items-center gap-1">
                           <Clock className="w-3 h-3" />
                           {appointment.time} ({appointment.duration}min)
                         </div>
@@ -603,7 +745,7 @@ const AppointmentManagement = () => {
                           {getStatusBadge(appointment.status)}
                           {getPriorityBadge(appointment.priority)}
                         </div>
-                        <div className="text-sm text-gray-600">
+                        <div className="text-sm text-muted-foreground">
                           {appointment.appointmentType}
                         </div>
                       </div>
@@ -624,7 +766,7 @@ const AppointmentManagement = () => {
                         variant="outline"
                         size="sm"
                         onClick={() => handleRescheduleAppointment(appointment)}
-                        className="text-blue-600 hover:text-blue-700"
+                        className="text-primary hover:text-primary"
                         title="Reschedule Appointment"
                       >
                         <RotateCcw className="w-4 h-4" />
@@ -645,7 +787,7 @@ const AppointmentManagement = () => {
                   </div>
                   {appointment.reason && (
                     <div className="mt-3 pt-3 border-t">
-                      <div className="text-sm text-gray-600">
+                      <div className="text-sm text-muted-foreground">
                         <span className="font-medium">Reason:</span> {appointment.reason}
                       </div>
                     </div>
@@ -653,70 +795,70 @@ const AppointmentManagement = () => {
                   
                   {/* Expanded Details */}
                   {expandedAppointments.has(appointment._id) && (
-                    <div className="mt-4 pt-4 border-t border-gray-200 bg-gray-50 rounded-lg p-4">
+                    <div className="mt-4 pt-4 border-t border-border bg-muted/30 rounded-lg p-4">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {/* Patient Information */}
                         <div className="space-y-3">
-                          <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                          <h4 className="font-semibold text-foreground flex items-center gap-2">
                             <User className="w-4 h-4" />
                             Patient Information
                           </h4>
                           <div className="space-y-2 text-sm">
                             <div>
-                              <span className="font-medium text-gray-700">Name:</span>
-                              <span className="ml-2 text-gray-600">{appointment.patientId?.fullName || 'N/A'}</span>
+                              <span className="font-medium text-muted-foreground">Name:</span>
+                              <span className="text-foreground ml-2">{appointment.patientId?.fullName || 'N/A'}</span>
                             </div>
                             <div>
-                              <span className="font-medium text-gray-700">Phone:</span>
-                              <span className="ml-2 text-gray-600">{appointment.patientId?.phone || 'N/A'}</span>
+                              <span className="font-medium text-muted-foreground">Phone:</span>
+                              <span className="text-foreground ml-2">{appointment.patientId?.phone || 'N/A'}</span>
                             </div>
                             <div>
-                              <span className="font-medium text-gray-700">Email:</span>
-                              <span className="ml-2 text-gray-600">{appointment.patientId?.email || 'N/A'}</span>
+                              <span className="font-medium text-muted-foreground">Email:</span>
+                              <span className="text-foreground ml-2">{appointment.patientId?.email || 'N/A'}</span>
                             </div>
                           </div>
                         </div>
 
                         {/* Doctor Information */}
                         <div className="space-y-3">
-                          <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                          <h4 className="font-semibold text-foreground flex items-center gap-2">
                             <User className="w-4 h-4" />
                             Doctor Information
                           </h4>
                           <div className="space-y-2 text-sm">
                             <div>
-                              <span className="font-medium text-gray-700">Name:</span>
-                              <span className="ml-2 text-gray-600">{appointment.doctorId?.fullName || 'N/A'}</span>
+                              <span className="font-medium text-muted-foreground">Name:</span>
+                              <span className="text-foreground ml-2">{appointment.doctorId?.fullName || 'N/A'}</span>
                             </div>
                             <div>
-                              <span className="font-medium text-gray-700">Specialty:</span>
-                              <span className="ml-2 text-gray-600">{appointment.doctorId?.specialty || 'N/A'}</span>
+                              <span className="font-medium text-muted-foreground">Specialty:</span>
+                              <span className="text-foreground ml-2">{appointment.doctorId?.specialty || 'N/A'}</span>
                             </div>
                             <div>
-                              <span className="font-medium text-gray-700">Phone:</span>
-                              <span className="ml-2 text-gray-600">{appointment.doctorId?.phone || 'N/A'}</span>
+                              <span className="font-medium text-muted-foreground">Phone:</span>
+                              <span className="text-foreground ml-2">{appointment.doctorId?.phone || 'N/A'}</span>
                             </div>
                           </div>
                         </div>
 
                         {/* Appointment Details */}
                         <div className="space-y-3">
-                          <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                          <h4 className="font-semibold text-foreground flex items-center gap-2">
                             <Calendar className="w-4 h-4" />
                             Appointment Details
                           </h4>
                           <div className="space-y-2 text-sm">
                             <div>
-                              <span className="font-medium text-gray-700">Duration:</span>
-                              <span className="ml-2 text-gray-600">{appointment.duration || 30} minutes</span>
+                              <span className="font-medium text-muted-foreground">Duration:</span>
+                              <span className="text-foreground ml-2">{appointment.duration || 30} minutes</span>
                             </div>
                             <div>
-                              <span className="font-medium text-gray-700">Priority:</span>
+                              <span className="font-medium text-muted-foreground">Priority:</span>
                               <span className="ml-2">{getPriorityBadge(appointment.priority)}</span>
                             </div>
                             <div>
-                              <span className="font-medium text-gray-700">Created:</span>
-                              <span className="ml-2 text-gray-600">
+                              <span className="font-medium text-muted-foreground">Created:</span>
+                              <span className="text-foreground ml-2">
                                 {appointment.createdAt ? format(new Date(appointment.createdAt), 'MMM dd, yyyy HH:mm') : 'N/A'}
                               </span>
                             </div>
@@ -725,25 +867,25 @@ const AppointmentManagement = () => {
 
                         {/* Additional Information */}
                         <div className="space-y-3">
-                          <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                          <h4 className="font-semibold text-foreground flex items-center gap-2">
                             <FileText className="w-4 h-4" />
                             Additional Information
                           </h4>
                           <div className="space-y-2 text-sm">
                             {appointment.symptoms && (
                               <div>
-                                <span className="font-medium text-gray-700">Symptoms:</span>
-                                <span className="ml-2 text-gray-600">{appointment.symptoms}</span>
+                                <span className="font-medium text-muted-foreground">Symptoms:</span>
+                                <span className="text-foreground ml-2">{appointment.symptoms}</span>
                               </div>
                             )}
                             {appointment.notes && (
                               <div>
-                                <span className="font-medium text-gray-700">Notes:</span>
-                                <span className="ml-2 text-gray-600">{appointment.notes}</span>
+                                <span className="font-medium text-muted-foreground">Notes:</span>
+                                <span className="text-foreground ml-2">{appointment.notes}</span>
                               </div>
                             )}
                             {!appointment.symptoms && !appointment.notes && (
-                              <div className="text-gray-500 italic">No additional information available</div>
+                              <div className="text-muted-foreground italic">No additional information available</div>
                             )}
                           </div>
                         </div>
@@ -760,7 +902,7 @@ const AppointmentManagement = () => {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <div className="text-sm text-gray-700">
+          <div className="text-sm text-muted-foreground">
             Showing {((currentPage - 1) * 5) + 1} to {Math.min(currentPage * 5, totalCount)} of {totalCount} appointments
           </div>
           <div className="flex items-center gap-2">
@@ -824,70 +966,70 @@ const AppointmentManagement = () => {
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-6">
                 <div>
-                  <h3 className="font-semibold text-gray-900 mb-3">Patient Information</h3>
+                  <h3 className="font-semibold text-foreground mb-3">Patient Information</h3>
                   <div className="space-y-2">
                     <div>
-                      <span className="text-sm font-medium text-gray-500">Name:</span>
-                      <div className="text-sm text-gray-900">{selectedAppointment.patientId?.fullName}</div>
+                      <span className="text-sm font-medium text-muted-foreground">Name:</span>
+                      <div className="text-sm text-foreground">{selectedAppointment.patientId?.fullName || 'N/A'}</div>
                     </div>
                     <div>
-                      <span className="text-sm font-medium text-gray-500">Phone:</span>
-                      <div className="text-sm text-gray-900">{selectedAppointment.patientId?.phone}</div>
+                      <span className="text-sm font-medium text-muted-foreground">Phone:</span>
+                      <div className="text-sm text-foreground">{selectedAppointment.patientId?.phone || 'N/A'}</div>
                     </div>
                     <div>
-                      <span className="text-sm font-medium text-gray-500">Email:</span>
-                      <div className="text-sm text-gray-900">{selectedAppointment.patientId?.email}</div>
+                      <span className="text-sm font-medium text-muted-foreground">Email:</span>
+                      <div className="text-sm text-foreground">{selectedAppointment.patientId?.email || 'N/A'}</div>
                     </div>
                   </div>
                 </div>
                 <div>
-                  <h3 className="font-semibold text-gray-900 mb-3">Doctor Information</h3>
+                  <h3 className="font-semibold text-foreground mb-3">Doctor Information</h3>
                   <div className="space-y-2">
                     <div>
-                      <span className="text-sm font-medium text-gray-500">Name:</span>
-                      <div className="text-sm text-gray-900">Dr. {selectedAppointment.doctorId?.fullName}</div>
+                      <span className="text-sm font-medium text-muted-foreground">Name:</span>
+                      <div className="text-sm text-foreground">Dr. {selectedAppointment.doctorId?.fullName || 'N/A'}</div>
                     </div>
                     <div>
-                      <span className="text-sm font-medium text-gray-500">Specialty:</span>
-                      <div className="text-sm text-gray-900">{selectedAppointment.doctorId?.specialty}</div>
+                      <span className="text-sm font-medium text-muted-foreground">Specialty:</span>
+                      <div className="text-sm text-foreground">{selectedAppointment.doctorId?.specialty || 'N/A'}</div>
                     </div>
                     <div>
-                      <span className="text-sm font-medium text-gray-500">Phone:</span>
-                      <div className="text-sm text-gray-900">{selectedAppointment.doctorId?.phone}</div>
+                      <span className="text-sm font-medium text-muted-foreground">Phone:</span>
+                      <div className="text-sm text-foreground">{selectedAppointment.doctorId?.phone || 'N/A'}</div>
                     </div>
                   </div>
                 </div>
               </div>
-              
+
               <div className="border-t pt-6">
-                <h3 className="font-semibold text-gray-900 mb-3">Appointment Details</h3>
+                <h3 className="font-semibold text-foreground mb-3">Appointment Details</h3>
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <div>
-                      <span className="text-sm font-medium text-gray-500">Type:</span>
-                      <div className="text-sm text-gray-900">{selectedAppointment.appointmentType}</div>
+                      <span className="text-sm font-medium text-muted-foreground">Type:</span>
+                      <div className="text-sm text-foreground">{selectedAppointment.appointmentType || 'N/A'}</div>
                     </div>
                     <div>
-                      <span className="text-sm font-medium text-gray-500">Date:</span>
-                      <div className="text-sm text-gray-900">{formatDate(selectedAppointment.date)}</div>
+                      <span className="text-sm font-medium text-muted-foreground">Date:</span>
+                      <div className="text-sm text-foreground">{formatDate(selectedAppointment.date) || 'N/A'}</div>
                     </div>
                     <div>
-                      <span className="text-sm font-medium text-gray-500">Time:</span>
-                      <div className="text-sm text-gray-900">{selectedAppointment.time}</div>
+                      <span className="text-sm font-medium text-muted-foreground">Time:</span>
+                      <div className="text-sm text-foreground">{selectedAppointment.time || 'N/A'}</div>
                     </div>
                   </div>
                   <div className="space-y-2">
                     <div>
-                      <span className="text-sm font-medium text-gray-500">Duration:</span>
-                      <div className="text-sm text-gray-900">{selectedAppointment.duration} minutes</div>
+                      <span className="text-sm font-medium text-muted-foreground">Duration:</span>
+                      <div className="text-sm text-foreground">{selectedAppointment.duration || 'N/A'} minutes</div>
                     </div>
                     <div>
-                      <span className="text-sm font-medium text-gray-500">Status:</span>
-                      <div className="text-sm text-gray-900">{getStatusBadge(selectedAppointment.status)}</div>
+                      <span className="text-sm font-medium text-muted-foreground">Status:</span>
+                      <div className="text-sm text-foreground">{getStatusBadge(selectedAppointment.status) || 'N/A'}</div>
                     </div>
                     <div>
-                      <span className="text-sm font-medium text-gray-500">Priority:</span>
-                      <div className="text-sm text-gray-900">{getPriorityBadge(selectedAppointment.priority)}</div>
+                      <span className="text-sm font-medium text-muted-foreground">Priority:</span>
+                      <div className="text-sm text-foreground">{getPriorityBadge(selectedAppointment.priority) || 'N/A'}</div>
                     </div>
                   </div>
                 </div>
@@ -895,22 +1037,22 @@ const AppointmentManagement = () => {
 
               {selectedAppointment.reason && (
                 <div className="border-t pt-6">
-                  <h3 className="font-semibold text-gray-900 mb-3">Reason for Visit</h3>
-                  <p className="text-sm text-gray-900">{selectedAppointment.reason}</p>
+                  <h3 className="font-semibold text-foreground mb-3">Reason for Visit</h3>
+                  <p className="text-sm text-foreground">{selectedAppointment.reason || 'N/A'}</p>
                 </div>
               )}
 
               {selectedAppointment.notes && (
                 <div className="border-t pt-6">
-                  <h3 className="font-semibold text-gray-900 mb-3">Notes</h3>
-                  <p className="text-sm text-gray-900">{selectedAppointment.notes}</p>
+                  <h3 className="font-semibold text-foreground mb-3">Notes</h3>
+                  <p className="text-sm text-foreground">{selectedAppointment.notes || 'N/A'}</p>
                 </div>
               )}
 
               {selectedAppointment.instructions && (
                 <div className="border-t pt-6">
-                  <h3 className="font-semibold text-gray-900 mb-3">Instructions</h3>
-                  <p className="text-sm text-gray-900">{selectedAppointment.instructions}</p>
+                  <h3 className="font-semibold text-foreground mb-3">Instructions</h3>
+                  <p className="text-sm text-foreground">{selectedAppointment.instructions || 'N/A'}</p>
                 </div>
               )}
             </div>
@@ -929,6 +1071,16 @@ const AppointmentManagement = () => {
         onClose={() => setIsRescheduleModalOpen(false)}
         appointment={selectedAppointment}
         onSuccess={handleRescheduleSuccess}
+      />
+
+      {/* Appointment Conflict Dialog */}
+      <AppointmentConflictDialog
+        isOpen={isConflictDialogOpen}
+        onClose={handleConflictClose}
+        conflictData={conflictData}
+        formData={formData}
+        onSelectTime={handleConflictSelectTime}
+        onForceCreate={handleConflictForceCreate}
       />
     </div>
   );

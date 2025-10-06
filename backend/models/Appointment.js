@@ -138,17 +138,27 @@ const appointmentSchema = new mongoose.Schema({
 
 // Virtual for appointment date and time
 appointmentSchema.virtual('appointmentDateTime').get(function() {
-  return new Date(`${this.date.toISOString().split('T')[0]}T${this.time}`);
+  if (!this.date || !this.time) {
+    return null;
+  }
+  try {
+    return new Date(`${this.date.toISOString().split('T')[0]}T${this.time}`);
+  } catch (error) {
+    console.error('Error creating appointmentDateTime virtual:', error);
+    return null;
+  }
 });
 
 // Virtual for is upcoming
 appointmentSchema.virtual('isUpcoming').get(function() {
-  return this.appointmentDateTime > new Date() && this.status === 'Scheduled';
+  const appointmentDateTime = this.appointmentDateTime;
+  return appointmentDateTime && appointmentDateTime > new Date() && this.status === 'Scheduled';
 });
 
 // Virtual for is overdue
 appointmentSchema.virtual('isOverdue').get(function() {
-  return this.appointmentDateTime < new Date() && this.status === 'Scheduled';
+  const appointmentDateTime = this.appointmentDateTime;
+  return appointmentDateTime && appointmentDateTime < new Date() && this.status === 'Scheduled';
 });
 
 // Pre-save middleware to set reminder date
@@ -192,6 +202,111 @@ appointmentSchema.statics.findUpcoming = function() {
 // Static method to find appointments by status
 appointmentSchema.statics.findByStatus = function(status) {
   return this.find({ status }).populate('patientId', 'fullName phone email');
+};
+
+// Static method to check for appointment conflicts
+appointmentSchema.statics.checkForConflicts = async function(doctorId, date, time, duration = 30, excludeAppointmentId = null) {
+  try {
+    // Parse the appointment time
+    const [hours, minutes] = time.split(':').map(Number);
+    const appointmentStart = new Date(date);
+    appointmentStart.setHours(hours, minutes, 0, 0);
+    
+    // Calculate end time
+    const appointmentEnd = new Date(appointmentStart.getTime() + (duration * 60 * 1000));
+    
+    // Build query to find potential conflicts
+    const query = {
+      doctorId: doctorId,
+      date: {
+        $gte: new Date(date.getFullYear(), date.getMonth(), date.getDate()),
+        $lt: new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1)
+      },
+      status: { $in: ['Scheduled', 'Confirmed', 'In Progress'] }
+    };
+    
+    // Exclude current appointment if updating
+    if (excludeAppointmentId) {
+      query._id = { $ne: excludeAppointmentId };
+    }
+    
+    // Find existing appointments on the same date
+    const existingAppointments = await this.find(query);
+    
+    // Check for time overlaps
+    const conflicts = [];
+    for (const existing of existingAppointments) {
+      const [existingHours, existingMinutes] = existing.time.split(':').map(Number);
+      const existingStart = new Date(existing.date);
+      existingStart.setHours(existingHours, existingMinutes, 0, 0);
+      
+      const existingEnd = new Date(existingStart.getTime() + (existing.duration * 60 * 1000));
+      
+      // Check for overlap: appointments overlap if one starts before the other ends
+      const hasOverlap = (appointmentStart < existingEnd) && (appointmentEnd > existingStart);
+      
+      if (hasOverlap) {
+        conflicts.push({
+          appointmentId: existing._id,
+          patientName: existing.patientName,
+          time: existing.time,
+          duration: existing.duration,
+          appointmentType: existing.appointmentType,
+          status: existing.status
+        });
+      }
+    }
+    
+    return conflicts;
+  } catch (error) {
+    console.error('Error checking for appointment conflicts:', error);
+    throw error;
+  }
+};
+
+// Static method to get doctor's availability for a specific date
+appointmentSchema.statics.getDoctorAvailability = async function(doctorId, date) {
+  try {
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+    
+    const appointments = await this.find({
+      doctorId: doctorId,
+      date: {
+        $gte: startOfDay,
+        $lte: endOfDay
+      },
+      status: { $in: ['Scheduled', 'Confirmed', 'In Progress'] }
+    }).sort({ time: 1 });
+    
+    // Convert to time slots with duration
+    const bookedSlots = appointments.map(apt => {
+      const [hours, minutes] = apt.time.split(':').map(Number);
+      const startTime = new Date(apt.date);
+      startTime.setHours(hours, minutes, 0, 0);
+      
+      const endTime = new Date(startTime.getTime() + (apt.duration * 60 * 1000));
+      
+      return {
+        appointmentId: apt._id,
+        patientName: apt.patientName,
+        startTime: startTime,
+        endTime: endTime,
+        time: apt.time,
+        duration: apt.duration,
+        appointmentType: apt.appointmentType,
+        status: apt.status
+      };
+    });
+    
+    return bookedSlots;
+  } catch (error) {
+    console.error('Error getting doctor availability:', error);
+    throw error;
+  }
 };
 
 // Instance method to confirm appointment
