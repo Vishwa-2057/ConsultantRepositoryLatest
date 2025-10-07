@@ -27,6 +27,42 @@ import { generateReferralPDF } from "@/utils/pdfGenerator";
 
 const ReferralSystem = () => {
   const { toast } = useToast();
+
+  // Utility function to format dates safely
+  const formatDate = (dateString) => {
+    if (!dateString) return 'No date set';
+    
+    try {
+      const date = new Date(dateString);
+      // Check if date is valid
+      if (isNaN(date.getTime())) return 'Invalid date';
+      
+      // Check if the date has time information (not just 00:00:00)
+      const hasTime = date.getHours() !== 0 || date.getMinutes() !== 0 || date.getSeconds() !== 0;
+      
+      if (hasTime) {
+        // Format with both date and time
+        return date.toLocaleString('en-US', { 
+          year: 'numeric', 
+          month: 'short', 
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true
+        });
+      } else {
+        // Format with just date
+        return date.toLocaleDateString('en-US', { 
+          year: 'numeric', 
+          month: 'short', 
+          day: 'numeric' 
+        });
+      }
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return 'Invalid date';
+    }
+  };
   const [searchTerm, setSearchTerm] = useState("");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [outboundReferrals, setOutboundReferrals] = useState([]);
@@ -483,7 +519,7 @@ const ReferralSystem = () => {
                               </div>
                               <div className="flex items-center space-x-2">
                                 <Calendar className="w-4 h-4 text-muted-foreground" />
-                                <span>{referral.preferredDate}</span>
+                                <span>{formatDate(referral.preferredDate)}</span>
                               </div>
                               <div className="flex items-center space-x-2">
                                 <PriorityIcon className="w-4 h-4 text-muted-foreground" />
@@ -577,7 +613,7 @@ const ReferralSystem = () => {
                               </div>
                               <div className="flex items-center space-x-2">
                                 <Calendar className="w-4 h-4 text-muted-foreground" />
-                                <span>{referral.preferredDate}</span>
+                                <span>{formatDate(referral.preferredDate)}</span>
                               </div>
                               <div className="flex items-center space-x-2">
                                 <PriorityIcon className="w-4 h-4 text-muted-foreground" />

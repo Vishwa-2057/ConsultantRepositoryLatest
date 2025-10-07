@@ -48,7 +48,8 @@ const allowedOrigins = [
   'http://127.0.0.1:8000',
   'http://127.0.0.1:8080',
   'http://127.0.0.1:8081',
-  'http://127.0.0.1:5173'
+  'http://127.0.0.1:5173',
+  'https://spontaneous-cheesecake-d2f6e1.netlify.app'
 ];
 
 const corsOptions = {

@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { 
   ArrowLeft, 
   User, 
@@ -35,6 +36,7 @@ import {
 import { patientAPI, prescriptionAPI, appointmentAPI, vitalsAPI, referralAPI, medicalImageAPI } from "@/services/api";
 import { toast } from "sonner";
 import { canEditPatients } from "@/utils/roleUtils";
+import { getImageUrl } from '@/utils/imageUtils';
 import EditPatientModal from "@/components/EditPatientModal";
 
 // Utility function to safely format dates
@@ -95,6 +97,10 @@ const PatientDetails = () => {
   const [expandedVitals, setExpandedVitals] = useState({});
   const [activeTab, setActiveTab] = useState("overview");
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+  const [selectedDocument, setSelectedDocument] = useState(null);
+  const [isDocumentModalOpen, setIsDocumentModalOpen] = useState(false);
 
   useEffect(() => {
     if (patientId) {
@@ -342,6 +348,20 @@ const PatientDetails = () => {
     }));
   };
 
+  const handleImageClick = (image) => {
+    setSelectedImage(image);
+    setIsImageModalOpen(true);
+  };
+
+  const handleDocumentClick = (documentUrl, title, index) => {
+    setSelectedDocument({
+      url: documentUrl,
+      title: title || `Government Document ${index !== undefined ? index + 1 : ''}`,
+      type: 'Government Document'
+    });
+    setIsDocumentModalOpen(true);
+  };
+
   const handleImageUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
@@ -466,7 +486,7 @@ const PatientDetails = () => {
             <div className="w-24 h-24 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden">
               {patient.profileImage ? (
                 <img 
-                  src={patient.profileImage.startsWith('http') ? patient.profileImage : `http://localhost:5000${patient.profileImage}`}
+                  src={getImageUrl(patient.profileImage)}
                   alt={patient.fullName}
                   className="w-full h-full object-cover"
                   crossOrigin="anonymous"
@@ -1499,7 +1519,7 @@ const PatientDetails = () => {
                                 src={doc}
                                 alt={`Government Document ${index + 1}`}
                                 className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform"
-                                onClick={() => window.open(doc, '_blank')}
+                                onClick={() => handleDocumentClick(doc, null, index)}
                                 onError={(e) => {
                                   e.target.style.display = 'none';
                                   e.target.nextSibling.classList.remove('hidden');
@@ -1514,7 +1534,7 @@ const PatientDetails = () => {
                             </div>
                             <div className="p-3">
                               <p className="text-sm font-medium text-gray-900">Government Document {index + 1}</p>
-                              <p className="text-xs text-gray-500 mt-1">Click to view full size</p>
+                              <p className="text-xs text-gray-500 mt-1">Click to view in popup</p>
                             </div>
                           </div>
                         ))
@@ -1525,7 +1545,7 @@ const PatientDetails = () => {
                               src={patient.governmentDocument}
                               alt="Government Document"
                               className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform"
-                              onClick={() => window.open(patient.governmentDocument, '_blank')}
+                              onClick={() => handleDocumentClick(patient.governmentDocument, 'Government Document')}
                               onError={(e) => {
                                 e.target.style.display = 'none';
                                 e.target.nextSibling.classList.remove('hidden');
@@ -1540,7 +1560,7 @@ const PatientDetails = () => {
                           </div>
                           <div className="p-3">
                             <p className="text-sm font-medium text-gray-900">Government Document</p>
-                            <p className="text-xs text-gray-500 mt-1">Click to view full size</p>
+                            <p className="text-xs text-gray-500 mt-1">Click to view in popup</p>
                           </div>
                         </div>
                       )}
@@ -1591,7 +1611,7 @@ const PatientDetails = () => {
                                 src={image.imageUrl || image.cloudinaryUrl}
                                 alt={image.title || `Medical Image ${index + 1}`}
                                 className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform"
-                                onClick={() => window.open(image.imageUrl || image.cloudinaryUrl, '_blank')}
+                                onClick={() => handleImageClick(image)}
                                 onError={(e) => {
                                   e.target.style.display = 'none';
                                   e.target.nextSibling.classList.remove('hidden');
@@ -1626,7 +1646,7 @@ const PatientDetails = () => {
                                   {image.createdAt ? new Date(image.createdAt).toLocaleDateString() : 'Unknown date'}
                                 </span>
                               </div>
-                              <p className="text-xs text-gray-500 mt-1">Click to view full size</p>
+                              <p className="text-xs text-gray-500 mt-1">Click to view in popup</p>
                             </div>
                           </div>
                         ))}
@@ -1659,6 +1679,157 @@ const PatientDetails = () => {
         patient={patient}
         onSuccess={handleEditSuccess}
       />
+
+      {/* Image Modal */}
+      <Dialog open={isImageModalOpen} onOpenChange={setIsImageModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedImage?.title || 'Medical Image'}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedImage && (
+            <div className="space-y-4">
+                <div className="relative bg-gray-50 rounded-lg overflow-hidden">
+                  <img
+                    src={selectedImage.imageUrl || selectedImage.cloudinaryUrl}
+                    alt={selectedImage.title || 'Medical Image'}
+                    className="w-full max-h-[60vh] object-contain"
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      e.target.nextSibling.classList.remove('hidden');
+                    }}
+                  />
+                  <div className="hidden absolute inset-0 flex items-center justify-center bg-gray-200">
+                    <div className="text-center text-gray-500">
+                      <FileText className="w-12 h-12 mx-auto mb-4" />
+                      <p>Unable to load image</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="font-medium text-gray-700">Image Type:</span>
+                    <p className="text-gray-600">{selectedImage.imageType || 'Not specified'}</p>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-700">Body Part:</span>
+                    <p className="text-gray-600">{selectedImage.bodyPart || 'Not specified'}</p>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-700">Uploaded By:</span>
+                    <p className="text-gray-600">
+                      {selectedImage.uploadedBy?.fullName ? `Dr. ${selectedImage.uploadedBy.fullName}` : 'Unknown'}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-700">Upload Date:</span>
+                    <p className="text-gray-600">
+                      {selectedImage.createdAt ? formatDateTime(selectedImage.createdAt) : 'Unknown date'}
+                    </p>
+                  </div>
+                </div>
+
+                {selectedImage.description && (
+                  <div>
+                    <span className="font-medium text-gray-700">Description:</span>
+                    <p className="text-gray-600 mt-1">{selectedImage.description}</p>
+                  </div>
+                )}
+
+                <div className="flex justify-end space-x-2 pt-4 border-t">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const link = document.createElement('a');
+                      link.href = selectedImage.imageUrl || selectedImage.cloudinaryUrl;
+                      link.download = selectedImage.title || 'medical-image';
+                      link.target = '_blank';
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                    }}
+                  >
+                    Download
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => window.open(selectedImage.imageUrl || selectedImage.cloudinaryUrl, '_blank')}
+                  >
+                    Open in New Tab
+                  </Button>
+                </div>
+              </div>
+            )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Document Modal */}
+      <Dialog open={isDocumentModalOpen} onOpenChange={setIsDocumentModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedDocument?.title || 'Government Document'}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedDocument && (
+            <div className="space-y-4">
+              <div className="relative bg-gray-50 rounded-lg overflow-hidden">
+                <img
+                  src={selectedDocument.url}
+                  alt={selectedDocument.title || 'Government Document'}
+                  className="w-full max-h-[60vh] object-contain"
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    e.target.nextSibling.classList.remove('hidden');
+                  }}
+                />
+                <div className="hidden absolute inset-0 flex items-center justify-center bg-gray-200">
+                  <div className="text-center text-gray-500">
+                    <FileText className="w-12 h-12 mx-auto mb-4" />
+                    <p>Unable to load document</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="font-medium text-gray-700">Document Type:</span>
+                  <p className="text-gray-600">{selectedDocument.type || 'Government Document'}</p>
+                </div>
+                <div>
+                  <span className="font-medium text-gray-700">Patient:</span>
+                  <p className="text-gray-600">{patient?.fullName || 'Unknown'}</p>
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-4 border-t">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    const link = document.createElement('a');
+                    link.href = selectedDocument.url;
+                    link.download = selectedDocument.title || 'government-document';
+                    link.target = '_blank';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                  }}
+                >
+                  Download
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => window.open(selectedDocument.url, '_blank')}
+                >
+                  Open in New Tab
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

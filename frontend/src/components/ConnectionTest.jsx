@@ -80,8 +80,8 @@ const ConnectionTest = () => {
         <h4 className="font-bold mb-2">Debug Information:</h4>
         <p><strong>API Base URL:</strong> {import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api'}</p>
         <p><strong>Environment:</strong> {import.meta.env.MODE}</p>
-        <p><strong>Backend URL:</strong> http://localhost:5000</p>
-        <p><strong>Frontend URL:</strong> http://localhost:8080</p>
+        <p><strong>Backend URL:</strong> {import.meta.env.MODE === 'production' ? 'https://consultantrepository.onrender.com' : 'http://localhost:5000'}</p>
+        <p><strong>Frontend URL:</strong> {import.meta.env.MODE === 'production' ? 'https://spontaneous-cheesecake-d2f6e1.netlify.app' : 'http://localhost:8080'}</p>
       </div>
     </div>
   );

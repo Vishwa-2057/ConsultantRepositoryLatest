@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import io from 'socket.io-client';
+import { config } from '@/config/env';
 
 const VideoCallModal = ({ isOpen, onClose, consultation, patient }) => {
   const { toast } = useToast();
@@ -85,18 +86,13 @@ const VideoCallModal = ({ isOpen, onClose, consultation, patient }) => {
   const initializeCall = async () => {
     try {
       console.log('🚀 DOCTOR: Initializing video call...');
-      console.log('🚀 DOCTOR: callStatus before:', callStatus);
       setCallStatus('connecting');
       console.log('🚀 DOCTOR: callStatus set to connecting');
       
       // Connect to signaling server
       console.log('🔌 DOCTOR: Connecting to signaling server...');
       // Use HTTPS signaling server when accessed via HTTPS for media permissions
-      const signalingUrl = window.location.protocol === 'https:' 
-        ? `https://${window.location.hostname}:3002`
-        : (window.location.hostname === 'localhost' 
-          ? 'http://localhost:3001' 
-          : `http://${window.location.hostname}:3001`);
+      const signalingUrl = config.SIGNALING_SERVER_URL;
       console.log('🔌 DOCTOR: Signaling server URL:', signalingUrl);
       
       socketRef.current = io(signalingUrl, {

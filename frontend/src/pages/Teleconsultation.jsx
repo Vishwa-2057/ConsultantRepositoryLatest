@@ -14,13 +14,11 @@ import {
   Camera,
   Mic,
   Share,
-  Plus,
   Settings
 } from "lucide-react";
 import ScheduleConsultationDialog from "@/components/ScheduleConsultationDialog";
 import ScheduleTeleconsultationModal from "@/components/ScheduleTeleconsultationModal";
 import VideoCallModal from "@/components/VideoCallModal";
-import PatientSelectionModal from "@/components/PatientSelectionModal";
 import { consultationAPI, teleconsultationAPI } from "@/services/api";
 import { useToast } from "@/hooks/use-toast";
 
@@ -36,7 +34,6 @@ const Teleconsultation = () => {
   const [teleconsultationLoading, setTeleconsultationLoading] = useState(false);
   const [completingConsultation, setCompletingConsultation] = useState(null);
   const [videoCallModalOpen, setVideoCallModalOpen] = useState(false);
-  const [patientSelectionModalOpen, setPatientSelectionModalOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [selectedConsultation, setSelectedConsultation] = useState(null);
   const [selectedTeleconsultation, setSelectedTeleconsultation] = useState(null);
@@ -249,15 +246,7 @@ const Teleconsultation = () => {
     }
   };
 
-  const handleStartVideoCall = () => {
-    setPatientSelectionModalOpen(true);
-  };
 
-  const handlePatientSelect = (patient) => {
-    setSelectedPatient(patient);
-    setSelectedConsultation(null); // For instant calls
-    setVideoCallModalOpen(true);
-  };
 
   const handleJoinCall = (consultation) => {
     const patient = {
@@ -378,20 +367,7 @@ const Teleconsultation = () => {
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
-        <Card 
-          className="border-0 shadow-soft hover:shadow-medical transition-all duration-200 cursor-pointer"
-          onClick={handleStartVideoCall}
-        >
-          <CardContent className="p-6 text-center">
-            <div className="w-12 h-12 bg-gradient-primary rounded-full flex items-center justify-center mx-auto mb-3">
-              <Video className="w-6 h-6 text-white" />
-            </div>
-            <h3 className="font-semibold text-foreground mb-1">Start Video Call</h3>
-            <p className="text-sm text-muted-foreground">Begin immediate consultation</p>
-          </CardContent>
-        </Card>
-
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
         <Card 
           className="border-0 shadow-soft hover:shadow-medical transition-all duration-200 cursor-pointer"
           onClick={() => setScheduleTeleconsultationOpen(true)}
@@ -874,13 +850,6 @@ const Teleconsultation = () => {
         onSuccess={handleTeleconsultationScheduleSuccess}
       />
 
-      {/* Patient Selection Modal */}
-      <PatientSelectionModal
-        isOpen={patientSelectionModalOpen}
-        onClose={() => setPatientSelectionModalOpen(false)}
-        onPatientSelect={handlePatientSelect}
-        title="Select Patient for Video Call"
-      />
 
       {/* Video Call Modal */}
       <VideoCallModal

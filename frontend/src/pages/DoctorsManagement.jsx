@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { doctorAPI } from "@/services/api";
+import { getImageUrl } from '@/utils/imageUtils';
 
 const DoctorsManagement = () => {
   const [doctors, setDoctors] = useState([]);
@@ -520,7 +521,7 @@ const DoctorsManagement = () => {
                           <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden">
                             {doctor.profileImage ? (
                               <img 
-                                src={doctor.profileImage.startsWith('http') ? doctor.profileImage : `http://localhost:5000${doctor.profileImage}`}
+                                src={getImageUrl(doctor.profileImage)}
                                 alt={doctor.fullName}
                                 className="w-full h-full object-cover"
                                 crossOrigin="anonymous"

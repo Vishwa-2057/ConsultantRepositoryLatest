@@ -109,8 +109,8 @@ const APITest = () => {
 
         <div className="text-sm text-gray-600 space-y-1">
           <p><strong>API Base URL:</strong> {config.API_BASE_URL}</p>
-          <p><strong>Backend URL:</strong> http://localhost:5000</p>
-          <p><strong>Frontend URL:</strong> http://localhost:8080</p>
+          <p><strong>Backend URL:</strong> {config.NODE_ENV === 'production' ? 'https://consultantrepository.onrender.com' : 'http://localhost:5000'}</p>
+          <p><strong>Frontend URL:</strong> {config.NODE_ENV === 'production' ? 'https://spontaneous-cheesecake-d2f6e1.netlify.app' : 'http://localhost:8080'}</p>
           <p><strong>Environment:</strong> {config.NODE_ENV}</p>
           <p className="mt-2 text-orange-600">
             <strong>Note:</strong> Make sure your backend server is running before testing.

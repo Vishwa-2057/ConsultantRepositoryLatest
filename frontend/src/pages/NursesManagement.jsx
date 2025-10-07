@@ -32,7 +32,8 @@ import {
   UserPlus
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { nurseAPI } from "@/services/api";
+import { nurseAPI } from '../services/api';
+import { getImageUrl } from '@/utils/imageUtils';
 
 const NursesManagement = () => {
   const [nurses, setNurses] = useState([]);
@@ -404,7 +405,7 @@ const NursesManagement = () => {
                           <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden">
                             {nurse.profileImage ? (
                               <img 
-                                src={nurse.profileImage.startsWith('http') ? nurse.profileImage : `http://localhost:5000${nurse.profileImage}`}
+                                src={getImageUrl(nurse.profileImage)}
                                 alt={nurse.fullName}
                                 className="w-full h-full object-cover"
                                 crossOrigin="anonymous"

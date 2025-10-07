@@ -31,13 +31,12 @@ import {
   AlertTriangle,
   Check,
   Phone,
-  Mail,
-  Calendar
 } from "lucide-react";
 import PatientModal from "@/components/PatientModal";
 import AppointmentModal from "@/components/AppointmentModal";
 import { useToast } from "@/hooks/use-toast";
 import { patientAPI, appointmentAPI, complianceAlertAPI } from "@/services/api";
+import { getImageUrl } from '@/utils/imageUtils';
 import { isClinic, isDoctor } from "@/utils/roleUtils";
 import { Link, useNavigate } from "react-router-dom";
 import AppointmentViewModal from '../components/AppointmentViewModal';
@@ -458,7 +457,7 @@ const PatientManagement = () => {
                             <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden">
                               {patient.profileImage ? (
                                 <img 
-                                  src={patient.profileImage.startsWith('http') ? patient.profileImage : `http://localhost:5000${patient.profileImage}`}
+                                  src={getImageUrl(patient.profileImage)}
                                   alt={patient.fullName}
                                   className="w-full h-full object-cover"
                                   crossOrigin="anonymous"
@@ -876,7 +875,7 @@ const PatientManagement = () => {
                       <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden">
                         {patient.profileImage ? (
                           <img 
-                            src={patient.profileImage.startsWith('http') ? patient.profileImage : `http://localhost:5000${patient.profileImage}`}
+                            src={getImageUrl(patient.profileImage)}
                             alt={patient.fullName || patient.name}
                             className="w-full h-full object-cover"
                             crossOrigin="anonymous"
