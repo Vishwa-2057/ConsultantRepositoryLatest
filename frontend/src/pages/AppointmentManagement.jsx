@@ -128,23 +128,46 @@ const AppointmentManagement = () => {
   };
 
   const loadAppointments = async () => {
+    console.log('loadAppointments called');
+    console.log('isDoctorUser:', isDoctorUser);
+    console.log('currentUser:', currentUser);
     try {
       setLoading(true);
       const filters = {};
       
-      // For doctors, only show their own appointments
+      // For doctors, we'll let the backend handle the filtering
+      // The backend will show appointments where the doctor is conducting
+      // OR appointments for patients assigned to the doctor
       if (isDoctorUser && currentUser) {
         const userId = currentUser.id || currentUser._id;
-        filters.doctorId = userId;
+        console.log('Doctor user detected with ID:', userId);
+        // We don't set doctorId filter here to allow backend to handle the logic
       }
+      
+      // Add timestamp to avoid caching issues
+      filters._t = Date.now();
 
       // Load all appointments without pagination to enable frontend filtering
+      console.log('Making API call with filters:', filters);
       const response = await appointmentAPI.getAll(1, 1000, filters);
-      setAppointments(response.appointments || []);
+      console.log('Full API response:', response);
+      
+      // Check if we have appointments in the response
+      if (response && (response.appointments || response.data)) {
+        const appointmentsList = response.appointments || response.data || [];
+        console.log('Setting appointments to:', appointmentsList);
+        setAppointments(appointmentsList);
+      } else {
+        console.log('No appointments in response, setting empty array');
+        setAppointments([]);
+      }
     } catch (error) {
       console.error('Error loading appointments:', error);
+      console.error('Error details:', error.message, error.stack);
       toast.error('Failed to load appointments');
+      setAppointments([]); // Ensure appointments is set to empty array on error
     } finally {
+      console.log('loadAppointments finally block');
       setLoading(false);
     }
   };
@@ -201,9 +224,13 @@ const AppointmentManagement = () => {
   }, [itemsPerPage, isInitialLoad]);
 
   useEffect(() => {
+    console.log('Initial useEffect called');
     document.title = "Smart Healthcare";
     loadPatients();
     loadDoctors();
+    console.log('About to call loadAppointments from initial useEffect');
+    loadAppointments();
+    loadStats();
   }, []);
 
   useEffect(() => {
@@ -367,6 +394,9 @@ const AppointmentManagement = () => {
     });
   };
 
+  console.log('All appointments:', appointments);
+  console.log('Appointments length:', appointments.length);
+  
   const filteredAppointments = appointments.filter(appointment => {
     // Search filter
     const searchLower = searchTerm.toLowerCase();
@@ -412,22 +442,63 @@ const AppointmentManagement = () => {
       }
     }
 
-    return matchesSearch && matchesStatus && matchesType && matchesPriority && matchesDate;
+    const result = matchesSearch && matchesStatus && matchesType && matchesPriority && matchesDate;
+    if (!result) {
+      console.log('Appointment filtered out:', appointment, {
+        matchesSearch, matchesStatus, matchesType, matchesPriority, matchesDate
+      });
+    }
+    return result;
+  }).sort((a, b) => {
+    // Sort appointments: upcoming first, then missed
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Reset time to start of day for accurate comparison
+    
+    const dateA = new Date(a.date);
+    const dateB = new Date(b.date);
+    dateA.setHours(0, 0, 0, 0);
+    dateB.setHours(0, 0, 0, 0);
+    
+    // Determine if appointments are upcoming (future/today) or missed (past)
+    const isUpcomingA = dateA >= today;
+    const isUpcomingB = dateB >= today;
+    
+    // If one is upcoming and other is missed, upcoming comes first
+    if (isUpcomingA && !isUpcomingB) return -1;
+    if (!isUpcomingA && isUpcomingB) return 1;
+    
+    // Both are upcoming or both are missed - sort by date and time
+    if (dateA.getTime() === dateB.getTime()) {
+      // Same date, sort by time
+      return a.time.localeCompare(b.time);
+    }
+    
+    // Different dates
+    if (isUpcomingA && isUpcomingB) {
+      // Both upcoming - sort by date ascending (earliest first)
+      return dateA - dateB;
+    } else {
+      // Both missed - sort by date descending (most recent first)
+      return dateB - dateA;
+    }
   });
 
   // Calculate pagination for filtered results
   const totalFilteredCount = filteredAppointments.length;
+  console.log('Filtered appointments:', filteredAppointments);
+  console.log('Filtered appointments length:', totalFilteredCount);
   const totalFilteredPages = Math.ceil(totalFilteredCount / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const paginatedAppointments = filteredAppointments.slice(startIndex, endIndex);
+  console.log('Paginated appointments:', paginatedAppointments);
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-3 sm:p-4 lg:p-6 space-y-4 sm:space-y-6">
       <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
           <DialogTrigger asChild>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-sm sm:max-w-md lg:max-w-2xl max-h-[90vh] overflow-y-auto mx-4 sm:mx-0">
             <DialogHeader>
               <DialogTitle>Create New Appointment</DialogTitle>
               <DialogDescription>
@@ -435,7 +506,7 @@ const AppointmentManagement = () => {
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
-              <div className={`grid gap-4 ${isDoctorUser ? 'grid-cols-1' : 'grid-cols-2'}`}>
+              <div className={`grid gap-4 ${isDoctorUser ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
                 <div>
                   <Label htmlFor="patient">Patient</Label>
                   <Select value={formData.patientId} onValueChange={(value) => setFormData({...formData, patientId: value})}>
@@ -493,7 +564,7 @@ const AppointmentManagement = () => {
                   </div>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="type">Appointment Type</Label>
                   <Select value={formData.appointmentType} onValueChange={(value) => setFormData({...formData, appointmentType: value})}>
@@ -525,7 +596,7 @@ const AppointmentManagement = () => {
                   </Select>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
                   <Label htmlFor="date">Date</Label>
                   <Input
@@ -581,75 +652,85 @@ const AppointmentManagement = () => {
           </DialogContent>
         </Dialog>
 
-      {/* Search, Stats and Actions - Single Line */}
-      <div className="flex items-center justify-between gap-6 bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-        {/* Search Bar */}
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-          <Input
-            placeholder="Search appointments..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 h-10 bg-white border-gray-200 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          />
+      {/* Search, Stats and Actions - Responsive Layout */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 sm:p-6 space-y-4">
+        {/* Top Row: Search and New Appointment Button */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+          {/* Search Bar */}
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <Input
+              placeholder="Search appointments..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 h-10 bg-white border-gray-200 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          
+          {/* New Appointment Button */}
+          <Button 
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 sm:px-6 py-2 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex-shrink-0"
+            onClick={() => setIsCreateModalOpen(true)}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            <span className="hidden sm:inline">New Appointment</span>
+            <span className="sm:hidden">New</span>
+          </Button>
         </div>
         
-        {/* Stats */}
-        <div className="flex items-center space-x-6">
-          <div className="flex items-center space-x-2">
-            <div className="p-1.5 bg-blue-100 rounded-full">
+        {/* Stats Row - Responsive Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="flex items-center space-x-2 p-3 bg-blue-50 rounded-lg">
+            <div className="p-1.5 bg-blue-100 rounded-full flex-shrink-0">
               <CalendarDays className="w-4 h-4 text-blue-600" />
             </div>
-            <span className="text-sm text-blue-600 font-medium">
-              Total Appointments: {stats.totalAppointments || 0}
-            </span>
+            <div className="min-w-0">
+              <span className="text-xs sm:text-sm text-blue-600 font-medium block truncate">
+                Total: {stats.totalAppointments || 0}
+              </span>
+            </div>
           </div>
-          <div className="flex items-center space-x-2">
-            <div className="p-1.5 bg-green-100 rounded-full">
+          <div className="flex items-center space-x-2 p-3 bg-green-50 rounded-lg">
+            <div className="p-1.5 bg-green-100 rounded-full flex-shrink-0">
               <Clock className="w-4 h-4 text-green-600" />
             </div>
-            <span className="text-sm text-green-600 font-medium">
-              Today: {stats.todayAppointments || 0}
-            </span>
+            <div className="min-w-0">
+              <span className="text-xs sm:text-sm text-green-600 font-medium block truncate">
+                Today: {stats.todayAppointments || 0}
+              </span>
+            </div>
           </div>
-          <div className="flex items-center space-x-2">
-            <div className="p-1.5 bg-purple-100 rounded-full">
+          <div className="flex items-center space-x-2 p-3 bg-purple-50 rounded-lg">
+            <div className="p-1.5 bg-purple-100 rounded-full flex-shrink-0">
               <TrendingUp className="w-4 h-4 text-purple-600" />
             </div>
-            <span className="text-sm text-purple-600 font-medium">
-              Upcoming: {stats.upcomingAppointments || 0}
-            </span>
+            <div className="min-w-0">
+              <span className="text-xs sm:text-sm text-purple-600 font-medium block truncate">
+                Upcoming: {stats.upcomingAppointments || 0}
+              </span>
+            </div>
           </div>
         </div>
-        
-        {/* New Appointment Button */}
-        <Button 
-          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
-          onClick={() => setIsCreateModalOpen(true)}
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          New Appointment
-        </Button>
       </div>
 
       {/* Appointments List */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-        <div className="px-6 py-4 border-b border-gray-100">
-          <div className="flex items-center justify-between">
+        <div className="px-4 sm:px-6 py-4 border-b border-gray-100">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="flex items-center space-x-3">
-              <h2 className="text-xl font-semibold text-gray-900">Appointments</h2>
+              <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Appointments</h2>
               <div className="flex items-center space-x-2">
-                <Badge variant="secondary" className="px-3 py-1 text-sm font-medium bg-blue-100 text-blue-700 border-0">
+                <Badge variant="secondary" className="px-2 sm:px-3 py-1 text-xs sm:text-sm font-medium bg-blue-100 text-blue-700 border-0">
                   {totalFilteredCount}
                 </Badge>
               </div>
             </div>
             
             {/* Filters */}
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-28 h-8 text-xs bg-white border-gray-200 rounded-lg shadow-sm">
-                  <SelectValue placeholder="All Statuses" />
+                <SelectTrigger className="w-24 sm:w-28 h-8 text-xs bg-white border-gray-200 rounded-lg shadow-sm">
+                  <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Statuses</SelectItem>
@@ -661,8 +742,8 @@ const AppointmentManagement = () => {
                 </SelectContent>
               </Select>
               <Select value={typeFilter} onValueChange={setTypeFilter}>
-                <SelectTrigger className="w-24 h-8 text-xs bg-white border-gray-200 rounded-lg shadow-sm">
-                  <SelectValue placeholder="All Types" />
+                <SelectTrigger className="w-20 sm:w-24 h-8 text-xs bg-white border-gray-200 rounded-lg shadow-sm">
+                  <SelectValue placeholder="Type" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Types</SelectItem>
@@ -674,8 +755,8 @@ const AppointmentManagement = () => {
                 </SelectContent>
               </Select>
               <Select value={priorityFilter} onValueChange={setPriorityFilter}>
-                <SelectTrigger className="w-28 h-8 text-xs bg-white border-gray-200 rounded-lg shadow-sm">
-                  <SelectValue placeholder="All Priorities" />
+                <SelectTrigger className="w-24 sm:w-28 h-8 text-xs bg-white border-gray-200 rounded-lg shadow-sm">
+                  <SelectValue placeholder="Priority" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Priorities</SelectItem>
@@ -687,8 +768,8 @@ const AppointmentManagement = () => {
                 </SelectContent>
               </Select>
               <Select value={dateFilter} onValueChange={setDateFilter}>
-                <SelectTrigger className="w-24 h-8 text-xs bg-white border-gray-200 rounded-lg shadow-sm">
-                  <SelectValue placeholder="All Dates" />
+                <SelectTrigger className="w-20 sm:w-24 h-8 text-xs bg-white border-gray-200 rounded-lg shadow-sm">
+                  <SelectValue placeholder="Date" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Dates</SelectItem>
@@ -740,7 +821,7 @@ const AppointmentManagement = () => {
             </div>
           </div>
         </div>
-        <div className="p-6">
+        <div className="p-4 sm:p-6">
           {loading ? (
             <div className="flex justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -750,10 +831,39 @@ const AppointmentManagement = () => {
               No appointments found
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {paginatedAppointments.map((appointment) => (
-                <div key={appointment._id} className="bg-gray-50 hover:bg-gray-100 rounded-lg p-4 transition-all duration-200">
-                  <div className="flex items-center justify-between gap-6">
+                <div key={appointment._id} className="bg-gray-50 hover:bg-gray-100 rounded-lg p-3 sm:p-4 transition-all duration-200">
+                  {/* Mobile Layout */}
+                  <div className="block lg:hidden space-y-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-foreground text-sm truncate">
+                          {appointment.patientId?.fullName || 'Unknown Patient'}
+                        </div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          Dr. {appointment.doctorId?.fullName || 'Unknown Doctor'}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {getStatusBadge(appointment.status)}
+                        {getPriorityBadge(appointment.priority)}
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        <span>{formatDate(appointment.date)} at {appointment.time}</span>
+                      </div>
+                      <span>{appointment.duration}min</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {appointment.appointmentType} • {appointment.reason || 'No reason specified'}
+                    </div>
+                  </div>
+
+                  {/* Desktop Layout */}
+                  <div className="hidden lg:flex items-center justify-between gap-6">
                     {/* Patient Name - Fixed width */}
                     <div className="w-32 flex-shrink-0">
                       <div className="font-semibold text-foreground text-sm truncate">

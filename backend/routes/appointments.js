@@ -130,19 +130,47 @@ router.get('/', auth, async (req, res) => {
       query.provider = { $regex: provider, $options: 'i' };
     }
 
-    // Build sort object
-    const sort = {};
-    sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
+    // Build sort object - prioritize appointments closest to current date
+    let sort = {};
+    if (sortBy === 'date') {
+      // Custom sorting for date to show closest appointments first
+      // We'll handle this in the aggregation pipeline
+      sort = { 
+        dateProximity: 1,  // Closest to today first
+        date: 1,           // Then by date ascending
+        time: 1            // Then by time ascending
+      };
+    } else {
+      sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
+    }
 
     let appointments;
     let total;
 
-    // Role-based filtering: doctors only see appointments for patients assigned to them
-    // UNLESS doctorId filter is explicitly provided (then filter by conducting doctor)
-    if (req.user.role === 'doctor' && !doctorId) {
+    // Role-based filtering: doctors only see appointments where they are the conducting doctor
+    // OR appointments for patients assigned to them
+    if (req.user.role === 'doctor') {
+      // If doctorId filter is provided and it matches the logged-in doctor, use it
+      // Otherwise, filter by patient assignments
+      if (doctorId && doctorId === req.user.id) {
+        // Doctor is filtering for their own appointments - use the doctorId filter
+        // The doctorId filter is already added to the query above (line 125-127)
+      } else if (!doctorId) {
       // Use aggregation to filter appointments based on patient's assignedDoctors array
       const pipeline = [
         { $match: query },
+        {
+          $addFields: {
+            dateProximity: {
+              $abs: {
+                $subtract: [
+                  { $dateFromString: { dateString: { $dateToString: { format: "%Y-%m-%d", date: "$date" } } } },
+                  { $dateFromString: { dateString: { $dateToString: { format: "%Y-%m-%d", date: new Date() } } } }
+                ]
+              }
+            }
+          }
+        },
         {
           $lookup: {
             from: 'patients',
@@ -198,6 +226,18 @@ router.get('/', auth, async (req, res) => {
       const countPipeline = [
         { $match: query },
         {
+          $addFields: {
+            dateProximity: {
+              $abs: {
+                $subtract: [
+                  { $dateFromString: { dateString: { $dateToString: { format: "%Y-%m-%d", date: "$date" } } } },
+                  { $dateFromString: { dateString: { $dateToString: { format: "%Y-%m-%d", date: new Date() } } } }
+                ]
+              }
+            }
+          }
+        },
+        {
           $lookup: {
             from: 'patients',
             localField: 'patientId',
@@ -215,20 +255,63 @@ router.get('/', auth, async (req, res) => {
 
       const countResult = await Appointment.aggregate(countPipeline);
       total = countResult.length > 0 ? countResult[0].total : 0;
-    } else {
-      // For all other cases (including when doctorId filter is provided), use simple filtering
-      appointments = await Appointment.find(query)
-        .populate('patientId', 'fullName phone email')
-        .populate('doctorId', 'fullName specialty phone')
-        .sort(sort)
-        .skip((page - 1) * limit)
-        .limit(parseInt(limit));
+      } else {
+        // Doctor is filtering for their own appointments or other doctors' appointments
+        // Use the regular query logic which already includes the doctorId filter
+        const pipeline = [
+          { $match: query },
+          {
+            $addFields: {
+              dateProximity: {
+                $abs: {
+                  $subtract: [
+                    { $dateFromString: { dateString: { $dateToString: { format: "%Y-%m-%d", date: "$date" } } } },
+                    { $dateFromString: { dateString: { $dateToString: { format: "%Y-%m-%d", date: new Date() } } } }
+                  ]
+                }
+              }
+            }
+          },
+          {
+            $lookup: {
+              from: 'patients',
+              localField: 'patientId',
+              foreignField: '_id',
+              as: 'patientId',
+              pipeline: [
+                { $project: { fullName: 1, phone: 1, email: 1 } }
+              ]
+            }
+          },
+          {
+            $lookup: {
+              from: 'doctors',
+              localField: 'doctorId',
+              foreignField: '_id',
+              as: 'doctorId',
+              pipeline: [
+                { $project: { fullName: 1, specialty: 1, phone: 1 } }
+              ]
+            }
+          },
+          {
+            $unwind: { path: '$patientId', preserveNullAndEmptyArrays: true }
+          },
+          {
+            $unwind: { path: '$doctorId', preserveNullAndEmptyArrays: true }
+          },
+          {
+            $project: { __v: 0 }
+          },
+          { $sort: sort },
+          { $skip: (page - 1) * limit },
+          { $limit: parseInt(limit) }
+        ];
 
-      total = await Appointment.countDocuments(query);
-    }
-
-    // Handle nursing staff separately if needed
-    if (['nurse', 'head_nurse', 'supervisor'].includes(req.user.role) && !doctorId) {
+        appointments = await Appointment.aggregate(pipeline);
+        total = await Appointment.countDocuments(query);
+      }
+    } else if (['nurse', 'head_nurse', 'supervisor'].includes(req.user.role) && !doctorId) {
       // Nursing staff see appointments for their clinic
       const Nurse = require('../models/Nurse');
       const nurse = await Nurse.findById(req.user.id);
@@ -253,25 +336,112 @@ router.get('/', auth, async (req, res) => {
       // Add clinic filtering to existing query
       query.clinicId = nurse.clinicId;
       
-      appointments = await Appointment.find(query)
-        .populate('patientId', 'fullName phone email')
-        .populate('doctorId', 'fullName specialty phone')
-        .sort(sort)
-        .limit(limit * 1)
-        .skip((page - 1) * limit)
-        .select('-__v');
+      // Use aggregation pipeline for proximity-based sorting
+      const pipeline = [
+        { $match: query },
+        {
+          $addFields: {
+            dateProximity: {
+              $abs: {
+                $subtract: [
+                  { $dateFromString: { dateString: { $dateToString: { format: "%Y-%m-%d", date: "$date" } } } },
+                  { $dateFromString: { dateString: { $dateToString: { format: "%Y-%m-%d", date: new Date() } } } }
+                ]
+              }
+            }
+          }
+        },
+        {
+          $lookup: {
+            from: 'patients',
+            localField: 'patientId',
+            foreignField: '_id',
+            as: 'patientId',
+            pipeline: [
+              { $project: { fullName: 1, phone: 1, email: 1 } }
+            ]
+          }
+        },
+        {
+          $lookup: {
+            from: 'doctors',
+            localField: 'doctorId',
+            foreignField: '_id',
+            as: 'doctorId',
+            pipeline: [
+              { $project: { fullName: 1, specialty: 1, phone: 1 } }
+            ]
+          }
+        },
+        {
+          $unwind: { path: '$patientId', preserveNullAndEmptyArrays: true }
+        },
+        {
+          $unwind: { path: '$doctorId', preserveNullAndEmptyArrays: true }
+        },
+        {
+          $project: { __v: 0 }
+        },
+        { $sort: sort },
+        { $skip: (page - 1) * limit },
+        { $limit: parseInt(limit) }
+      ];
 
+      appointments = await Appointment.aggregate(pipeline);
       total = await Appointment.countDocuments(query);
     } else {
-      // Super admin sees all appointments
-      appointments = await Appointment.find(query)
-        .populate('patientId', 'fullName phone email')
-        .populate('doctorId', 'fullName specialty phone')
-        .sort(sort)
-        .limit(limit * 1)
-        .skip((page - 1) * limit)
-        .select('-__v');
+      // For all other cases (including when doctorId filter is provided and super admin), use aggregation for proximity sorting
+      const pipeline = [
+        { $match: query },
+        {
+          $addFields: {
+            dateProximity: {
+              $abs: {
+                $subtract: [
+                  { $dateFromString: { dateString: { $dateToString: { format: "%Y-%m-%d", date: "$date" } } } },
+                  { $dateFromString: { dateString: { $dateToString: { format: "%Y-%m-%d", date: new Date() } } } }
+                ]
+              }
+            }
+          }
+        },
+        {
+          $lookup: {
+            from: 'patients',
+            localField: 'patientId',
+            foreignField: '_id',
+            as: 'patientId',
+            pipeline: [
+              { $project: { fullName: 1, phone: 1, email: 1 } }
+            ]
+          }
+        },
+        {
+          $lookup: {
+            from: 'doctors',
+            localField: 'doctorId',
+            foreignField: '_id',
+            as: 'doctorId',
+            pipeline: [
+              { $project: { fullName: 1, specialty: 1, phone: 1 } }
+            ]
+          }
+        },
+        {
+          $unwind: { path: '$patientId', preserveNullAndEmptyArrays: true }
+        },
+        {
+          $unwind: { path: '$doctorId', preserveNullAndEmptyArrays: true }
+        },
+        {
+          $project: { __v: 0 }
+        },
+        { $sort: sort },
+        { $skip: (page - 1) * limit },
+        { $limit: parseInt(limit) }
+      ];
 
+      appointments = await Appointment.aggregate(pipeline);
       total = await Appointment.countDocuments(query);
     }
 

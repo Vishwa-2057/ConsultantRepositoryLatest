@@ -24,7 +24,8 @@ import {
   Download,
   Calendar,
   UserPlus,
-  FileText
+  FileText,
+  Key
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { activityLogAPI } from "@/services/api";
@@ -88,6 +89,8 @@ const ActivityLogsModal = ({ isOpen, onClose }) => {
         return <Calendar className="w-4 h-4 text-green-600" />;
       case 'appointment_status_changed':
         return <FileText className="w-4 h-4 text-blue-600" />;
+      case 'password_reset':
+        return <Key className="w-4 h-4 text-purple-600" />;
       default:
         return <Activity className="w-4 h-4 text-gray-600" />;
     }
@@ -107,6 +110,8 @@ const ActivityLogsModal = ({ isOpen, onClose }) => {
         return 'default';
       case 'appointment_status_changed':
         return 'secondary';
+      case 'password_reset':
+        return 'outline';
       default:
         return 'outline';
     }
@@ -185,7 +190,7 @@ const ActivityLogsModal = ({ isOpen, onClose }) => {
             Activity Logs
           </DialogTitle>
           <DialogDescription>
-            Recent login and logout activities for your clinic (Last 7 days)
+            Recent login, logout, and system activities for your clinic (Last 7 days)
           </DialogDescription>
         </DialogHeader>
         
@@ -209,9 +214,11 @@ const ActivityLogsModal = ({ isOpen, onClose }) => {
               <SelectItem value="all">All Activities</SelectItem>
               <SelectItem value="login">Login</SelectItem>
               <SelectItem value="logout">Logout</SelectItem>
-              <SelectItem value="session_expired">Expired</SelectItem>
+              <SelectItem value="session_expired">Session Expired</SelectItem>
+              <SelectItem value="forced_logout">Forced Logout</SelectItem>
               <SelectItem value="appointment_created">Appointment Created</SelectItem>
               <SelectItem value="appointment_status_changed">Appointment Status Changed</SelectItem>
+              <SelectItem value="password_reset">Password Reset</SelectItem>
             </SelectContent>
           </Select>
 
@@ -248,83 +255,45 @@ const ActivityLogsModal = ({ isOpen, onClose }) => {
             </div>
           ) : filteredLogs.length > 0 ? (
             filteredLogs.map((log) => (
-              <div key={log._id} className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-muted/30 transition-colors">
+              <div key={log._id} className="flex items-center gap-3 p-2 rounded-lg border border-border hover:bg-muted/30 transition-colors">
                 {/* Activity Icon */}
-                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center">
+                <div className="flex-shrink-0 w-6 h-6 rounded-full bg-muted flex items-center justify-center">
                   {getActivityIcon(log.activityType)}
                 </div>
                 
-                {/* Activity Details */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm">{log.userName}</span>
-                      <Badge variant={getActivityColor(log.activityType)} className="text-xs">
-                        {log.activityType}
-                      </Badge>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-xs text-muted-foreground">
-                        {formatTimeAgo(log.timestamp)}
-                      </div>
-                      <div className="text-xs text-muted-foreground font-mono">
-                        {formatExactDateTime(log.timestamp)}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="text-xs text-muted-foreground">
-                    {/* Appointment-specific information */}
-                    {(log.activityType === 'appointment_created' || log.activityType === 'appointment_status_changed') && (
-                      <div className="bg-blue-50 p-2 rounded mb-2 border-l-2 border-blue-200">
-                        <div className="flex items-center gap-4 mb-1">
-                          <span className="flex items-center gap-1 font-medium">
-                            <UserPlus className="w-3 h-3" />
-                            Patient: {log.patientName}
-                          </span>
-                          <span className="flex items-center gap-1 font-medium">
-                            <User className="w-3 h-3" />
-                            Doctor: {log.doctorName}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-4 mb-1">
-                          <span>Type: {log.appointmentType}</span>
-                          {log.appointmentDate && (
-                            <span>Date: {new Date(log.appointmentDate).toLocaleDateString()}</span>
-                          )}
-                          {log.appointmentTime && (
-                            <span>Time: {log.appointmentTime}</span>
-                          )}
-                        </div>
-                        {log.activityType === 'appointment_status_changed' && (
-                          <div className="flex items-center gap-2">
-                            <span>Status: {log.oldStatus} → {log.newStatus}</span>
-                          </div>
-                        )}
-                      </div>
+                {/* Single Line Activity Details */}
+                <div className="flex-1 min-w-0 flex items-center justify-between">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className="font-medium text-sm truncate">{log.userName}</span>
+                    <Badge variant={getActivityColor(log.activityType)} className="text-xs flex-shrink-0">
+                      {log.activityType}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground truncate">{log.userEmail}</span>
+                    <span className="text-xs text-muted-foreground flex-shrink-0">
+                      {log.deviceInfo?.browser || 'Unknown'} • {log.deviceInfo?.os || 'Unknown'}
+                    </span>
+                    <span className="text-xs text-muted-foreground capitalize flex-shrink-0">{log.userRole}</span>
+                    {log.duration && (
+                      <span className="text-xs text-muted-foreground flex-shrink-0">
+                        {formatDuration(log.duration)}
+                      </span>
                     )}
-                    
-                    {/* Regular activity information */}
-                    <div className="flex items-center gap-4 mb-1">
-                      <span className="flex items-center gap-1">
-                        <User className="w-3 h-3" />
-                        {log.userEmail}
+                    {/* Appointment info for appointment activities */}
+                    {(log.activityType === 'appointment_created' || log.activityType === 'appointment_status_changed') && (
+                      <span className="text-xs text-blue-600 flex-shrink-0">
+                        {log.patientName} • Dr. {log.doctorName}
+                        {log.activityType === 'appointment_status_changed' && (
+                          <span className="ml-1">({log.oldStatus} → {log.newStatus})</span>
+                        )}
                       </span>
-                      <span className="flex items-center gap-1">
-                        <Monitor className="w-3 h-3" />
-                        {log.deviceInfo?.browser || 'Unknown'}
-                      </span>
-                      {log.duration && (
-                        <span className="flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {formatDuration(log.duration)}
-                        </span>
-                      )}
+                    )}
+                  </div>
+                  <div className="text-right flex-shrink-0 ml-2">
+                    <div className="text-xs text-muted-foreground">
+                      {formatTimeAgo(log.timestamp)}
                     </div>
-                    <div className="flex items-center gap-4">
-                      <span>IP: {log.ipAddress}</span>
-                      <span>OS: {log.deviceInfo?.os || 'Unknown'}</span>
-                      <span className="capitalize">{log.userRole}</span>
+                    <div className="text-xs text-muted-foreground font-mono">
+                      {formatExactDateTime(log.timestamp)}
                     </div>
                   </div>
                 </div>

@@ -32,6 +32,7 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
   const [selectedDoctor, setSelectedDoctor] = useState(null);
   const [selectedClinic, setSelectedClinic] = useState(null);
   const [currentUserClinic, setCurrentUserClinic] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
   const [formData, setFormData] = useState({
     patientId: "",
     patientName: "",
@@ -45,6 +46,7 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
     hospital: "",
     referralType: "outbound", // inbound or outbound
     externalClinic: "", // for outbound referrals
+    clinicId: "", // Clinic ID for the referral
     referringProvider: {
       name: "",
       contact: "",
@@ -70,8 +72,20 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
     if (formData.referralType === 'inbound' && currentClinicDoctors.length > 0) {
       console.log('Setting doctors for inbound referral:', currentClinicDoctors);
       setDoctors(currentClinicDoctors);
+    } else if (formData.referralType === 'outbound' && selectedClinic) {
+      // Fetch doctors for the selected external clinic when referral type is outbound
+      const fetchClinicDoctors = async () => {
+        try {
+          const doctorsResponse = await doctorAPI.getByClinic(selectedClinic._id);
+          setDoctors(doctorsResponse.data || []);
+        } catch (error) {
+          console.error('Error fetching doctors for clinic:', error);
+          setDoctors([]);
+        }
+      };
+      fetchClinicDoctors();
     }
-  }, [formData.referralType, currentClinicDoctors]);
+  }, [formData.referralType, currentClinicDoctors, selectedClinic]);
 
   // Clear conflicting selections for inbound referrals
   useEffect(() => {
@@ -94,6 +108,11 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
 
   const fetchInitialData = async () => {
     try {
+      // Get current logged-in user
+      const authUser = JSON.parse(localStorage.getItem('authUser') || 'null');
+      setCurrentUser(authUser);
+      console.log('Current logged-in user:', authUser);
+      
       const [patientsResponse, clinicsResponse, userProfile] = await Promise.all([
         patientAPI.getAll(1, 100),
         clinicAPI.getAll(),
@@ -108,18 +127,42 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
       
       // Get current user's clinic info and fetch clinic-specific doctors
       let currentClinic = null;
-      if (userProfile && (userProfile.data || userProfile._id)) {
+      let clinicId = null;
+      
+      // Determine clinic ID based on user type
+      if (authUser?.role === 'doctor' && authUser?.clinic) {
+        // For doctors, use their clinic ID from user profile
+        clinicId = authUser.clinic;
+        currentClinic = { 
+          id: clinicId, 
+          name: authUser.clinicName || 'Current Clinic'
+        };
+        setCurrentUserClinic(currentClinic);
+        console.log('Doctor user detected, clinic ID:', clinicId);
+      } else if (userProfile && (userProfile.data || userProfile._id)) {
+        // For clinic admins, use profile data
         const profileData = userProfile.data || userProfile;
-        const clinicId = profileData._id || profileData.id;
+        clinicId = profileData._id || profileData.id;
         currentClinic = { 
           id: clinicId, 
           name: profileData.name || profileData.fullName || profileData.adminName 
         };
         setCurrentUserClinic(currentClinic);
+        console.log('Clinic admin detected, clinic ID:', clinicId);
+      }
+      
+      if (clinicId) {
+        // Set clinic ID in form data
+        setFormData(prev => ({
+          ...prev,
+          clinicId: clinicId
+        }));
         
-        // Fetch doctors only from current user's clinic
+        // Fetch doctors only from current user's clinic - FORCE FETCH REGARDLESS OF ERRORS
         try {
+          console.log('Fetching doctors for clinic ID:', clinicId);
           const doctorsResponse = await doctorAPI.getByClinic(clinicId);
+          console.log('Doctors response:', doctorsResponse);
           const currentDoctors = doctorsResponse.data || [];
           console.log('Current clinic doctors loaded:', currentDoctors);
           setCurrentClinicDoctors(currentDoctors);
@@ -127,9 +170,46 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
           if (formData.referralType === 'inbound') {
             setDoctors(currentDoctors);
           }
+          
+          // Auto-set referring doctor if logged-in user is a doctor
+          if (authUser?.role === 'doctor' && authUser?.id) {
+            const loggedInDoctor = currentDoctors.find(doc => doc._id === authUser.id);
+            if (loggedInDoctor) {
+              console.log('Auto-setting referring doctor to logged-in doctor:', loggedInDoctor);
+              setFormData(prev => ({
+                ...prev,
+                clinicId: clinicId,
+                referringProvider: {
+                  name: loggedInDoctor.fullName,
+                  contact: `${loggedInDoctor.phone || ''} ${loggedInDoctor.email || ''}`.trim(),
+                  clinic: currentClinic?.name || 'Current Clinic'
+                }
+              }));
+            }
+          }
         } catch (error) {
           console.error('Error fetching clinic doctors:', error);
           setCurrentClinicDoctors([]);
+          
+          // Try again with a direct API call as fallback
+          try {
+            const fallbackResponse = await fetch(`${import.meta.env.VITE_API_URL}/doctors/clinic/${clinicId}`, {
+              headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                'Content-Type': 'application/json'
+              }
+            });
+            const fallbackData = await fallbackResponse.json();
+            console.log('Fallback doctors response:', fallbackData);
+            if (fallbackData.success && fallbackData.data) {
+              setCurrentClinicDoctors(fallbackData.data);
+              if (formData.referralType === 'inbound') {
+                setDoctors(fallbackData.data);
+              }
+            }
+          } catch (fallbackError) {
+            console.error('Fallback doctor fetch also failed:', fallbackError);
+          }
         }
         
         // Filter out current user's clinic from the list for outbound referrals
@@ -279,6 +359,7 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
         hospital: "",
         referralType: "outbound",
         externalClinic: "",
+        clinicId: "",
         referringProvider: {
           name: "",
           contact: "",
@@ -409,14 +490,18 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
                     <SelectValue placeholder="Choose doctor from your clinic" />
                   </SelectTrigger>
                   <SelectContent>
-                    {currentClinicDoctors
-                      .filter((doctor) => doctor.isActive !== false)
-                      .filter((doctor) => formData.referringProvider.name !== doctor.fullName)
-                      .map((doctor) => (
-                        <SelectItem key={doctor._id} value={doctor._id}>
-                          {doctor.fullName} - {doctor.specialty}
-                        </SelectItem>
-                      ))}
+                    {currentClinicDoctors && currentClinicDoctors.length > 0 ? (
+                      currentClinicDoctors
+                        .filter((doctor) => doctor.isActive !== false)
+                        .filter((doctor) => formData.referringProvider.name !== doctor.fullName)
+                        .map((doctor) => (
+                          <SelectItem key={doctor._id} value={doctor._id}>
+                            {doctor.fullName} - {doctor.specialty}
+                          </SelectItem>
+                        ))
+                    ) : (
+                      <SelectItem value="no-doctors-available-inbound" disabled>No doctors available</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -433,13 +518,17 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
                     <SelectValue placeholder="Choose doctor from clinic" />
                   </SelectTrigger>
                   <SelectContent>
-                    {doctors
-                      .filter((doctor) => doctor.isActive !== false)
-                      .map((doctor) => (
-                        <SelectItem key={doctor._id} value={doctor._id}>
-                          {doctor.fullName} - {doctor.specialty}
-                        </SelectItem>
-                      ))}
+                    {doctors && doctors.length > 0 ? (
+                      doctors
+                        .filter((doctor) => doctor.isActive !== false)
+                        .map((doctor) => (
+                          <SelectItem key={doctor._id} value={doctor._id}>
+                            {doctor.fullName} - {doctor.specialty}
+                          </SelectItem>
+                        ))
+                    ) : (
+                      <SelectItem value="no-doctors-available-outbound" disabled>No doctors available</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -518,33 +607,42 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
           {formData.referralType === 'outbound' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label htmlFor="referringProvider.name" className="text-sm">Referring Doctor *</Label>
+                <Label htmlFor="referringProvider.name" className="text-sm">
+                  Referring Doctor * {currentUser?.role === 'doctor' && '(Auto-filled)'}
+                </Label>
                 <Select
-                  value={formData.referringProvider.name}
+                  value={currentClinicDoctors.find(doc => doc.fullName === formData.referringProvider.name)?._id || ""}
                   onValueChange={(value) => {
-                    const selectedDoc = currentClinicDoctors.find(doc => doc.fullName === value);
+                    const selectedDoc = currentClinicDoctors.find(doc => doc._id === value);
                     setFormData(prev => ({
                       ...prev,
                       referringProvider: {
                         ...prev.referringProvider,
-                        name: value,
+                        name: selectedDoc ? selectedDoc.fullName : value,
                         contact: selectedDoc ? `${selectedDoc.phone || ''} ${selectedDoc.email || ''}`.trim() : '',
                         clinic: selectedDoc ? 'Current Clinic' : ''
                       }
                     }));
                   }}
+                  disabled={currentUser?.role === 'doctor'}
                 >
                   <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Select referring doctor" />
+                    <SelectValue placeholder="Select referring doctor">
+                      {formData.referringProvider.name || "Select referring doctor"}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {currentClinicDoctors
-                      .filter((doctor) => doctor.isActive !== false)
-                      .map((doctor) => (
-                        <SelectItem key={doctor._id} value={doctor.fullName}>
-                          {doctor.fullName} - {doctor.specialty}
-                        </SelectItem>
-                      ))}
+                    {currentClinicDoctors && currentClinicDoctors.length > 0 ? (
+                      currentClinicDoctors
+                        .filter((doctor) => doctor.isActive !== false)
+                        .map((doctor) => (
+                          <SelectItem key={doctor._id} value={doctor._id}>
+                            {doctor.fullName} - {doctor.specialty}
+                          </SelectItem>
+                        ))
+                    ) : (
+                      <SelectItem value="no-doctors-available-disabled" disabled>No doctors available</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -556,34 +654,43 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
           {formData.referralType === 'inbound' && (
             <div className="grid grid-cols-1 md:grid-cols-1 gap-3">
               <div className="space-y-1">
-                <Label htmlFor="referringProvider.name" className="text-sm">Referring Doctor (Internal) *</Label>
+                <Label htmlFor="referringProvider.name" className="text-sm">
+                  Referring Doctor (Internal) * {currentUser?.role === 'doctor' && '(Auto-filled)'}
+                </Label>
                 <Select
-                  value={formData.referringProvider.name}
+                  value={currentClinicDoctors.find(doc => doc.fullName === formData.referringProvider.name)?._id || ""}
                   onValueChange={(value) => {
-                    const selectedDoc = currentClinicDoctors.find(doc => doc.fullName === value);
+                    const selectedDoc = currentClinicDoctors.find(doc => doc._id === value);
                     setFormData(prev => ({
                       ...prev,
                       referringProvider: {
                         ...prev.referringProvider,
-                        name: value,
+                        name: selectedDoc ? selectedDoc.fullName : value,
                         contact: selectedDoc ? `${selectedDoc.phone || ''} ${selectedDoc.email || ''}`.trim() : '',
                         clinic: currentUserClinic?.name || 'Current Clinic'
                       }
                     }));
                   }}
+                  disabled={currentUser?.role === 'doctor'}
                 >
                   <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Select referring doctor from your clinic" />
+                    <SelectValue placeholder="Select referring doctor from your clinic">
+                      {formData.referringProvider.name || "Select referring doctor from your clinic"}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {currentClinicDoctors
-                      .filter((doctor) => doctor.isActive !== false)
-                      .filter((doctor) => formData.specialistName !== doctor.fullName)
-                      .map((doctor) => (
-                        <SelectItem key={doctor._id} value={doctor.fullName}>
-                          {doctor.fullName} - {doctor.specialty}
-                        </SelectItem>
-                      ))}
+                    {currentClinicDoctors && currentClinicDoctors.length > 0 ? (
+                      currentClinicDoctors
+                        .filter((doctor) => doctor.isActive !== false)
+                        .filter((doctor) => formData.specialistName !== doctor.fullName)
+                        .map((doctor) => (
+                          <SelectItem key={doctor._id} value={doctor._id}>
+                            {doctor.fullName} - {doctor.specialty}
+                          </SelectItem>
+                        ))
+                    ) : (
+                      <SelectItem value="no-doctors-available-disabled-inbound" disabled>No doctors available</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>

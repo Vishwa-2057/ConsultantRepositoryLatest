@@ -186,8 +186,9 @@ const Dashboard = () => {
       setTodayAppointmentsLoading(true);
       try {
         const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-        // For doctors, filter by doctorId to show only appointments they are conducting
-        const filters = isDoctor() ? { date: today, doctorId: currentUser?.id } : { date: today };
+        // Use only date filter to get all of today's appointments for the doctor
+        // The backend will handle filtering based on user role
+        const filters = { date: today };
         const response = await appointmentAPI.getAll(1, 100, filters);
         const todayCount = response?.appointments?.length || 0;
         setTodayAppointments(todayCount);
@@ -464,8 +465,8 @@ const Dashboard = () => {
       const appointmentTrend = [];
       const today = new Date();
       
-      // For doctors, filter by doctorId to show only appointments they are conducting
-      const baseFilters = isDoctor() ? { doctorId: currentUser?.id } : {};
+      // Let the backend handle filtering based on user role
+      const baseFilters = {};
       
       for (let i = 6; i >= 0; i--) {
         const date = new Date(today);
@@ -671,34 +672,35 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="p-3 space-y-3">
+    <div className="p-3 sm:p-4 lg:p-6 space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <p className="text-muted-foreground">Welcome back, {currentUser?.name || currentUser?.fullName || 'User'}. Here's your overview.</p>
+          <p className="text-sm sm:text-base text-muted-foreground">Welcome back, {currentUser?.name || currentUser?.fullName || 'User'}. Here's your overview.</p>
         </div>
         {isClinic() && (
           <Button 
             variant="outline" 
             size="sm"
             onClick={() => setIsActivityLogsModalOpen(true)}
-            className="flex items-center gap-2 gradient-button-outline"
+            className="flex items-center gap-2 gradient-button-outline self-start sm:self-auto"
           >
             <Activity className="w-4 h-4" />
-            Check Logs
+            <span className="hidden sm:inline">Check Logs</span>
+            <span className="sm:hidden">Logs</span>
           </Button>
         )}
       </div>
 
       {/* Carousel Section */}
-      <div className="mb-3">
+      <div className="mb-4 sm:mb-6">
         <Carousel images={carouselImages} autoPlay={true} interval={4000} />
       </div>
 
       {/* Main Content Grid - Charts and Stats */}
-      <div className="grid gap-3 lg:grid-cols-3">
-        {/* Charts Section - Takes 2 columns */}
-        <div className="lg:col-span-2 grid gap-3 md:grid-cols-2">
+      <div className="grid gap-4 sm:gap-6 xl:grid-cols-3">
+        {/* Charts Section - Takes 2 columns on desktop */}
+        <div className="xl:col-span-2 grid gap-4 sm:gap-6 lg:grid-cols-2">
           {/* Appointments Trend Chart */}
           <Card className="border-0 shadow-soft">
             <CardHeader>
@@ -723,7 +725,7 @@ const Dashboard = () => {
                       color: "hsl(var(--primary))",
                     },
                   }}
-                  className="h-[150px]"
+                  className="h-[200px] sm:h-[250px] lg:h-[200px]"
                 >
                   <LineChart data={appointmentTrendData}>
                     <CartesianGrid strokeDasharray="3 3" />
@@ -778,7 +780,7 @@ const Dashboard = () => {
                       color: "#8884d8",
                     },
                   }}
-                  className="h-[150px]"
+                  className="h-[200px] sm:h-[250px] lg:h-[200px]"
                 >
                   <BarChart data={patientAgeData}>
                     <CartesianGrid strokeDasharray="3 3" />
@@ -805,19 +807,19 @@ const Dashboard = () => {
           </Card>
         </div>
 
-        {/* Stats Column - Takes 1 column */}
-        <div className="lg:col-span-1 grid gap-3 grid-cols-1">
+        {/* Stats Column - Responsive layout */}
+        <div className="xl:col-span-1 grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 xl:grid-cols-1">
           {stats.map((stat, index) => (
             <Card key={index} className="border-0 shadow-soft hover:shadow-medical transition-all duration-200">
-              <CardContent className="p-3">
+              <CardContent className="p-4 sm:p-6">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">{stat.title}</p>
-                    <p className="text-2xl font-bold text-foreground">{stat.value}</p>
-                    <p className={`text-sm ${stat.color}`}>{stat.change}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-muted-foreground truncate">{stat.title}</p>
+                    <p className="text-xl sm:text-2xl font-bold text-foreground">{stat.value}</p>
+                    <p className={`text-xs sm:text-sm ${stat.color} truncate`}>{stat.change}</p>
                   </div>
-                  <div className={`p-2 rounded-lg bg-gradient-primary/10`}>
-                    <stat.icon className={`w-6 h-6 ${stat.color}`} />
+                  <div className={`p-2 sm:p-3 rounded-lg bg-gradient-primary/10 flex-shrink-0`}>
+                    <stat.icon className={`w-5 h-5 sm:w-6 sm:h-6 ${stat.color}`} />
                   </div>
                 </div>
               </CardContent>
@@ -828,18 +830,18 @@ const Dashboard = () => {
 
       {/* Clinic-specific Stats Row - Only for clinic users */}
       {(currentUser?.role === 'clinic' || currentUser?.isClinic) && clinicStats.length > 0 && (
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {clinicStats.map((stat, index) => (
             <Card key={index} className="border-0 shadow-soft hover:shadow-medical transition-all duration-200">
-              <CardContent className="p-3">
+              <CardContent className="p-4 sm:p-6">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">{stat.title}</p>
-                    <p className="text-2xl font-bold text-foreground">{stat.value}</p>
-                    <p className={`text-sm ${stat.color}`}>{stat.change}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-muted-foreground truncate">{stat.title}</p>
+                    <p className="text-xl sm:text-2xl font-bold text-foreground">{stat.value}</p>
+                    <p className={`text-xs sm:text-sm ${stat.color} truncate`}>{stat.change}</p>
                   </div>
-                  <div className={`p-2 rounded-lg bg-gradient-primary/10`}>
-                    <stat.icon className={`w-6 h-6 ${stat.color}`} />
+                  <div className={`p-2 sm:p-3 rounded-lg bg-gradient-primary/10 flex-shrink-0`}>
+                    <stat.icon className={`w-5 h-5 sm:w-6 sm:h-6 ${stat.color}`} />
                   </div>
                 </div>
               </CardContent>
@@ -875,7 +877,7 @@ const Dashboard = () => {
             <DialogDescription>Create a new alert that will appear in the list.</DialogDescription>
           </DialogHeader>
           <form onSubmit={submitAlert} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="alert-type">Type</Label>
                 <Select value={alertForm.type} onValueChange={(v) => handleAlertChange('type', v)}>

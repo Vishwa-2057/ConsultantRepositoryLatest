@@ -28,14 +28,13 @@ const allNavigationItems = [
   { title: "Invoice Management", url: "/invoices", icon: FileText, routeName: "invoice-management" },
   { title: "Community Hub", url: "/community", icon: MessageCircle, routeName: "community-hub" },
   { title: "Referral System", url: "/referrals", icon: Share2, routeName: "referral-system" },
-  { title: "Audit Logs", url: "/audit-logs", icon: Shield, routeName: "audit-logs" },
 ];
 
-export function ConsultantSidebar() {
+export function ConsultantSidebar({ mobile = false }) {
   const { state } = useSidebar();
   const location = useLocation();
   const currentPath = location.pathname;
-  const collapsed = state === "collapsed";
+  const collapsed = !mobile && state === "collapsed";
   const authUser = getCurrentUser();
   
   // Filter navigation items based on user role
@@ -51,6 +50,8 @@ export function ConsultantSidebar() {
   const getNavClassName = (path) => {
     const baseClasses = collapsed 
       ? "w-full justify-center transition-all duration-200 ease-in-out rounded-lg mx-1 px-2 py-2.5 font-medium relative group"
+      : mobile
+      ? "w-full justify-start transition-all duration-200 ease-in-out rounded-lg mx-2 px-3 py-3 font-medium relative group whitespace-nowrap text-base"
       : "w-full justify-start transition-all duration-200 ease-in-out rounded-lg mx-2 px-3 py-2.5 font-medium relative group whitespace-nowrap";
     const activeClasses = isActive(path) 
       ? "bg-primary text-primary-foreground shadow-sm border border-primary/20" 
@@ -59,12 +60,12 @@ export function ConsultantSidebar() {
   };
 
   return (
-    <Sidebar className={`border-r border-border bg-background dark:bg-background transition-all duration-300 ease-in-out shadow-sm h-screen sticky top-0 flex-shrink-0 ${collapsed ? 'w-16' : 'w-64'}`} style={{ minHeight: '100vh', width: collapsed ? '4rem' : '16rem', minWidth: collapsed ? '4rem' : '16rem', maxWidth: collapsed ? '4rem' : '16rem' }}>
+    <Sidebar className={`${mobile ? 'border-0' : 'border-r border-border'} bg-background dark:bg-background transition-all duration-300 ease-in-out shadow-sm h-screen ${mobile ? 'w-full' : 'sticky top-0 flex-shrink-0'} ${collapsed ? 'w-16' : 'w-64'}`} style={mobile ? { minHeight: '100vh', width: '100%' } : { minHeight: '100vh', width: collapsed ? '4rem' : '16rem', minWidth: collapsed ? '4rem' : '16rem', maxWidth: collapsed ? '4rem' : '16rem' }}>
       <SidebarContent className="h-full flex flex-col overflow-hidden" style={{ minHeight: '100vh' }}>
         {/* Header */}
-        <div className={`h-16 border-b border-border bg-background dark:bg-background flex items-center ${collapsed ? 'px-2 justify-center' : 'px-6 py-4'}`}>
+        <div className={`${mobile ? 'h-20' : 'h-16'} border-b border-border bg-background dark:bg-background flex items-center ${collapsed ? 'px-2 justify-center' : mobile ? 'px-6 py-6' : 'px-6 py-4'}`}>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center shadow-sm border border-border overflow-hidden bg-card">
+            <div className={`${mobile ? 'w-12 h-12' : 'w-10 h-10'} rounded-lg flex items-center justify-center shadow-sm border border-border overflow-hidden bg-card`}>
               <img 
                 src={LogoImage} 
                 alt="Smart Healthcare Logo" 
@@ -73,25 +74,25 @@ export function ConsultantSidebar() {
             </div>
             {!collapsed && (
               <div className="overflow-hidden">
-                <h2 className="font-semibold text-foreground text-lg tracking-tight whitespace-nowrap">Smart Healthcare</h2>
+                <h2 className={`font-semibold text-foreground ${mobile ? 'text-xl' : 'text-lg'} tracking-tight whitespace-nowrap`}>Smart Healthcare</h2>
               </div>
             )}
           </div>
         </div>
 
         {/* Navigation */}
-        <SidebarGroup className="flex-1 px-3 py-6 min-h-0 overflow-y-auto">
+        <SidebarGroup className={`flex-1 px-3 ${mobile ? 'py-8' : 'py-6'} min-h-0 overflow-y-auto`}>
           <SidebarGroupLabel className={`text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 px-2 ${collapsed ? "sr-only" : ""}`}>
             Navigation
           </SidebarGroupLabel>
           <SidebarGroupContent className="flex-1">
-            <SidebarMenu className="space-y-1" key={collapsed ? 'collapsed' : 'expanded'}>
+            <SidebarMenu className={`${mobile ? 'space-y-2' : 'space-y-1'}`} key={collapsed ? 'collapsed' : mobile ? 'mobile' : 'expanded'}>
               {navigationItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <Link to={item.url} className={`${getNavClassName(item.url)} flex items-center`}>
-                    <item.icon className={`w-5 h-5 flex-shrink-0 transition-all duration-200 ${isActive(item.url) ? 'text-primary-foreground' : 'text-muted-foreground group-hover:text-accent-foreground'}`} />
+                    <item.icon className={`${mobile ? 'w-6 h-6' : 'w-5 h-5'} flex-shrink-0 transition-all duration-200 ${isActive(item.url) ? 'text-primary-foreground' : 'text-muted-foreground group-hover:text-accent-foreground'}`} />
                     {!collapsed && (
-                      <span className="ml-2 transition-all duration-200 overflow-hidden whitespace-nowrap text-ellipsis">
+                      <span className={`${mobile ? 'ml-3' : 'ml-2'} transition-all duration-200 overflow-hidden whitespace-nowrap text-ellipsis`}>
                         {item.title}
                       </span>
                     )}
@@ -104,12 +105,12 @@ export function ConsultantSidebar() {
 
         {/* Footer - hide on auth pages, show logged-in user */}
         {!collapsed && !['/login','/register'].includes(currentPath) && authUser && (
-          <div className="p-4 border-t border-border bg-muted/30 mt-auto">
-            <div className="text-sm overflow-hidden">
+          <div className={`${mobile ? 'p-6' : 'p-4'} border-t border-border bg-muted/30 mt-auto`}>
+            <div className={`${mobile ? 'text-base' : 'text-sm'} overflow-hidden`}>
               <p className="font-medium text-foreground whitespace-nowrap text-ellipsis overflow-hidden">
                 {authUser.name || authUser.fullName || 'User'}
               </p>
-              <p className="text-muted-foreground text-xs whitespace-nowrap text-ellipsis overflow-hidden">
+              <p className={`text-muted-foreground ${mobile ? 'text-sm' : 'text-xs'} whitespace-nowrap text-ellipsis overflow-hidden`}>
                 {isClinic() ? 'Clinic Administrator' : (authUser.specialty || 'Medical Professional')}
               </p>
             </div>

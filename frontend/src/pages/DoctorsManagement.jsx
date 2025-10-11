@@ -190,6 +190,13 @@ const DoctorsManagement = () => {
     loadDoctors();
   }, [currentPage, pageSize, searchQuery]);
 
+  // Reset to page 1 when search query changes
+  useEffect(() => {
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+    }
+  }, [searchQuery]);
+
   // Handle image file selection
   const handleImageSelect = (e) => {
     const file = e.target.files[0];

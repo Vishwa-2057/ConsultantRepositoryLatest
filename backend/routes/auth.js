@@ -296,6 +296,8 @@ router.post('/login-step2', otpLoginValidation, async (req, res) => {
         email: user.email,
         specialty: user.specialty || user.department,
         role: userRole,
+        clinic: user.clinicId,
+        clinicName: user.clinicName
       };
     }
     
@@ -313,6 +315,143 @@ router.post('/login-step2', otpLoginValidation, async (req, res) => {
       success: false,
       error: 'Internal server error' 
     });
+  }
+});
+
+// Developer login - bypasses OTP for development convenience
+// TODO: Remove this endpoint in production
+router.post('/developer-login', loginValidation, async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ error: 'Validation failed', details: errors.array() });
+    }
+
+    const { email, password } = req.body;
+    
+    console.log(`🔧 Developer Login Debug:`);
+    console.log(`  - Email: ${email}`);
+    console.log(`  - Password: ${password}`);
+    
+    let user = null;
+    let userType = null;
+    
+    // Try to find user in Doctor collection first
+    user = await Doctor.findOne({ email });
+    if (user) {
+      userType = 'doctor';
+      console.log(`  - Found user in Doctor collection`);
+    }
+    
+    // If not found in Doctor, try Nurse collection
+    if (!user) {
+      user = await Nurse.findOne({ email });
+      if (user) {
+        userType = 'nurse';
+        console.log(`  - Found user in Nurse collection`);
+      }
+    }
+    
+    // If not found in Doctor or Nurse, try Clinic collection
+    if (!user) {
+      console.log(`  - Searching in Clinic collection for email: ${email}`);
+      user = await Clinic.findOne({ 
+        $or: [
+          { adminEmail: email },
+          { adminUsername: email }
+        ]
+      });
+      if (user) {
+        userType = 'clinic';
+        console.log(`  - Found user in Clinic collection: ${user.adminEmail}`);
+        console.log(`  - Clinic Name: ${user.name}`);
+        console.log(`  - Clinic Active: ${user.isActive}`);
+        
+        // Check if clinic is active
+        if (!user.isActive) {
+          console.log(`  - Clinic is inactive, rejecting login`);
+          return res.status(403).json({ error: 'Your clinic account has been deactivated. Please contact support for assistance.' });
+        }
+      } else {
+        console.log(`  - No clinic found with email: ${email}`);
+      }
+    }
+    
+    if (!user) {
+      console.log(`  - No user found in any collection for email: ${email}`);
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    console.log(`  - User found, type: ${userType}, calling comparePassword...`);
+    const ok = await user.comparePassword(password);
+    console.log(`  - Password comparison result: ${ok}`);
+    if (!ok) {
+      console.log(`  - Password comparison failed, rejecting login`);
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Generate secure token pair using token manager
+    const userRole = user.role || userType;
+    const userForToken = {
+      _id: user._id,
+      email: user.email || user.adminEmail,
+      role: userRole,
+      fullName: user.fullName || user.adminName,
+      clinicId: userType === 'clinic' ? user._id : user.clinicId
+    };
+    
+    const tokenData = tokenManager.generateTokenPair(userForToken);
+    
+    // Log the developer login activity
+    try {
+      await ActivityLogger.logLogin({
+        _id: user._id,
+        fullName: user.fullName || user.adminName,
+        email: user.email || user.adminEmail,
+        role: userRole,
+        clinicId: userType === 'clinic' ? user._id : user.clinicId,
+        clinicName: userType === 'clinic' ? (user.name || user.fullName) : (user.clinicName || 'Unknown Clinic')
+      }, req, tokenData.accessToken);
+    } catch (logError) {
+      console.error('Failed to log developer login activity:', logError);
+      // Don't fail the login if logging fails
+    }
+    
+    // Prepare user response based on user type
+    let userResponse;
+    if (userType === 'clinic') {
+      userResponse = {
+        id: user._id,
+        fullName: user.fullName,
+        name: user.adminName,
+        email: user.adminEmail,
+        specialty: user.organization,
+        role: userRole,
+      };
+    } else {
+      userResponse = {
+        id: user._id,
+        fullName: user.fullName,
+        name: user.name,
+        email: user.email,
+        specialty: user.specialty || user.department,
+        role: userRole,
+        clinic: user.clinicId,
+        clinicName: user.clinicName
+      };
+    }
+    
+    res.json({
+      success: true,
+      message: 'Developer login successful (OTP bypassed)',
+      token: tokenData.accessToken,
+      refreshToken: tokenData.refreshToken,
+      expiresIn: tokenData.expiresIn,
+      user: userResponse
+    });
+  } catch (err) {
+    console.error('Developer login error:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -687,6 +826,8 @@ router.post('/login-otp', otpLoginValidation, async (req, res) => {
         email: user.email,
         specialty: user.specialty || user.department,
         role: userRole,
+        clinic: user.clinicId,
+        clinicName: user.clinicName
       };
     }
     

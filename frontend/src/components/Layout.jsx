@@ -1,25 +1,27 @@
 import { SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar.jsx";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip.jsx";
 import { ConsultantSidebar } from "./ConsultantSidebar.jsx";
-import { LogOut, Moon, Sun, User, PanelLeft } from "lucide-react";
+import { LogOut, Moon, Sun, User, PanelLeft, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button.jsx";
 import { Input } from "@/components/ui/input.jsx";
 import { Link, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet.jsx";
 
 // Header component that can use useSidebar hook
-function LayoutHeader({ getPageTitle, currentUser, currentTime, hideActions, toggleDarkMode, isDarkMode }) {
+function LayoutHeader({ getPageTitle, currentUser, currentTime, hideActions, toggleDarkMode, isDarkMode, mobileMenuOpen, setMobileMenuOpen }) {
   const { toggleSidebar } = useSidebar();
   
   return (
-    <header className="h-16 bg-background border-b border-border flex items-center justify-between px-6 flex-shrink-0">
-      <div className="flex items-center gap-4 min-w-0">
+    <header className="h-14 sm:h-16 bg-background border-b border-border flex items-center justify-between px-3 sm:px-6 flex-shrink-0">
+      <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
+        {/* Desktop sidebar toggle */}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
-              className="h-6 w-6 flex-shrink-0"
+              className="hidden lg:flex h-6 w-6 flex-shrink-0"
               onClick={toggleSidebar}
             >
               <PanelLeft className="h-4 w-4" />
@@ -30,16 +32,34 @@ function LayoutHeader({ getPageTitle, currentUser, currentTime, hideActions, tog
             <p>Toggle sidebar (Ctrl+B)</p>
           </TooltipContent>
         </Tooltip>
-        <div className="flex items-center gap-4 min-w-0">
+
+        {/* Mobile menu toggle */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="lg:hidden h-8 w-8 flex-shrink-0"
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+        >
+          {mobileMenuOpen ? (
+            <X className="h-5 w-5" />
+          ) : (
+            <Menu className="h-5 w-5" />
+          )}
+          <span className="sr-only">Toggle mobile menu</span>
+        </Button>
+
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
           {getPageTitle() && (
             <div className="flex items-center gap-2 flex-shrink-0">
-              <h1 className="text-xl font-semibold text-foreground">{getPageTitle()}</h1>
+              <h1 className="text-lg sm:text-xl font-semibold text-foreground truncate">{getPageTitle()}</h1>
             </div>
           )}
-          <div className="hidden lg:flex items-center gap-3 text-sm text-muted-foreground min-w-0">
+          
+          {/* User info - hidden on mobile, shown on larger screens */}
+          <div className="hidden xl:flex items-center gap-3 text-sm text-muted-foreground min-w-0">
             <div className="flex items-center gap-1 flex-shrink-0">
               <User className="w-4 h-4" />
-              <span>{currentUser?.name || currentUser?.fullName || 'User'}</span>
+              <span className="truncate">{currentUser?.name || currentUser?.fullName || 'User'}</span>
             </div>
             <div className="w-1 h-1 bg-muted-foreground rounded-full flex-shrink-0"></div>
             <div className="font-mono flex-shrink-0">
@@ -58,23 +78,36 @@ function LayoutHeader({ getPageTitle, currentUser, currentTime, hideActions, tog
               })}
             </div>
           </div>
+
+          {/* Compact user info for medium screens */}
+          <div className="hidden lg:flex xl:hidden items-center gap-2 text-sm text-muted-foreground min-w-0">
+            <User className="w-4 h-4 flex-shrink-0" />
+            <span className="truncate">{currentUser?.name || currentUser?.fullName || 'User'}</span>
+          </div>
         </div>
       </div>
       
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1 sm:gap-3 flex-shrink-0">
         {!hideActions && (
           <>
-            <Button variant="ghost" size="icon" onClick={toggleDarkMode}>
+            <Button variant="ghost" size="icon" onClick={toggleDarkMode} className="h-8 w-8 sm:h-10 sm:w-10">
               {isDarkMode ? (
-                <Sun className="w-5 h-5" />
+                <Sun className="w-4 h-4 sm:w-5 sm:h-5" />
               ) : (
-                <Moon className="w-5 h-5" />
+                <Moon className="w-4 h-4 sm:w-5 sm:h-5" />
               )}
             </Button>
-            <Button variant="outline" asChild>
+            <Button variant="outline" asChild className="hidden sm:flex">
               <Link to="/logout" className="flex items-center gap-2">
                 <LogOut className="w-4 h-4" />
-                Logout
+                <span className="hidden md:inline">Logout</span>
+              </Link>
+            </Button>
+            {/* Mobile logout button */}
+            <Button variant="ghost" size="icon" asChild className="sm:hidden h-8 w-8">
+              <Link to="/logout">
+                <LogOut className="w-4 h-4" />
+                <span className="sr-only">Logout</span>
               </Link>
             </Button>
           </>
@@ -88,6 +121,7 @@ export function Layout({ children }) {
   const location = useLocation();
   const hideActions = ['/login','/register'].includes(location.pathname);
   const isAuthPage = hideActions;
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
   // Get current user from localStorage
   const [currentUser, setCurrentUser] = useState(() => {
@@ -106,6 +140,23 @@ export function Layout({ children }) {
     }
     return false;
   });
+
+  // Close mobile menu when route changes
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
+
+  // Close mobile menu on window resize to desktop
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 1024) {
+        setMobileMenuOpen(false);
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Apply dark mode class to document
   useEffect(() => {
@@ -172,7 +223,7 @@ export function Layout({ children }) {
     return (
       <TooltipProvider>
         <div className="min-h-screen w-full bg-background">
-          <main className="min-h-screen flex items-center justify-center p-6">
+          <main className="min-h-screen w-full">
             {children}
           </main>
         </div>
@@ -185,7 +236,7 @@ export function Layout({ children }) {
     return (
       <TooltipProvider>
         <div className="min-h-screen w-full bg-background">
-          <main className="min-h-screen flex items-center justify-center p-6">
+          <main className="min-h-screen w-full">
             {children}
           </main>
         </div>
@@ -197,7 +248,17 @@ export function Layout({ children }) {
     <TooltipProvider>
       <SidebarProvider defaultOpen={true}>
         <div className="h-screen flex w-full bg-background overflow-hidden">
-          <ConsultantSidebar />
+          {/* Desktop Sidebar */}
+          <div className="hidden lg:block">
+            <ConsultantSidebar />
+          </div>
+          
+          {/* Mobile Sidebar */}
+          <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+            <SheetContent side="left" className="p-0 w-64 lg:hidden">
+              <ConsultantSidebar mobile={true} />
+            </SheetContent>
+          </Sheet>
           
           <div className="flex-1 flex flex-col min-h-0 min-w-0">
             <LayoutHeader 
@@ -207,11 +268,15 @@ export function Layout({ children }) {
               hideActions={hideActions}
               toggleDarkMode={toggleDarkMode}
               isDarkMode={isDarkMode}
+              mobileMenuOpen={mobileMenuOpen}
+              setMobileMenuOpen={setMobileMenuOpen}
             />
 
             {/* Main Content */}
             <main className="flex-1 overflow-auto h-full">
-              {children}
+              <div className="h-full">
+                {children}
+              </div>
             </main>
           </div>
         </div>

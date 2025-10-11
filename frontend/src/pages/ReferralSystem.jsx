@@ -130,8 +130,14 @@ const ReferralSystem = () => {
       
       // Separate outbound and inbound referrals based on referralType field
       const referrals = response.referrals || [];
+      console.log('Fetched referrals:', referrals.length, 'referrals');
+      console.log('Referrals data:', referrals);
+      
       const outbound = referrals.filter(r => r.referralType === 'outbound');
       const inbound = referrals.filter(r => r.referralType === 'inbound');
+      
+      console.log('Outbound referrals:', outbound.length);
+      console.log('Inbound referrals:', inbound.length);
       
       setOutboundReferrals(outbound);
       setInboundReferrals(inbound);
@@ -177,6 +183,13 @@ const ReferralSystem = () => {
   useEffect(() => {
     fetchReferrals();
   }, [currentPage, pageSize, searchTerm]);
+
+  // Reset to page 1 when search term changes
+  useEffect(() => {
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+    }
+  }, [searchTerm]);
 
   const handleCreateSuccess = (newReferral) => {
     // Add to appropriate list based on referral type

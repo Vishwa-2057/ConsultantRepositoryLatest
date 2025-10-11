@@ -36,7 +36,15 @@ router.get('/', auth, async (req, res) => {
     
     // Role-based filtering
     if (req.user.role === 'doctor') {
-      query.doctorId = req.user.id;
+      // Find patients assigned to this doctor
+      const assignedPatients = await Patient.find({ assignedDoctors: req.user.id }).select('_id');
+      const assignedPatientIds = assignedPatients.map(patient => patient._id);
+      
+      // Show prescriptions where doctor is the prescribing doctor OR prescriptions for patients assigned to the doctor
+      query.$or = [
+        { doctorId: req.user.id },
+        { patientId: { $in: assignedPatientIds } }
+      ];
     } else if (req.user.role === 'clinic') {
       query.clinicId = req.user.id;
     }
@@ -99,9 +107,25 @@ router.get('/:id', auth, async (req, res) => {
   try {
     const query = { _id: req.params.id };
     
-    // Role-based filtering
+    // For doctors, we don't need additional filtering here since we're already looking at a specific prescription
     if (req.user.role === 'doctor') {
-      query.doctorId = req.user.id;
+      const prescription = await Prescription.findById(req.params.id).select('patientId');
+      if (prescription) {
+        // Check if this patient is assigned to the doctor
+        const isAssigned = await Patient.exists({ 
+          _id: prescription.patientId, 
+          assignedDoctors: req.user.id 
+        });
+        
+        if (!isAssigned) {
+          // If not assigned, only show prescriptions where this doctor is the prescribing doctor
+          query.doctorId = req.user.id;
+        }
+        // If assigned, show the prescription regardless of who prescribed it
+      } else {
+        // If prescription not found, restrict to doctor's own prescriptions
+        query.doctorId = req.user.id;
+      }
     } else if (req.user.role === 'clinic') {
       query.clinicId = req.user.id;
     }
@@ -375,7 +399,17 @@ router.get('/patient/:patientId', auth, async (req, res) => {
     
     // Role-based filtering
     if (req.user.role === 'doctor') {
-      query.doctorId = req.user.id;
+      // Check if this patient is assigned to the doctor
+      const isAssigned = await Patient.exists({ 
+        _id: patientId, 
+        assignedDoctors: req.user.id 
+      });
+      
+      if (!isAssigned) {
+        // If not assigned, only show prescriptions where this doctor is the prescribing doctor
+        query.doctorId = req.user.id;
+      }
+      // If assigned, show all prescriptions for this patient regardless of who prescribed them
     } else if (req.user.role === 'clinic') {
       query.clinicId = req.user.id;
     }

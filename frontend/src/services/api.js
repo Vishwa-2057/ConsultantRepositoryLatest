@@ -1178,6 +1178,13 @@ export const authAPI = {
       body: JSON.stringify(payload),
     });
   },
+  // Developer login - bypasses OTP for development
+  developerLogin: async (payload) => {
+    return apiRequest('/auth/developer-login', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
   // OTP-based authentication
   requestOTP: async (email) => {
     return apiRequest('/auth/request-otp', {

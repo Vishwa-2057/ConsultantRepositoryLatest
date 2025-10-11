@@ -87,6 +87,13 @@ const PatientManagement = () => {
     }
   }, [currentPage, pageSize, searchTerm, statusFilter, logPageView, logSearch]);
 
+  // Reset to page 1 when search term or status filter changes
+  useEffect(() => {
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+    }
+  }, [searchTerm, statusFilter]);
+
   const loadPatients = async () => {
     setLoading(true);
     setError("");

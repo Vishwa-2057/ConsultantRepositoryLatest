@@ -69,8 +69,9 @@ router.get('/', auth, async (req, res) => {
     let total;
 
     if (req.user.role === 'doctor') {
-      // For doctors: filter referrals based on referral type
+      // For doctors: show all referrals where they are involved (as referring or receiving doctor)
       const mongoose = require('mongoose');
+      console.log('Fetching referrals for doctor ID:', req.user.id);
       
       // Build match conditions for filtering
       const matchConditions = {};
@@ -95,31 +96,29 @@ router.get('/', auth, async (req, res) => {
       const sortStage = {};
       sortStage[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
-      // Aggregation pipeline with different logic for inbound vs outbound referrals
+      // Aggregation pipeline - show all referrals where doctor is involved
       const pipeline = [
         { $match: matchConditions },
+        {
+          $match: {
+            $or: [
+              // Show referrals where this doctor is the receiving specialist
+              {
+                specialistId: new mongoose.Types.ObjectId(req.user.id)
+              },
+              // Show referrals where this doctor is the referring doctor
+              {
+                referredBy: new mongoose.Types.ObjectId(req.user.id)
+              }
+            ]
+          }
+        },
         {
           $lookup: {
             from: 'patients',
             localField: 'patientId',
             foreignField: '_id',
             as: 'patient'
-          }
-        },
-        {
-          $match: {
-            $or: [
-              // For inbound referrals: show only referrals where this doctor is the receiving specialist
-              {
-                referralType: 'inbound',
-                specialistId: new mongoose.Types.ObjectId(req.user.id)
-              },
-              // For outbound referrals: show referrals for patients assigned to this doctor
-              {
-                referralType: 'outbound',
-                'patient.assignedDoctors': new mongoose.Types.ObjectId(req.user.id)
-              }
-            ]
           }
         },
         {
@@ -153,30 +152,21 @@ router.get('/', auth, async (req, res) => {
       ];
 
       referrals = await Referral.aggregate(pipeline);
+      console.log('Found', referrals.length, 'referrals for doctor');
 
       // Get total count for pagination
       const countPipeline = [
         { $match: matchConditions },
         {
-          $lookup: {
-            from: 'patients',
-            localField: 'patientId',
-            foreignField: '_id',
-            as: 'patient'
-          }
-        },
-        {
           $match: {
             $or: [
-              // For inbound referrals: show only referrals where this doctor is the receiving specialist
+              // Show referrals where this doctor is the receiving specialist
               {
-                referralType: 'inbound',
                 specialistId: new mongoose.Types.ObjectId(req.user.id)
               },
-              // For outbound referrals: show referrals for patients assigned to this doctor
+              // Show referrals where this doctor is the referring doctor
               {
-                referralType: 'outbound',
-                'patient.assignedDoctors': new mongoose.Types.ObjectId(req.user.id)
+                referredBy: new mongoose.Types.ObjectId(req.user.id)
               }
             ]
           }
@@ -292,9 +282,19 @@ router.post('/', auth, validateReferral, async (req, res) => {
     }
 
     // Create new referral with optional referredBy field and clinic reference
+    // Determine clinic ID based on user role
+    let clinicId;
+    if (req.user.role === 'clinic') {
+      clinicId = req.user.id;
+    } else if (req.user.role === 'doctor' || req.user.role === 'nurse') {
+      clinicId = req.user.clinicId || req.body.clinicId;
+    } else {
+      clinicId = req.body.clinicId;
+    }
+    
     const referralData = {
       ...req.body,
-      clinicId: req.user.role === 'clinic' ? req.user.id : req.body.clinicId
+      clinicId: clinicId
     };
 
     // Optionally populate referredBy and referringProvider if user is a doctor
@@ -311,8 +311,17 @@ router.post('/', auth, validateReferral, async (req, res) => {
       }
     }
     
+    console.log('Creating referral with data:', {
+      specialistId: referralData.specialistId,
+      referredBy: referralData.referredBy,
+      referralType: referralData.referralType,
+      clinicId: referralData.clinicId
+    });
+    
     const referral = new Referral(referralData);
     await referral.save();
+    
+    console.log('Referral created with ID:', referral._id, 'specialistId:', referral.specialistId, 'referredBy:', referral.referredBy);
 
     const populatedReferral = await Referral.findById(referral._id)
       .populate('patientId', 'fullName phone email')

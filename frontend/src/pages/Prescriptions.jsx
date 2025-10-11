@@ -179,6 +179,13 @@ const Prescriptions = () => {
     loadPrescriptions();
   }, [currentPage, pageSize, searchTerm, statusFilter]);
 
+  // Reset to page 1 when search term or status filter changes
+  useEffect(() => {
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+    }
+  }, [searchTerm, statusFilter]);
+
   // Handle actions
   const handleCreatePrescription = () => {
     setSelectedPrescription(null);

@@ -118,6 +118,35 @@ const Login = () => {
     }
   };
 
+  // Developer login - bypasses OTP verification
+  const handleDeveloperLogin = async () => {
+    setError("");
+    
+    // Client-side validation
+    const validationErrors = validateStep1();
+    if (validationErrors.length > 0) {
+      setError(validationErrors[0]);
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const res = await authAPI.developerLogin({ email: sanitizers.email(email), password });
+      
+      if (res.success) {
+        // Use new session management with secure token storage
+        await authAPI.setToken(res.token, res.refreshToken, res.expiresIn);
+        localStorage.setItem('authUser', JSON.stringify(res.user || {}));
+        window.dispatchEvent(new Event('auth-changed'));
+        navigate('/');
+      }
+    } catch (err) {
+      setError(err.message || 'Developer login failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Resend OTP
   const handleResendOTP = async () => {
     setError("");
@@ -219,8 +248,8 @@ const Login = () => {
         </div>
 
         {/* Right Side - Enhanced Login Form */}
-        <div className="flex items-center justify-center p-2 lg:p-4">
-          <div className={`w-full max-w-lg transition-all duration-700 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
+        <div className="flex items-center justify-center p-4 sm:p-6 lg:p-8">
+          <div className={`w-full max-w-sm sm:max-w-md lg:max-w-lg transition-all duration-700 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
             <Card className="border-0 shadow-2xl bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl relative overflow-hidden">
               {/* Card glow effect */}
               <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-sky-500/10 to-cyan-500/10 opacity-50"></div>
@@ -232,10 +261,10 @@ const Login = () => {
                     <img src={Logo} alt="Smaart Healthcare Logo" className="w-16 h-16 mx-auto object-contain relative z-10 drop-shadow-lg" />
                   </div>
                 </div>
-                <CardTitle className="text-3xl font-bold bg-gradient-to-r from-gray-900 via-blue-800 to-cyan-800 dark:from-white dark:via-blue-200 dark:to-cyan-200 bg-clip-text text-transparent mb-2">
+                <CardTitle className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-gray-900 via-blue-800 to-cyan-800 dark:from-white dark:via-blue-200 dark:to-cyan-200 bg-clip-text text-transparent mb-2">
                   Welcome Back
                 </CardTitle>
-                <CardDescription className="text-gray-600 dark:text-gray-300 text-base">
+                <CardDescription className="text-gray-600 dark:text-gray-300 text-sm sm:text-base">
                   Sign in to access your healthcare dashboard
                 </CardDescription>
               </CardHeader>
@@ -252,10 +281,10 @@ const Login = () => {
                             <Lock className="w-8 h-8 text-white" />
                           </div>
                         </div>
-                        <h3 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">
+                        <h3 className="text-lg sm:text-xl font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">
                           Enter Your Credentials
                         </h3>
-                        <p className="text-gray-600 dark:text-gray-300 text-sm">
+                        <p className="text-gray-600 dark:text-gray-300 text-xs sm:text-sm">
                           Verify your email and password
                         </p>
                       </div>
@@ -336,6 +365,25 @@ const Login = () => {
                           </div>
                         ) : (
                           'Continue to Verification'
+                        )}
+                      </Button>
+                      
+                      {/* Developer Login Button */}
+                      <Button 
+                        type="button"
+                        onClick={handleDeveloperLogin}
+                        className="w-full h-10 text-sm font-semibold transition-all duration-300 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700  shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] text-white border-0"
+                        disabled={loading}
+                      >
+                        {loading ? (
+                          <div className="flex items-center space-x-2">
+                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                            <span>Logging in...</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center space-x-2">
+                            <span>Developer Login (Skip OTP)</span>
+                          </div>
                         )}
                       </Button>
                     </form>
