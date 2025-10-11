@@ -81,19 +81,66 @@ const patientSchema = new mongoose.Schema({
     maxlength: [100, 'Referred clinic name cannot exceed 100 characters']
   },
   
-  // Government Identification
-  governmentId: {
+  // Personal Details
+  maritalStatus: {
     type: String,
-    required: [true, 'Government ID type is required'],
-    enum: ['Aadhaar Card', 'PAN Card', 'Passport', 'Driving License', 'Voter ID', 'Other'],
+    enum: ['Single', 'Married'],
     trim: true
   },
-  idNumber: {
+  handDominance: {
     type: String,
-    required: [true, 'ID number is required'],
-    trim: true,
-    maxlength: [50, 'ID number cannot exceed 50 characters']
+    enum: ['Right', 'Left', 'Ambidextrous'],
+    trim: true
   },
+  nationality: {
+    type: String,
+    trim: true,
+    maxlength: [50, 'Nationality cannot exceed 50 characters']
+  },
+  
+  // Aadhaar Information
+  aadhaarNumber: {
+    type: String,
+    trim: true,
+    validate: {
+      validator: function(v) {
+        // Aadhaar number should be 12 digits if provided
+        return !v || /^\d{12}$/.test(v);
+      },
+      message: 'Aadhaar number must be 12 digits'
+    }
+  },
+
+  // Parent/Guardian Information (for patients under 18)
+  isUnder18: {
+    type: Boolean,
+    default: false
+  },
+  parentGuardian: {
+    name: {
+      type: String,
+      trim: true,
+      maxlength: [100, 'Parent/Guardian name cannot exceed 100 characters']
+    },
+    email: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid parent/guardian email']
+    },
+    mobileNumber: {
+      type: String,
+      trim: true,
+      validate: {
+        validator: function(v) {
+          // Mobile number should be 10 digits if provided
+          return !v || /^\d{10}$/.test(v);
+        },
+        message: 'Mobile number must be 10 digits'
+      }
+    }
+  },
+
   governmentDocument: {
     type: String,
     required: [true, 'Government document is required'],
@@ -263,7 +310,6 @@ patientSchema.index({ fullName: 'text' });
 patientSchema.index({ phone: 1 });
 patientSchema.index({ email: 1 });
 patientSchema.index({ uhid: 1 });
-patientSchema.index({ idNumber: 1 });
 patientSchema.index({ status: 1 });
 patientSchema.index({ createdAt: -1 });
 

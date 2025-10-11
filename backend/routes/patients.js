@@ -35,8 +35,6 @@ const validatePatient = [
   body('occupation').trim().isLength({ min: 1, max: 100 }).withMessage('Occupation is required and must be less than 100 characters'),
   body('referringDoctor').optional().trim().isLength({ max: 100 }).withMessage('Referring doctor name cannot exceed 100 characters'),
   body('referredClinic').optional().trim().isLength({ max: 100 }).withMessage('Referred clinic name cannot exceed 100 characters'),
-  body('governmentId').isIn(['Aadhaar Card', 'PAN Card', 'Passport', 'Driving License', 'Voter ID', 'Other']).withMessage('Valid government ID type is required'),
-  body('idNumber').trim().isLength({ min: 1, max: 50 }).withMessage('ID number is required and must be less than 50 characters'),
   body('address').custom((value) => {
     if (!value) {
       throw new Error('Address is required');
@@ -473,12 +471,6 @@ router.post('/', auth, (req, res, next) => {
     if (!req.body.occupation || !req.body.occupation.trim()) {
       validationErrors.push('Occupation is required');
     }
-    if (!req.body.governmentId) {
-      validationErrors.push('Government ID type is required');
-    }
-    if (!req.body.idNumber || !req.body.idNumber.trim()) {
-      validationErrors.push('ID number is required');
-    }
     if (!req.body.password || req.body.password.length < 6) {
       validationErrors.push('Password is required and must be at least 6 characters long');
     }
@@ -510,11 +502,6 @@ router.post('/', auth, (req, res, next) => {
       return res.status(400).json({ error: 'Patient with this UHID already exists' });
     }
 
-    // Check if patient with same ID number already exists
-    const existingIdNumber = await Patient.findOne({ idNumber: req.body.idNumber });
-    if (existingIdNumber) {
-      return res.status(400).json({ error: 'Patient with this ID number already exists' });
-    }
 
     // Parse JSON strings for nested objects
     const parsedData = { ...req.body };
@@ -561,6 +548,15 @@ router.post('/', auth, (req, res, next) => {
         parsedData.assignedDoctors = JSON.parse(req.body.assignedDoctors);
       } catch (e) {
         return res.status(400).json({ error: 'Invalid assigned doctors format' });
+      }
+    }
+    
+    // Parse parentGuardian if it's a JSON string
+    if (typeof req.body.parentGuardian === 'string') {
+      try {
+        parsedData.parentGuardian = JSON.parse(req.body.parentGuardian);
+      } catch (e) {
+        return res.status(400).json({ error: 'Invalid parent/guardian format' });
       }
     }
 

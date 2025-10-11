@@ -10,19 +10,44 @@ const router = express.Router();
 // GET /api/nurses - Get all nurses (both active and inactive)
 router.get('/', auth, async (req, res) => {
   try {
+    const { page = 1, limit = 100, search } = req.query;
+    
     // Filter nurses by clinic for clinic admins
     const query = {};
     if (req.user.role === 'clinic') {
       query.clinicId = req.user.id;
     }
     
+    // Add search functionality
+    if (search && search.trim()) {
+      const searchRegex = new RegExp(search.trim(), 'i');
+      query.$or = [
+        { fullName: searchRegex },
+        { email: searchRegex },
+        { department: searchRegex },
+        { uhid: searchRegex }
+      ];
+    }
+    
+    // Calculate pagination
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const totalCount = await Nurse.countDocuments(query);
+    
     const nurses = await Nurse.find(query)
       .select('fullName uhid profileImage email department shift phone licenseNumber experience role isActive createdAt')
-      .sort({ isActive: -1, fullName: 1 }); // Show active nurses first
+      .sort({ isActive: -1, fullName: 1 }) // Show active nurses first
+      .skip(skip)
+      .limit(parseInt(limit));
     
     res.json({
       success: true,
-      data: nurses
+      data: nurses,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(totalCount / parseInt(limit)),
+        totalCount,
+        pageSize: parseInt(limit)
+      }
     });
   } catch (error) {
     console.error('Error fetching nurses:', error);
@@ -88,7 +113,138 @@ const validateNurse = [
   body('role').optional().isIn(['nurse', 'head_nurse', 'supervisor']).withMessage('Role must be nurse, head_nurse, or supervisor')
 ];
 
-// POST /api/nurses - Create new nurse
+// POST /api/nurses/upload-image - Upload nurse profile image
+router.post('/upload-image', auth, nurseUpload.single('profileImage'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No image file provided'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Image uploaded successfully',
+      data: {
+        imageUrl: req.file.path // Cloudinary URL
+      }
+    });
+  } catch (error) {
+    console.error('Error uploading image:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to upload image',
+      error: error.message
+    });
+  }
+});
+
+// POST /api/nurses/create-with-image - Create new nurse with pre-uploaded image URL
+router.post('/create-with-image', auth, async (req, res) => {
+  try {
+    // Manual validation for required fields
+    const validationErrors = [];
+    
+    if (!req.body.fullName || !req.body.fullName.trim()) {
+      validationErrors.push('Full name is required');
+    }
+    if (!req.body.uhid || !req.body.uhid.trim()) {
+      validationErrors.push('UHID is required');
+    }
+    if (!req.body.email || !req.body.email.trim()) {
+      validationErrors.push('Email is required');
+    }
+    if (!req.body.password || req.body.password.length < 6) {
+      validationErrors.push('Password must be at least 6 characters long');
+    }
+    if (!req.body.profileImage) {
+      validationErrors.push('Profile image URL is required');
+    }
+
+    if (validationErrors.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        details: validationErrors
+      });
+    }
+
+    const { fullName, uhid, email, password, department, shift, phone, licenseNumber, experience, role, profileImage } = req.body;
+
+    // Check if nurse with email already exists
+    const existingNurse = await Nurse.findOne({ email });
+    if (existingNurse) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nurse with this email already exists'
+      });
+    }
+
+    // Check if nurse with same UHID already exists
+    const existingUHID = await Nurse.findOne({ uhid: uhid.toUpperCase() });
+    if (existingUHID) {
+      return res.status(400).json({
+        success: false,
+        message: 'Nurse with this UHID already exists'
+      });
+    }
+
+    // Hash password
+    const saltRounds = 12;
+    const passwordHash = await bcrypt.hash(password, saltRounds);
+
+    // Create new nurse
+    const nurse = new Nurse({
+      fullName,
+      uhid: uhid.toUpperCase(),
+      profileImage, // Use the provided image URL
+      email,
+      passwordHash,
+      department: department || 'General Nursing',
+      shift: shift || 'Day',
+      phone,
+      licenseNumber,
+      experience: experience || 0,
+      role: role || 'nurse',
+      clinicId: req.user.role === 'clinic' ? req.user.id : req.body.clinicId
+    });
+
+    await nurse.save();
+
+    // Return nurse without password hash
+    const nurseResponse = {
+      _id: nurse._id,
+      fullName: nurse.fullName,
+      uhid: nurse.uhid,
+      profileImage: nurse.profileImage,
+      email: nurse.email,
+      department: nurse.department,
+      shift: nurse.shift,
+      phone: nurse.phone,
+      licenseNumber: nurse.licenseNumber,
+      experience: nurse.experience,
+      role: nurse.role,
+      isActive: nurse.isActive,
+      createdAt: nurse.createdAt
+    };
+
+    res.status(201).json({
+      success: true,
+      message: 'Nurse created successfully',
+      data: nurseResponse
+    });
+  } catch (error) {
+    console.error('Error creating nurse:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create nurse',
+      error: error.message
+    });
+  }
+});
+
+// POST /api/nurses - Create new nurse (legacy endpoint with file upload)
 router.post('/', auth, nurseUpload.single('profileImage'), async (req, res) => {
   try {
     // Manual validation for required fields

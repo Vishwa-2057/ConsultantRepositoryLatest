@@ -61,12 +61,12 @@ const appointmentSchema = new mongoose.Schema({
   // Status and Priority
   status: {
     type: String,
-    enum: ['Scheduled', 'Confirmed', 'In Progress', 'Completed', 'Cancelled', 'No Show'],
+    enum: ['Scheduled', 'Confirmed', 'Completed', 'Cancelled', 'No Show'],
     default: 'Scheduled'
   },
   priority: {
     type: String,
-    enum: ['low', 'normal', 'high', 'urgent'],
+    enum: ['low', 'normal', 'high'],
     default: 'normal'
   },
   
@@ -222,7 +222,7 @@ appointmentSchema.statics.checkForConflicts = async function(doctorId, date, tim
         $gte: new Date(date.getFullYear(), date.getMonth(), date.getDate()),
         $lt: new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1)
       },
-      status: { $in: ['Scheduled', 'Confirmed', 'In Progress'] }
+      status: { $in: ['Scheduled', 'Confirmed'] }
     };
     
     // Exclude current appointment if updating
@@ -279,7 +279,7 @@ appointmentSchema.statics.getDoctorAvailability = async function(doctorId, date)
         $gte: startOfDay,
         $lte: endOfDay
       },
-      status: { $in: ['Scheduled', 'Confirmed', 'In Progress'] }
+      status: { $in: ['Scheduled', 'Confirmed'] }
     }).sort({ time: 1 });
     
     // Convert to time slots with duration

@@ -142,14 +142,18 @@ export function Layout({ children }) {
     const titleMap = {
       '/': '',
       '/dashboard': '',
-      '/teleconsultation': 'Teleconsultation',
-      '/patients': 'Patient Management',
-      '/doctors': 'Doctors Management',
-      '/nurses': 'Nurses Management',
-      '/referrals': 'Referral System',
-      '/billing': 'Billing & Invoices',
-      '/community': 'Community Hub',
-      '/email-settings': 'Email Settings'
+      '/teleconsultation': '',
+      '/patients': '',
+      '/doctors': '',
+      '/nurses': '',
+      '/referrals': '',
+      '/billing': '',
+      '/community': '',
+      '/email-settings': '',
+      '/prescriptions': '',
+      '/appointments': '',
+      '/invoices': '',
+      '/activity-logs': ''
     };
     return titleMap[path] || '';
   };

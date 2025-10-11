@@ -50,7 +50,7 @@ const otpSchema = new mongoose.Schema({
   expiresAt: {
     type: Date,
     required: [true, 'Expiration time is required'],
-    default: () => new Date(Date.now() + 10 * 60 * 1000) // 10 minutes from now
+    default: () => new Date(Date.now() + 5 * 60 * 1000) // 5 minutes from now
   },
   
   // Verification time
@@ -144,7 +144,7 @@ otpSchema.statics.createOTP = async function(email, purpose = 'login', userId = 
     userId,
     ipAddress,
     userAgent,
-    expiresAt: new Date(Date.now() + 10 * 60 * 1000) // 10 minutes
+    expiresAt: new Date(Date.now() + 5 * 60 * 1000) // 5 minutes
   });
   
   await otp.save();

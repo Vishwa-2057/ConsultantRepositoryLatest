@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar, Clock, User, Phone, MapPin, AlertCircle, CheckCircle, XCircle, Plus, Search, Filter, Edit, CalendarDays, Users, TrendingUp, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FileText, Calendar as CalendarIcon, RotateCcw } from 'lucide-react';
+import { Calendar, Clock, User, Phone, MapPin, AlertCircle, CheckCircle, XCircle, Plus, Search, Filter, Edit, CalendarDays, Users, TrendingUp, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FileText, Calendar as CalendarIcon, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { appointmentAPI, patientAPI, doctorAPI } from '@/services/api';
 import { format, parseISO, isToday, isTomorrow, isYesterday, addMinutes } from 'date-fns';
@@ -18,7 +18,7 @@ import { getCurrentUser } from '@/utils/roleUtils';
 
 const AppointmentManagement = () => {
   // Set page title immediately
-  document.title = "Appointment Management - Smart Healthcare";
+  document.title = "Smart Healthcare";
   
   // Get current user info
   const currentUser = getCurrentUser();
@@ -33,16 +33,21 @@ const AppointmentManagement = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [dateFilter, setDateFilter] = useState('all');
+  const [priorityFilter, setPriorityFilter] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [itemsPerPage, setItemsPerPage] = useState(() => {
+    const saved = localStorage.getItem('appointmentManagement_pageSize');
+    return saved ? parseInt(saved) : 10;
+  });
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [stats, setStats] = useState({});
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false);
   const [isConflictDialogOpen, setIsConflictDialogOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
-  const [expandedAppointments, setExpandedAppointments] = useState(new Set());
   const [conflictData, setConflictData] = useState(null);
   const [formData, setFormData] = useState({
     patientId: '',
@@ -73,7 +78,6 @@ const AppointmentManagement = () => {
   const statusOptions = [
     'Scheduled',
     'Confirmed', 
-    'In Progress',
     'Completed',
     'Cancelled',
     'No Show'
@@ -82,8 +86,7 @@ const AppointmentManagement = () => {
   const priorityOptions = [
     { value: 'low', label: 'Low', color: 'bg-gray-100 text-gray-800' },
     { value: 'normal', label: 'Normal', color: 'bg-blue-100 text-blue-800' },
-    { value: 'high', label: 'High', color: 'bg-orange-100 text-orange-800' },
-    { value: 'urgent', label: 'Urgent', color: 'bg-red-100 text-red-800' }
+    { value: 'high', label: 'High', color: 'bg-orange-100 text-orange-800' }
   ];
 
   const getStatusBadge = (status) => {
@@ -128,25 +131,16 @@ const AppointmentManagement = () => {
     try {
       setLoading(true);
       const filters = {};
-      if (statusFilter !== 'all') filters.status = statusFilter;
-      if (typeFilter !== 'all') filters.appointmentType = typeFilter;
-      if (dateFilter !== 'all') {
-        const today = new Date();
-        if (dateFilter === 'today') {
-          filters.date = format(today, 'yyyy-MM-dd');
-        }
-      }
-
+      
       // For doctors, only show their own appointments
       if (isDoctorUser && currentUser) {
         const userId = currentUser.id || currentUser._id;
         filters.doctorId = userId;
       }
 
-      const response = await appointmentAPI.getAll(currentPage, 5, filters);
+      // Load all appointments without pagination to enable frontend filtering
+      const response = await appointmentAPI.getAll(1, 1000, filters);
       setAppointments(response.appointments || []);
-      setTotalPages(response.pagination?.totalPages || 1);
-      setTotalCount(response.pagination?.totalAppointments || 0);
     } catch (error) {
       console.error('Error loading appointments:', error);
       toast.error('Failed to load appointments');
@@ -197,8 +191,17 @@ const AppointmentManagement = () => {
     }
   };
 
+  // Save itemsPerPage to localStorage when it changes (skip initial load)
   useEffect(() => {
-    document.title = "Appointment Management - Smart Healthcare";
+    if (isInitialLoad) {
+      setIsInitialLoad(false);
+      return;
+    }
+    localStorage.setItem('appointmentManagement_pageSize', itemsPerPage.toString());
+  }, [itemsPerPage, isInitialLoad]);
+
+  useEffect(() => {
+    document.title = "Smart Healthcare";
     loadPatients();
     loadDoctors();
   }, []);
@@ -206,7 +209,12 @@ const AppointmentManagement = () => {
   useEffect(() => {
     loadAppointments();
     loadStats();
-  }, [currentPage, statusFilter, typeFilter, dateFilter]);
+  }, [statusFilter, typeFilter, priorityFilter, dateFilter]);
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter, typeFilter, priorityFilter, dateFilter, searchTerm]);
 
   const handleCreateAppointment = async (forceCreate = false) => {
     try {
@@ -220,9 +228,9 @@ const AppointmentManagement = () => {
             formData.duration
           );
 
-          if (conflictCheck.hasConflict) {
-            // Show conflict dialog
-            setConflictData(conflictCheck.conflictDetails);
+          if (conflictCheck.hasConflicts) {
+            // Show conflict dialog - pass the first conflict
+            setConflictData(conflictCheck.conflicts[0]);
             setIsConflictDialogOpen(true);
             return;
           }
@@ -340,17 +348,6 @@ const AppointmentManagement = () => {
     setConflictData(null);
   };
 
-  const toggleAppointmentExpansion = (appointmentId) => {
-    setExpandedAppointments(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(appointmentId)) {
-        newSet.delete(appointmentId);
-      } else {
-        newSet.add(appointmentId);
-      }
-      return newSet;
-    });
-  };
 
   const resetForm = () => {
     const userId = currentUser?.id || currentUser?._id;
@@ -371,28 +368,64 @@ const AppointmentManagement = () => {
   };
 
   const filteredAppointments = appointments.filter(appointment => {
+    // Search filter
     const searchLower = searchTerm.toLowerCase();
-    return (
+    const matchesSearch = !searchTerm || (
       appointment.patientId?.fullName?.toLowerCase().includes(searchLower) ||
       appointment.doctorId?.fullName?.toLowerCase().includes(searchLower) ||
       appointment.appointmentType?.toLowerCase().includes(searchLower) ||
       appointment.reason?.toLowerCase().includes(searchLower)
     );
+
+    // Status filter
+    const matchesStatus = statusFilter === 'all' || appointment.status === statusFilter;
+
+    // Type filter
+    const matchesType = typeFilter === 'all' || appointment.appointmentType === typeFilter;
+
+    // Priority filter
+    const matchesPriority = priorityFilter === 'all' || appointment.priority === priorityFilter;
+
+    // Date filter
+    let matchesDate = true;
+    if (dateFilter !== 'all') {
+      const appointmentDate = new Date(appointment.date);
+      const today = new Date();
+      
+      switch (dateFilter) {
+        case 'today':
+          matchesDate = appointmentDate.toDateString() === today.toDateString();
+          break;
+        case 'week':
+          const weekStart = new Date(today);
+          weekStart.setDate(today.getDate() - today.getDay());
+          const weekEnd = new Date(weekStart);
+          weekEnd.setDate(weekStart.getDate() + 6);
+          matchesDate = appointmentDate >= weekStart && appointmentDate <= weekEnd;
+          break;
+        case 'month':
+          matchesDate = appointmentDate.getMonth() === today.getMonth() && 
+                       appointmentDate.getFullYear() === today.getFullYear();
+          break;
+        default:
+          matchesDate = true;
+      }
+    }
+
+    return matchesSearch && matchesStatus && matchesType && matchesPriority && matchesDate;
   });
+
+  // Calculate pagination for filtered results
+  const totalFilteredCount = filteredAppointments.length;
+  const totalFilteredPages = Math.ceil(totalFilteredCount / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedAppointments = filteredAppointments.slice(startIndex, endIndex);
 
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <p className="text-muted-foreground mt-1">Manage and track all patient appointments</p>
-        </div>
-        <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
+      <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
           <DialogTrigger asChild>
-            <Button className="gradient-button">
-              <Plus className="w-4 h-4 mr-2" />
-              New Appointment
-            </Button>
           </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
@@ -547,175 +580,238 @@ const AppointmentManagement = () => {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Appointments</CardTitle>
-            <CalendarDays className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalAppointments || 0}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Today's Appointments</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.todayAppointments || 0}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Upcoming</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.upcomingAppointments || 0}</div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filters - Compact and Subtle */}
-      <div className="bg-muted/50 border border-border rounded-lg p-4 mb-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex-1 min-w-[200px]">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search appointments..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 h-9 bg-background border-border text-sm"
-              />
+      {/* Search, Stats and Actions - Single Line */}
+      <div className="flex items-center justify-between gap-6 bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+        {/* Search Bar */}
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <Input
+            placeholder="Search appointments..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10 h-10 bg-white border-gray-200 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          />
+        </div>
+        
+        {/* Stats */}
+        <div className="flex items-center space-x-6">
+          <div className="flex items-center space-x-2">
+            <div className="p-1.5 bg-blue-100 rounded-full">
+              <CalendarDays className="w-4 h-4 text-blue-600" />
             </div>
+            <span className="text-sm text-blue-600 font-medium">
+              Total Appointments: {stats.totalAppointments || 0}
+            </span>
           </div>
-          <div className="flex items-center gap-2">
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-32 h-9 text-sm bg-background border-border">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                {statusOptions.map((status) => (
-                  <SelectItem key={status} value={status}>
-                    {status}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-40 h-9 text-sm bg-background border-border">
-                <SelectValue placeholder="Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                {appointmentTypes.map((type) => (
-                  <SelectItem key={type} value={type}>
-                    {type}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={dateFilter} onValueChange={setDateFilter}>
-              <SelectTrigger className="w-32 h-9 text-sm bg-background border-border">
-                <SelectValue placeholder="Date" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Dates</SelectItem>
-                <SelectItem value="today">Today</SelectItem>
-                <SelectItem value="week">This Week</SelectItem>
-                <SelectItem value="month">This Month</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button 
-              variant="ghost" 
-              size="sm"
-              onClick={() => {
-                setSearchTerm('');
-                setStatusFilter('all');
-                setTypeFilter('all');
-                setDateFilter('all');
-              }}
-              className="text-muted-foreground hover:text-foreground h-9 px-3 text-sm"
-            >
-              Clear
-            </Button>
+          <div className="flex items-center space-x-2">
+            <div className="p-1.5 bg-green-100 rounded-full">
+              <Clock className="w-4 h-4 text-green-600" />
+            </div>
+            <span className="text-sm text-green-600 font-medium">
+              Today: {stats.todayAppointments || 0}
+            </span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="p-1.5 bg-purple-100 rounded-full">
+              <TrendingUp className="w-4 h-4 text-purple-600" />
+            </div>
+            <span className="text-sm text-purple-600 font-medium">
+              Upcoming: {stats.upcomingAppointments || 0}
+            </span>
           </div>
         </div>
+        
+        {/* New Appointment Button */}
+        <Button 
+          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
+          onClick={() => setIsCreateModalOpen(true)}
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          New Appointment
+        </Button>
       </div>
 
       {/* Appointments List */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Appointments ({totalCount})</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+        <div className="px-6 py-4 border-b border-gray-100">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <h2 className="text-xl font-semibold text-gray-900">Appointments</h2>
+              <div className="flex items-center space-x-2">
+                <Badge variant="secondary" className="px-3 py-1 text-sm font-medium bg-blue-100 text-blue-700 border-0">
+                  {totalFilteredCount}
+                </Badge>
+              </div>
+            </div>
+            
+            {/* Filters */}
+            <div className="flex items-center gap-3">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-28 h-8 text-xs bg-white border-gray-200 rounded-lg shadow-sm">
+                  <SelectValue placeholder="All Statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  {statusOptions.map((status) => (
+                    <SelectItem key={status} value={status}>
+                      {status}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger className="w-24 h-8 text-xs bg-white border-gray-200 rounded-lg shadow-sm">
+                  <SelectValue placeholder="All Types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  {appointmentTypes.map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {type}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+                <SelectTrigger className="w-28 h-8 text-xs bg-white border-gray-200 rounded-lg shadow-sm">
+                  <SelectValue placeholder="All Priorities" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Priorities</SelectItem>
+                  {priorityOptions.map((priority) => (
+                    <SelectItem key={priority.value} value={priority.value}>
+                      {priority.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={dateFilter} onValueChange={setDateFilter}>
+                <SelectTrigger className="w-24 h-8 text-xs bg-white border-gray-200 rounded-lg shadow-sm">
+                  <SelectValue placeholder="All Dates" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Dates</SelectItem>
+                  <SelectItem value="today">Today</SelectItem>
+                  <SelectItem value="week">This Week</SelectItem>
+                  <SelectItem value="month">This Month</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button 
+                variant="ghost" 
+                className="h-8 px-2 text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg"
+                onClick={() => {
+                  setSearchTerm('');
+                  setStatusFilter('all');
+                  setTypeFilter('all');
+                  setPriorityFilter('all');
+                  setDateFilter('all');
+                }}
+              >
+                Clear
+              </Button>
+            </div>
+          </div>
+          
+          {/* Pagination Controls - Separate Row */}
+          <div className="flex items-center justify-end gap-6 mt-3 pt-3 border-t border-gray-100">
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-lg border">
+              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+              <span className="text-sm font-medium text-gray-700">
+                {((currentPage - 1) * itemsPerPage) + 1}-{Math.min(currentPage * itemsPerPage, totalFilteredCount)} of {totalFilteredCount}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 px-2.5 py-1 bg-white rounded-md border border-gray-200">
+              <span className="text-xs font-medium text-gray-500">Show</span>
+              <Select value={itemsPerPage.toString()} onValueChange={(value) => {
+                setItemsPerPage(parseInt(value));
+                setCurrentPage(1);
+              }}>
+                <SelectTrigger className="w-12 h-6 text-xs border-0 bg-transparent p-0 focus:ring-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="5">5</SelectItem>
+                  <SelectItem value="10">10</SelectItem>
+                  <SelectItem value="20">20</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+        <div className="p-6">
           {loading ? (
             <div className="flex justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
             </div>
-          ) : filteredAppointments.length === 0 ? (
+          ) : paginatedAppointments.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               No appointments found
             </div>
           ) : (
-            <div className="space-y-4">
-              {filteredAppointments.map((appointment) => (
-                <div key={appointment._id} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-4">
-                      <div>
-                        <div className="font-semibold text-foreground">
-                          {appointment.patientId?.fullName || 'Unknown Patient'}
-                        </div>
-                        <div className="text-sm text-muted-foreground flex items-center gap-1">
-                          <Phone className="w-3 h-3" />
-                          {appointment.patientId?.phone || 'No phone'}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="font-medium text-foreground">
-                          Dr. {appointment.doctorId?.fullName || 'Unknown Doctor'}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {appointment.doctorId?.specialty || 'General'}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="font-medium text-foreground">
-                          {formatDate(appointment.date)}
-                        </div>
-                        <div className="text-sm text-muted-foreground flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {appointment.time} ({appointment.duration}min)
-                        </div>
-                      </div>
-                      <div>
-                        <div className="mb-2 flex gap-2">
-                          {getStatusBadge(appointment.status)}
-                          {getPriorityBadge(appointment.priority)}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {appointment.appointmentType}
-                        </div>
+            <div className="space-y-2">
+              {paginatedAppointments.map((appointment) => (
+                <div key={appointment._id} className="bg-gray-50 hover:bg-gray-100 rounded-lg p-4 transition-all duration-200">
+                  <div className="flex items-center justify-between gap-6">
+                    {/* Patient Name - Fixed width */}
+                    <div className="w-32 flex-shrink-0">
+                      <div className="font-semibold text-foreground text-sm truncate">
+                        {appointment.patientId?.fullName || 'Unknown Patient'}
                       </div>
                     </div>
-                    <div className="flex gap-2 ml-4">
+                    
+                    {/* Doctor - Fixed width */}
+                    <div className="w-40 flex-shrink-0">
+                      <div className="text-sm font-medium truncate">Dr. {appointment.doctorId?.fullName || 'Unknown Doctor'}</div>
+                      <div className="text-xs text-muted-foreground truncate">{appointment.doctorId?.specialty || 'General'}</div>
+                    </div>
+                    
+                    {/* Date - Fixed width */}
+                    <div className="w-24 flex-shrink-0">
+                      <div className="text-sm font-medium">
+                        {formatDate(appointment.date)}
+                      </div>
+                    </div>
+                    
+                    {/* Time & Duration - Fixed width */}
+                    <div className="w-20 flex-shrink-0">
+                      <div className="text-sm flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        <span>{appointment.time}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground">{appointment.duration}min</div>
+                    </div>
+                    
+                    {/* Type & Reason - Flexible width */}
+                    <div className="flex-1 min-w-0" style={{}}>
+                      <div className="text-sm text-muted-foreground truncate">
+                        {appointment.appointmentType}
+                      </div>
+                    </div>
+                    
+                    {/* Status & Priority - Fixed width */}
+                    <div style={{paddingRight: "50px"}}>
+                    <div className="w-24 flex-shrink-0">
+                      <div className="flex flex-col gap-1">
+                        {getStatusBadge(appointment.status)}
+                        {getPriorityBadge(appointment.priority)}
+                      </div>
+                    </div>
+                    </div>
+                    
+                    {/* Actions - Fixed width */}
+                    <div className="w-48 flex-shrink-0 flex items-center justify-end gap-2">
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => toggleAppointmentExpansion(appointment._id)}
+                        onClick={() => {
+                          setSelectedAppointment(appointment);
+                          setIsViewModalOpen(true);
+                        }}
+                        title="View Appointment Details"
                       >
-                        {expandedAppointments.has(appointment._id) ? (
-                          <ChevronUp className="w-4 h-4" />
-                        ) : (
-                          <ChevronDown className="w-4 h-4" />
-                        )}
+                        <Info className="w-4 h-4" />
                       </Button>
                       <Button
                         variant="outline"
@@ -724,11 +820,11 @@ const AppointmentManagement = () => {
                         className="text-primary hover:text-primary"
                         title="Reschedule Appointment"
                       >
-                        <RotateCcw className="w-4 h-4" />
+                        Reschedule
                       </Button>
                       <Select onValueChange={(value) => handleUpdateStatus(appointment._id, value)}>
                         <SelectTrigger className="w-32">
-                          <SelectValue placeholder="Update Status" />
+                          <SelectValue placeholder="Status" />
                         </SelectTrigger>
                         <SelectContent>
                           {statusOptions.map((status) => (
@@ -740,127 +836,26 @@ const AppointmentManagement = () => {
                       </Select>
                     </div>
                   </div>
-                  {appointment.reason && (
-                    <div className="mt-3 pt-3 border-t">
-                      <div className="text-sm text-muted-foreground">
-                        <span className="font-medium">Reason:</span> {appointment.reason}
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Expanded Details */}
-                  {expandedAppointments.has(appointment._id) && (
-                    <div className="mt-4 pt-4 border-t border-border bg-muted/30 rounded-lg p-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Patient Information */}
-                        <div className="space-y-3">
-                          <h4 className="font-semibold text-foreground flex items-center gap-2">
-                            <User className="w-4 h-4" />
-                            Patient Information
-                          </h4>
-                          <div className="space-y-2 text-sm">
-                            <div>
-                              <span className="font-medium text-muted-foreground">Name:</span>
-                              <span className="text-foreground ml-2">{appointment.patientId?.fullName || 'N/A'}</span>
-                            </div>
-                            <div>
-                              <span className="font-medium text-muted-foreground">Phone:</span>
-                              <span className="text-foreground ml-2">{appointment.patientId?.phone || 'N/A'}</span>
-                            </div>
-                            <div>
-                              <span className="font-medium text-muted-foreground">Email:</span>
-                              <span className="text-foreground ml-2">{appointment.patientId?.email || 'N/A'}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Doctor Information */}
-                        <div className="space-y-3">
-                          <h4 className="font-semibold text-foreground flex items-center gap-2">
-                            <User className="w-4 h-4" />
-                            Doctor Information
-                          </h4>
-                          <div className="space-y-2 text-sm">
-                            <div>
-                              <span className="font-medium text-muted-foreground">Name:</span>
-                              <span className="text-foreground ml-2">{appointment.doctorId?.fullName || 'N/A'}</span>
-                            </div>
-                            <div>
-                              <span className="font-medium text-muted-foreground">Specialty:</span>
-                              <span className="text-foreground ml-2">{appointment.doctorId?.specialty || 'N/A'}</span>
-                            </div>
-                            <div>
-                              <span className="font-medium text-muted-foreground">Phone:</span>
-                              <span className="text-foreground ml-2">{appointment.doctorId?.phone || 'N/A'}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Appointment Details */}
-                        <div className="space-y-3">
-                          <h4 className="font-semibold text-foreground flex items-center gap-2">
-                            <Calendar className="w-4 h-4" />
-                            Appointment Details
-                          </h4>
-                          <div className="space-y-2 text-sm">
-                            <div>
-                              <span className="font-medium text-muted-foreground">Duration:</span>
-                              <span className="text-foreground ml-2">{appointment.duration || 30} minutes</span>
-                            </div>
-                            <div>
-                              <span className="font-medium text-muted-foreground">Priority:</span>
-                              <span className="ml-2">{getPriorityBadge(appointment.priority)}</span>
-                            </div>
-                            <div>
-                              <span className="font-medium text-muted-foreground">Created:</span>
-                              <span className="text-foreground ml-2">
-                                {appointment.createdAt ? format(new Date(appointment.createdAt), 'MMM dd, yyyy HH:mm') : 'N/A'}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Additional Information */}
-                        <div className="space-y-3">
-                          <h4 className="font-semibold text-foreground flex items-center gap-2">
-                            <FileText className="w-4 h-4" />
-                            Additional Information
-                          </h4>
-                          <div className="space-y-2 text-sm">
-                            {appointment.symptoms && (
-                              <div>
-                                <span className="font-medium text-muted-foreground">Symptoms:</span>
-                                <span className="text-foreground ml-2">{appointment.symptoms}</span>
-                              </div>
-                            )}
-                            {appointment.notes && (
-                              <div>
-                                <span className="font-medium text-muted-foreground">Notes:</span>
-                                <span className="text-foreground ml-2">{appointment.notes}</span>
-                              </div>
-                            )}
-                            {!appointment.symptoms && !appointment.notes && (
-                              <div className="text-muted-foreground italic">No additional information available</div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-muted-foreground">
-            Showing {((currentPage - 1) * 5) + 1} to {Math.min(currentPage * 5, totalCount)} of {totalCount} appointments
-          </div>
-          <div className="flex items-center gap-2">
+      {/* Page Navigation - Only show when multiple pages */}
+      {totalFilteredPages > 1 && (
+        <div className="flex justify-center pb-2">
+          <div className="flex items-center gap-2 bg-white rounded-xl shadow-sm border border-gray-100 p-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+              className="gradient-button-outline"
+            >
+              First
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -868,18 +863,18 @@ const AppointmentManagement = () => {
               disabled={currentPage === 1}
               className="gradient-button-outline"
             >
-              <ChevronLeft className="w-4 h-4 mr-1" />
-              Previous
+              <ChevronLeft className="w-4 h-4" />
             </Button>
+            
             <div className="flex items-center gap-1">
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              {Array.from({ length: Math.min(5, totalFilteredPages) }, (_, i) => {
                 let pageNum;
-                if (totalPages <= 5) {
+                if (totalFilteredPages <= 5) {
                   pageNum = i + 1;
                 } else if (currentPage <= 3) {
                   pageNum = i + 1;
-                } else if (currentPage >= totalPages - 2) {
-                  pageNum = totalPages - 4 + i;
+                } else if (currentPage >= totalFilteredPages - 2) {
+                  pageNum = totalFilteredPages - 4 + i;
                 } else {
                   pageNum = currentPage - 2 + i;
                 }
@@ -897,15 +892,24 @@ const AppointmentManagement = () => {
                 );
               })}
             </div>
+            
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalFilteredPages))}
+              disabled={currentPage === totalFilteredPages}
               className="gradient-button-outline"
             >
-              Next
-              <ChevronRight className="w-4 h-4 ml-1" />
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(totalFilteredPages)}
+              disabled={currentPage === totalFilteredPages}
+              className="gradient-button-outline"
+            >
+              Last
             </Button>
           </div>
         </div>

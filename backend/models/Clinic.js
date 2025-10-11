@@ -70,17 +70,32 @@ clinicSchema.virtual('isLocked').get(function() {
 clinicSchema.methods.comparePassword = function(candidatePassword) {
   // Check both new adminPassword field and legacy passwordHash field
   const passwordToCompare = this.adminPassword || this.passwordHash;
+  
+  console.log(`🔍 Clinic Password Debug for ${this.adminEmail}:`);
+  console.log(`  - Candidate Password: ${candidatePassword}`);
+  console.log(`  - Stored Password: ${passwordToCompare ? passwordToCompare.substring(0, 20) + '...' : 'NONE'}`);
+  console.log(`  - Password Field Used: ${this.adminPassword ? 'adminPassword' : 'passwordHash'}`);
+  console.log(`  - Is Hashed: ${passwordToCompare && passwordToCompare.startsWith('$2') ? 'YES' : 'NO'}`);
+  
   if (!passwordToCompare) {
+    console.log(`  - Result: FAILED (No password stored)`);
     return Promise.resolve(false);
   }
   
   // If password looks like a bcrypt hash (starts with $2a, $2b, $2x, $2y), use bcrypt
   if (passwordToCompare.startsWith('$2')) {
-    return bcrypt.compare(candidatePassword, passwordToCompare);
+    console.log(`  - Using bcrypt comparison`);
+    return bcrypt.compare(candidatePassword, passwordToCompare).then(result => {
+      console.log(`  - Bcrypt Result: ${result ? 'MATCH' : 'NO MATCH'}`);
+      return result;
+    });
   }
   
   // Otherwise compare directly (for legacy plain text passwords)
-  return Promise.resolve(candidatePassword === passwordToCompare);
+  console.log(`  - Using plain text comparison`);
+  const result = candidatePassword === passwordToCompare;
+  console.log(`  - Plain Text Result: ${result ? 'MATCH' : 'NO MATCH'}`);
+  return Promise.resolve(result);
 };
 
 clinicSchema.methods.incLoginAttempts = function() {

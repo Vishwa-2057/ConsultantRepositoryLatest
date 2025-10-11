@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
@@ -26,7 +25,7 @@ import {
 
 const Billing = () => {
   // Set page title immediately
-  document.title = "Billing Management - Smart Healthcare";
+  document.title = "Smart Healthcare";
   
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -71,6 +70,11 @@ const Billing = () => {
   const [error, setError] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [pageSize, setPageSize] = useState(() => {
+    const saved = localStorage.getItem('invoiceManagement_pageSize');
+    return saved ? parseInt(saved) : 10;
+  });
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [totalInvoices, setTotalInvoices] = useState(() => {
     // Initialize from localStorage if available and cache is valid
     const timestamp = localStorage.getItem('billing_cacheTimestamp');
@@ -214,7 +218,7 @@ const Billing = () => {
       // The backend supports date and patientId filters; search by text is not supported.
       // We'll keep simple client-side search on the rendered list for now.
 
-      const response = await invoiceAPI.getAll(currentPage, 10, filters);
+      const response = await invoiceAPI.getAll(currentPage, pageSize, filters);
       const list = response.invoices || [];
 
       // Normalize for rendering convenience with new invoice structure
@@ -254,11 +258,20 @@ const Billing = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, statusFilter]);
+  }, [currentPage, pageSize, statusFilter]);
 
   useEffect(() => {
-    document.title = "Billing Management - Smart Healthcare";
+    document.title = "Smart Healthcare";
   }, []);
+
+  // Save pageSize to localStorage when it changes (skip initial load)
+  useEffect(() => {
+    if (isInitialLoad) {
+      setIsInitialLoad(false);
+      return;
+    }
+    localStorage.setItem('invoiceManagement_pageSize', pageSize.toString());
+  }, [pageSize, isInitialLoad]);
 
   useEffect(() => {
     fetchInvoices();
@@ -610,149 +623,136 @@ const Billing = () => {
 
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-muted-foreground">Generate invoices, track payments, and manage billing workflow</p>
+      {/* Search, Stats and Actions - Single Line */}
+      <div className="flex items-center justify-between gap-6 bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+        {/* Search Bar */}
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <Input
+            placeholder="Search invoices by patient name or invoice ID..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10 h-10 bg-white border-gray-200 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          />
         </div>
-        <Button 
-          className="gradient-button"
-          onClick={handleNewInvoice}
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          Generate Invoice
-        </Button>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="border-0 shadow-soft">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Total Revenue</p>
-                <p className="text-2xl font-bold text-foreground">
-                  {statsLoading ? 'Loading...' : `₹${revenueStats.totalRevenue.toLocaleString('en-IN')}`}
-                </p>
-                <p className="text-sm text-success">All invoices</p>
-              </div>
-              <div className="p-2 rounded-lg bg-gradient-primary/10">
-                <DollarSign className="w-6 h-6 text-primary" />
-              </div>
+        
+        {/* Stats */}
+        <div className="flex items-center space-x-6">
+          <div className="flex items-center space-x-2">
+            <div className="p-1.5 bg-blue-100 rounded-full">
+              <FileText className="w-4 h-4 text-blue-600" />
             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-0 shadow-soft">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Pending Approval</p>
-                <p className="text-2xl font-bold text-foreground">
-                  {statsLoading ? 'Loading...' : revenueStats.pendingApprovalCount}
-                </p>
-                <p className="text-sm text-warning">Recent invoices</p>
-              </div>
-              <div className="p-2 rounded-lg bg-warning/10">
-                <Clock className="w-6 h-6 text-warning" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-0 shadow-soft">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Outstanding</p>
-                <p className="text-2xl font-bold text-foreground">
-                  {statsLoading ? 'Loading...' : `₹${revenueStats.outstandingAmount.toLocaleString('en-IN')}`}
-                </p>
-                <p className="text-sm text-destructive">Older invoices</p>
-              </div>
-              <div className="p-2 rounded-lg bg-destructive/10">
-                <AlertCircle className="w-6 h-6 text-destructive" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-0 shadow-soft">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Paid This Month</p>
-                <p className="text-2xl font-bold text-foreground">
-                  {statsLoading ? 'Loading...' : `₹${revenueStats.paidThisMonth.toLocaleString('en-IN')}`}
-                </p>
-                <p className="text-sm text-success">Current month payments</p>
-              </div>
-              <div className="p-2 rounded-lg bg-success/10">
-                <CheckCircle className="w-6 h-6 text-success" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Search and Filters */}
-      <Card className="border-0 shadow-soft">
-        <CardContent className="p-6">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Search invoices by patient name or invoice ID..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setCurrentPage(1); }}>
-              <SelectTrigger className="w-full md:w-[180px]">
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="draft">Draft</SelectItem>
-                <SelectItem value="sent">Sent</SelectItem>
-                <SelectItem value="approved">Approved</SelectItem>
-                <SelectItem value="rejected">Rejected</SelectItem>
-                <SelectItem value="paid">Paid</SelectItem>
-                <SelectItem value="overdue">Overdue</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
-              </SelectContent>
-            </Select>
+            <span className="text-sm text-blue-600 font-medium">
+              Total: {totalInvoices || 0}
+            </span>
           </div>
-        </CardContent>
-      </Card>
+          <div className="flex items-center space-x-2">
+            <div className="p-1.5 bg-green-100 rounded-full">
+              <CheckCircle className="w-4 h-4 text-green-600" />
+            </div>
+            <span className="text-sm text-green-600 font-medium">
+              Approved: {filteredInvoices.filter(inv => getInvoiceStatus(inv) === 'Approved').length || 0}
+            </span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="p-1.5 bg-yellow-100 rounded-full">
+              <Clock className="w-4 h-4 text-yellow-600" />
+            </div>
+            <span className="text-sm text-yellow-600 font-medium">
+              Pending: {filteredInvoices.filter(inv => getInvoiceStatus(inv) === 'Sent').length || 0}
+            </span>
+          </div>
+        </div>
+        
+        {/* Filters and Actions */}
+        <div className="flex items-center gap-3">
+          <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setCurrentPage(1); }}>
+            <SelectTrigger className="w-32 h-10 text-sm bg-white border-gray-200 rounded-lg shadow-sm">
+              <SelectValue placeholder="All Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="draft">Draft</SelectItem>
+              <SelectItem value="sent">Sent</SelectItem>
+              <SelectItem value="approved">Approved</SelectItem>
+              <SelectItem value="paid">Paid</SelectItem>
+              <SelectItem value="overdue">Overdue</SelectItem>
+            </SelectContent>
+          </Select>
+          
+          <Button 
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
+            onClick={handleNewInvoice}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Generate Invoice
+          </Button>
+        </div>
+      </div>
 
-      <Tabs defaultValue="invoices" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="invoices">All Invoices</TabsTrigger>
-          <TabsTrigger value="approvals">Pending Approvals</TabsTrigger>
-          <TabsTrigger value="reports">Financial Reports</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="invoices">
-          <Card className="border-0 shadow-soft">
-            <CardHeader>
-              <CardTitle>Invoice Management</CardTitle>
-              <CardDescription>Track and manage all billing invoices</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <p className="text-center text-muted-foreground">Loading invoices...</p>
-              ) : error ? (
-                <p className="text-center text-red-600">{error}</p>
-              ) : filteredInvoices.length > 0 ? (
-                <div className="space-y-4">
+      {/* Invoices List */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+        <div className="px-6 py-4 border-b border-gray-100">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <h2 className="text-xl font-semibold text-gray-900">Invoices</h2>
+              <div className="flex items-center space-x-2">
+                <Badge variant="secondary" className="px-3 py-1 text-sm font-medium bg-blue-100 text-blue-700 border-0">
+                  {filteredInvoices.length}
+                </Badge>
+              </div>
+            </div>
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-lg border">
+                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                <span className="text-sm font-medium text-gray-700">
+                  {((currentPage - 1) * pageSize) + 1}-{Math.min(currentPage * pageSize, totalInvoices)} of {totalInvoices}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 px-2.5 py-1 bg-white rounded-md border border-gray-200">
+                <span className="text-xs font-medium text-gray-500">Show</span>
+                <Select value={pageSize.toString()} onValueChange={(value) => {
+                  setPageSize(parseInt(value));
+                  setCurrentPage(1);
+                }}>
+                  <SelectTrigger className="w-12 h-6 text-xs border-0 bg-transparent p-0 focus:ring-0">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="5">5</SelectItem>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="20">20</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="p-6">
+          {loading ? (
+            <div className="flex items-center justify-center h-32">
+              <p className="text-muted-foreground">Loading invoices...</p>
+            </div>
+          ) : error ? (
+            <div className="flex items-center justify-center h-32">
+              <p className="text-red-600">{error}</p>
+            </div>
+          ) : filteredInvoices.length === 0 ? (
+            <div className="flex items-center justify-center h-32">
+              <p className="text-muted-foreground">
+                {searchTerm ? "No invoices found matching your search." : "No invoices found."}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
                   {filteredInvoices.map((invoice) => {
                     const StatusIcon = getStatusIcon(getInvoiceStatus(invoice));
                     return (
-                      <div key={invoice._id} className="p-4 rounded-lg border border-border hover:bg-muted/30 transition-colors">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-4">
+                      <div key={invoice._id} className="p-4 rounded-lg bg-gray-50 hover:bg-gray-100 transition-all duration-200 border-0">
+                        <div className="grid grid-cols-12 gap-4 items-center">
+                          {/* Left section - Patient info */}
+                          <div className="col-span-5 flex items-center space-x-4">
                             <div className="w-12 h-12 bg-gradient-primary rounded-full flex items-center justify-center">
                               <FileText className="w-6 h-6 text-white" />
                             </div>
@@ -781,22 +781,36 @@ const Billing = () => {
                             </div>
                           </div>
                           
-                          <div className="flex items-center space-x-4">
-                            <div className="text-right">
-                              <p className="text-lg font-bold text-foreground">₹{Number(invoice.total || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
-                              <Badge variant={getStatusColor(getInvoiceStatus(invoice))} className="mt-1">
-                                <StatusIcon className="w-3 h-3 mr-1" />
-                                {getInvoiceStatus(invoice)}
-                              </Badge>
-                              {(invoice.discount > 0 || invoice.tax > 0 || invoice.shipping > 0) && (
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  {invoice.discount > 0 && `Disc: ₹${invoice.discount} `}
-                                  {invoice.tax > 0 && `Tax: ₹${invoice.tax} `}
-                                  {invoice.shipping > 0 && `Ship: ₹${invoice.shipping}`}
-                                </p>
+                          {/* Middle section - Amount and Status */}
+                          <div className="col-span-4 text-center">
+                            <p className="text-lg font-bold text-foreground">₹{Number(invoice.total || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                            <Badge variant={getStatusColor(getInvoiceStatus(invoice))} className="mt-1">
+                              <StatusIcon className="w-3 h-3 mr-1" />
+                              {getInvoiceStatus(invoice)}
+                            </Badge>
+                            {(invoice.discount > 0 || invoice.tax > 0 || invoice.shipping > 0) && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {invoice.discount > 0 && `Disc: ₹${invoice.discount} `}
+                                {invoice.tax > 0 && `Tax: ₹${invoice.tax} `}
+                                {invoice.shipping > 0 && `Ship: ₹${invoice.shipping}`}
+                              </p>
+                            )}
+                          </div>
+                          
+                          {/* Right section - Actions */}
+                          <div className="col-span-3 flex justify-end items-center space-x-2">
+                              {getInvoiceStatus(invoice) === 'Sent' && (
+                                <Button 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => handleApproveInvoice(invoice)}
+                                  title="Approve Invoice"
+                                  className="text-green-600 border-green-600 hover:bg-green-50"
+                                >
+                                  <CheckCircle className="w-4 h-4 mr-1" />
+                                  Approve
+                                </Button>
                               )}
-                            </div>
-                            <div className="flex space-x-2">
                               <Button 
                                 variant="ghost" 
                                 size="sm"
@@ -813,163 +827,86 @@ const Billing = () => {
                               >
                                 <Download className="w-4 h-4" />
                               </Button>
-                            </div>
                           </div>
                         </div>
                       </div>
                     );
                   })}
-                </div>
-              ) : (
-                <p className="text-center text-muted-foreground">No invoices found.</p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+            </div>
+          )}
+        </div>
+      </div>
 
-        <TabsContent value="approvals">
-          <Card className="border-0 shadow-soft">
-            <CardHeader>
-              <CardTitle>Pending Admin Approvals</CardTitle>
-              <CardDescription>Invoices awaiting administrative approval</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {approvalsLoading ? (
-                <p className="text-center text-muted-foreground">Loading pending invoices...</p>
-              ) : approvalsError ? (
-                <p className="text-center text-red-600">{approvalsError}</p>
-              ) : approvals.length > 0 ? (
-                <div className="space-y-4">
-                  {approvals.map((approval) => (
-                    <div key={approval._id} className="p-4 rounded-lg border border-border hover:bg-muted/30 transition-colors">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-4">
-                          <div className="w-12 h-12 bg-warning rounded-full flex items-center justify-center">
-                            <Clock className="w-6 h-6 text-white" />
-                          </div>
-                          <div>
-                            <h3 className="font-semibold text-foreground">{approval.patient}</h3>
-                            <p className="text-sm text-muted-foreground">
-                              #{approval.invoiceNo} • {approval.service}
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              Date: {approval.submittedDate}
-                            </p>
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-center space-x-4">
-                          <div className="text-right">
-                            <p className="text-lg font-bold text-foreground">₹{Number(approval.amount).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
-                            <Badge variant="warning">Recent</Badge>
-                          </div>
-                          <div className="flex space-x-2">
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              className="gradient-button-outline text-success border-success hover:bg-success hover:text-white"
-                              onClick={() => handleApproveInvoice(approval)}
-                            >
-                              Approve
-                            </Button>
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              className="gradient-button-outline text-destructive border-destructive hover:bg-destructive hover:text-white"
-                              onClick={() => handleRejectInvoice(approval)}
-                            >
-                              Reject
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-center text-muted-foreground">No pending invoices found.</p>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="reports">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card className="border-0 shadow-soft">
-              <CardHeader>
-                <CardTitle>Monthly Revenue</CardTitle>
-                <CardDescription>Revenue breakdown by month (Last 6 months)</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {reportsLoading ? (
-                  <p className="text-center text-muted-foreground">Loading reports...</p>
-                ) : (
-                  <div className="space-y-4">
-                    {monthlyRevenue.length > 0 ? (
-                      monthlyRevenue.map((data, index) => (
-                        <div key={index} className="flex justify-between items-center">
-                          <span>{data.month}</span>
-                          <span className="font-semibold">₹{data.revenue.toLocaleString('en-IN')}</span>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-center text-muted-foreground">No revenue data available</p>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="border-0 shadow-soft">
-              <CardHeader>
-                <CardTitle>Payment Methods</CardTitle>
-                <CardDescription>Revenue by payment method</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {reportsLoading ? (
-                  <p className="text-center text-muted-foreground">Loading reports...</p>
-                ) : (
-                  <div className="space-y-4">
-                    {paymentMethods.length > 0 ? (
-                      paymentMethods.map((data, index) => (
-                        <div key={index} className="flex justify-between items-center">
-                          <span>{data.method}</span>
-                          <span className="font-semibold">₹{data.amount.toLocaleString('en-IN')} ({data.percentage}%)</span>
-                        </div>
-                      ))
-                    ) : (
-                      <p className="text-center text-muted-foreground">No payment data available</p>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-      </Tabs>
-
-      {/* Pagination Controls */}
+      {/* Page Navigation - Only show when multiple pages */}
       {totalPages > 1 && (
-        <div className="flex justify-between items-center mt-6">
-          <Button
-            variant="outline"
-            onClick={() => currentPage > 1 && setCurrentPage(prev => prev - 1)}
-            disabled={currentPage === 1 || loading}
-            className="gradient-button-outline"
-          >
-            Previous
-          </Button>
-          <span className="text-sm text-muted-foreground">
-            Page {currentPage} of {totalPages} • {totalInvoices} total
-          </span>
-          <Button
-            variant="outline"
-            onClick={() => currentPage < totalPages && setCurrentPage(prev => prev + 1)}
-            disabled={currentPage === totalPages || loading}
-            className="gradient-button-outline"
-          >
-            Next
-          </Button>
+        <div className="flex justify-center pb-2">
+          <div className="flex items-center gap-2 bg-white rounded-xl shadow-sm border border-gray-100 p-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+              className="h-10 px-4 text-sm bg-white border-gray-200 rounded-lg shadow-sm hover:bg-gray-50"
+            >
+              First
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="h-10 px-4 text-sm bg-white border-gray-200 rounded-lg shadow-sm hover:bg-gray-50"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            
+            {/* Page Numbers */}
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+                
+                return (
+                  <Button
+                    key={pageNum}
+                    variant={currentPage === pageNum ? "default" : "outline"}
+                    size="sm"
+                    className={`w-8 h-8 p-0 ${currentPage === pageNum ? "bg-blue-600 text-white" : "bg-white border-gray-200 hover:bg-gray-50"} rounded-lg shadow-sm`}
+                    onClick={() => setCurrentPage(pageNum)}
+                  >
+                    {pageNum}
+                  </Button>
+                );
+              })}
+            </div>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              className="h-10 px-4 text-sm bg-white border-gray-200 rounded-lg shadow-sm hover:bg-gray-50"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={currentPage === totalPages}
+              className="h-10 px-4 text-sm bg-white border-gray-200 rounded-lg shadow-sm hover:bg-gray-50"
+            >
+              Last
+            </Button>
+          </div>
         </div>
       )}
 

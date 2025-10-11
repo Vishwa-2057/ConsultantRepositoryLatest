@@ -5,9 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ArrowLeft, Mail, Lock, Shield, CheckCircle } from 'lucide-react';
-import { authAPI, clinicAPI } from '@/services/api';
+import { authAPI } from '@/services/api';
 
-const ForgotPasswordModal = ({ isOpen, onClose, userType = "regular" }) => {
+const ForgotPasswordModal = ({ isOpen, onClose }) => {
   const [step, setStep] = useState(1); // 1: Email, 2: OTP & New Password
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState('');
@@ -38,12 +38,7 @@ const ForgotPasswordModal = ({ isOpen, onClose, userType = "regular" }) => {
     setLoading(true);
 
     try {
-      let response;
-      if (userType === "clinic") {
-        response = await clinicAPI.forgotPassword(email.trim());
-      } else {
-        response = await authAPI.forgotPassword(email.trim());
-      }
+      const response = await authAPI.forgotPassword(email.trim());
 
       if (response.success) {
         setStep(2);
@@ -76,12 +71,7 @@ const ForgotPasswordModal = ({ isOpen, onClose, userType = "regular" }) => {
     setLoading(true);
 
     try {
-      let response;
-      if (userType === "clinic") {
-        response = await clinicAPI.resetPassword(email.trim(), otp, newPassword);
-      } else {
-        response = await authAPI.resetPassword(email.trim(), otp, newPassword);
-      }
+      const response = await authAPI.resetPassword(email.trim(), otp, newPassword);
 
       if (response.success) {
         setSuccess('Password reset successfully! You can now login with your new password.');
@@ -103,12 +93,7 @@ const ForgotPasswordModal = ({ isOpen, onClose, userType = "regular" }) => {
     setLoading(true);
 
     try {
-      let response;
-      if (userType === "clinic") {
-        response = await clinicAPI.forgotPassword(email.trim());
-      } else {
-        response = await authAPI.forgotPassword(email.trim());
-      }
+      const response = await authAPI.forgotPassword(email.trim());
 
       if (response.success) {
         setSuccess('New password reset code sent to your email address.');

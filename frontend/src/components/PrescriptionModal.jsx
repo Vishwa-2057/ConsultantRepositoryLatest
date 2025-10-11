@@ -22,10 +22,13 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { patientAPI, doctorAPI } from "@/services/api";
 import { isClinic, isDoctor, isNurse, getCurrentUser } from "@/utils/roleUtils";
-import { Plus, Trash2, User, Calendar, UserCheck } from "lucide-react";
+import { Plus, Trash2, User, Calendar, UserCheck, AlertCircle } from "lucide-react";
+import { validators, sanitizers } from "@/utils/validation";
+import { useAuditLog } from "@/hooks/useAuditLog";
 
 const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) => {
   const { toast } = useToast();
+  const { logComponentAccess, logFormSubmission, logPrescriptionAccess } = useAuditLog();
   const [loading, setLoading] = useState(false);
   const [patients, setPatients] = useState([]);
   const [loadingPatients, setLoadingPatients] = useState(false);
@@ -50,10 +53,10 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
     followUpDate: "",
     followUpInstructions: ""
   });
-
+  
   const [errors, setErrors] = useState({});
 
-  // Load patients and doctors on component mount
+  // Load data when modal opens and log component access
   useEffect(() => {
     if (isOpen) {
       loadPatients();
@@ -61,8 +64,10 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
       if (isClinic() || isNurse()) {
         loadDoctors();
       }
+      // Log prescription form access
+      logComponentAccess('PrescriptionModal', prescription ? 'EDIT' : 'CREATE');
     }
-  }, [isOpen]);
+  }, [isOpen, prescription, logComponentAccess]);
 
   // Populate form when editing
   useEffect(() => {
@@ -145,42 +150,103 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
   const validateForm = () => {
     const newErrors = {};
 
+    // Patient validation
     if (!formData.patientId) {
       newErrors.patientId = "Patient is required";
     }
 
+    // Doctor validation - only for clinic admins and nurses
     if ((isClinic() || isNurse()) && !formData.doctorId) {
       newErrors.doctorId = "Doctor is required";
     }
 
-    if (!formData.diagnosis.trim()) {
-      newErrors.diagnosis = "Diagnosis is required";
+    // Diagnosis validation
+    const diagnosisError = validators.required(formData.diagnosis, 'Diagnosis') ||
+                          validators.minLength(formData.diagnosis, 3, 'Diagnosis') ||
+                          validators.maxLength(formData.diagnosis, 200, 'Diagnosis');
+    if (diagnosisError) {
+      newErrors.diagnosis = diagnosisError;
     }
 
     // Validate medications
-    formData.medications.forEach((medication, index) => {
-      if (!medication.name.trim()) {
-        newErrors[`medication_${index}_name`] = "Medication name is required";
+    if (formData.medications.length === 0) {
+      newErrors.medications = "At least one medication is required";
+    } else {
+      formData.medications.forEach((medication, index) => {
+        // Medication name validation
+        const nameError = validators.required(medication.name, 'Medication name') ||
+                         validators.minLength(medication.name, 2, 'Medication name') ||
+                         validators.maxLength(medication.name, 100, 'Medication name');
+        if (nameError) {
+          newErrors[`medication_${index}_name`] = nameError;
+        }
+        
+        // Dosage validation
+        const dosageError = validators.required(medication.dosage, 'Dosage') ||
+                           validators.maxLength(medication.dosage, 50, 'Dosage');
+        if (dosageError) {
+          newErrors[`medication_${index}_dosage`] = dosageError;
+        }
+        
+        // Frequency validation
+        const frequencyError = validators.required(medication.frequency, 'Frequency') ||
+                              validators.maxLength(medication.frequency, 50, 'Frequency');
+        if (frequencyError) {
+          newErrors[`medication_${index}_frequency`] = frequencyError;
+        }
+        
+        // Duration validation
+        const durationError = validators.required(medication.duration, 'Duration') ||
+                             validators.maxLength(medication.duration, 50, 'Duration');
+        if (durationError) {
+          newErrors[`medication_${index}_duration`] = durationError;
+        }
+        
+        // Instructions validation (optional but if provided, check length)
+        if (medication.instructions && medication.instructions.length > 200) {
+          newErrors[`medication_${index}_instructions`] = "Instructions must not exceed 200 characters";
+        }
+      });
+    }
+
+    // Notes validation (optional but if provided, check length)
+    if (formData.notes && formData.notes.length > 500) {
+      newErrors.notes = "Notes must not exceed 500 characters";
+    }
+
+    // Follow-up date validation (optional but if provided, must be in future)
+    if (formData.followUpDate) {
+      const followUpError = validators.pastDate(formData.followUpDate);
+      if (followUpError) {
+        newErrors.followUpDate = "Follow-up date must be in the future";
       }
-      if (!medication.dosage.trim()) {
-        newErrors[`medication_${index}_dosage`] = "Dosage is required";
-      }
-      if (!medication.frequency.trim()) {
-        newErrors[`medication_${index}_frequency`] = "Frequency is required";
-      }
-      if (!medication.duration.trim()) {
-        newErrors[`medication_${index}_duration`] = "Duration is required";
-      }
-    });
+    }
+
+    // Follow-up instructions validation (optional but if provided, check length)
+    if (formData.followUpInstructions && formData.followUpInstructions.length > 300) {
+      newErrors.followUpInstructions = "Follow-up instructions must not exceed 300 characters";
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleInputChange = (field, value) => {
+    // Apply sanitization based on field type
+    let sanitizedValue = value;
+    switch (field) {
+      case 'diagnosis':
+      case 'notes':
+      case 'followUpInstructions':
+        sanitizedValue = sanitizers.text(value);
+        break;
+      default:
+        sanitizedValue = value;
+    }
+    
     setFormData(prev => ({
       ...prev,
-      [field]: value
+      [field]: sanitizedValue
     }));
     
     // Clear error when user starts typing
@@ -193,10 +259,28 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
   };
 
   const handleMedicationChange = (index, field, value) => {
+    // Apply sanitization for medication fields
+    let sanitizedValue = sanitizers.text(value);
+    
+    // Apply field-specific limits
+    switch (field) {
+      case 'name':
+        sanitizedValue = sanitizedValue.slice(0, 100);
+        break;
+      case 'dosage':
+      case 'frequency':
+      case 'duration':
+        sanitizedValue = sanitizedValue.slice(0, 50);
+        break;
+      case 'instructions':
+        sanitizedValue = sanitizedValue.slice(0, 200);
+        break;
+    }
+    
     const updatedMedications = [...formData.medications];
     updatedMedications[index] = {
       ...updatedMedications[index],
-      [field]: value
+      [field]: sanitizedValue
     };
     
     setFormData(prev => ({
@@ -254,7 +338,13 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
         followUpDate: formData.followUpDate || undefined
       };
 
-      await onSubmit(submitData);
+      const result = await onSubmit(submitData);
+      
+      // Log successful prescription operation
+      const action = prescription ? 'UPDATE' : 'CREATE';
+      const prescriptionId = result?._id || result?.id || prescription?._id;
+      await logFormSubmission('PRESCRIPTION', action, prescriptionId, formData.patientId);
+      await logPrescriptionAccess(prescriptionId, formData.patientId, action);
       
       toast({
         title: "Success",
@@ -262,6 +352,11 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
       });
       
       onClose();
+      
+      // Reload the page to refresh the data
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
     } catch (error) {
       console.error('Error submitting prescription:', error);
       toast({

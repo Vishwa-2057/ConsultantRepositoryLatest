@@ -103,7 +103,7 @@ const referralSchema = new mongoose.Schema({
   urgency: {
     type: String,
     required: [true, 'Urgency level is required'],
-    enum: ['Low', 'Medium', 'High', 'Urgent']
+    enum: ['Low', 'Medium', 'High']
   },
   preferredDate: {
     type: Date
@@ -261,7 +261,7 @@ referralSchema.virtual('specialistFullAddress').get(function() {
 
 // Virtual for is urgent
 referralSchema.virtual('isUrgent').get(function() {
-  return this.urgency === 'High' || this.urgency === 'Urgent';
+  return this.urgency === 'High';
 });
 
 // Virtual for days since creation
@@ -275,7 +275,7 @@ referralSchema.virtual('daysSinceCreation').get(function() {
 
 // Virtual for is overdue (if urgent and pending for more than 3 days)
 referralSchema.virtual('isOverdue').get(function() {
-  if (this.urgency === 'High' || this.urgency === 'Urgent') {
+  if (this.urgency === 'High') {
     return this.daysSinceCreation > 3 && this.status === 'Pending';
   }
   return false;
@@ -296,7 +296,7 @@ referralSchema.index({ status: 1, urgency: 1 });
 // Static method to find urgent referrals
 referralSchema.statics.findUrgent = function() {
   return this.find({
-    urgency: { $in: ['High', 'Urgent'] },
+    urgency: 'High',
     status: { $in: ['Pending', 'Approved'] }
   }).populate('patientId', 'fullName phone email');
 };
@@ -317,7 +317,7 @@ referralSchema.statics.findOverdue = function() {
   threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
   
   return this.find({
-    urgency: { $in: ['High', 'Urgent'] },
+    urgency: 'High',
     status: 'Pending',
     createdAt: { $lt: threeDaysAgo }
   }).populate('patientId', 'fullName phone email');
@@ -357,7 +357,7 @@ referralSchema.methods.cancel = function(notes = '') {
 
 // Instance method to update urgency
 referralSchema.methods.updateUrgency = function(newUrgency) {
-  if (!['Low', 'Medium', 'High', 'Urgent'].includes(newUrgency)) {
+  if (!['Low', 'Medium', 'High'].includes(newUrgency)) {
     throw new Error('Invalid urgency level');
   }
   this.urgency = newUrgency;

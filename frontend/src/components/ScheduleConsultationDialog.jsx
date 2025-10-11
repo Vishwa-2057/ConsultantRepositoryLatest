@@ -58,11 +58,10 @@ const ScheduleConsultationDialog = ({ open, onOpenChange, onSuccess }) => {
     { value: "In-person", label: "In-Person", icon: User, color: "bg-orange-500" }
   ];
 
-  const priorities = [
+  const priorityOptions = [
     { value: "Low", label: "Low Priority", color: "secondary" },
     { value: "Medium", label: "Medium Priority", color: "primary" },
-    { value: "High", label: "High Priority", color: "warning" },
-    { value: "Urgent", label: "Urgent", color: "destructive" }
+    { value: "High", label: "High Priority", color: "warning" }
   ];
 
   // Load patients on component mount
@@ -401,7 +400,7 @@ const ScheduleConsultationDialog = ({ open, onOpenChange, onSuccess }) => {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {priorities.map((priority) => (
+                  {priorityOptions.map((priority) => (
                     <SelectItem key={priority.value} value={priority.value}>
                       <div className="flex items-center space-x-2">
                         <Badge variant={priority.color} className="w-2 h-2 p-0" />

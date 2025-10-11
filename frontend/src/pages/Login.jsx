@@ -1,46 +1,71 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { authAPI, clinicAPI } from "@/services/api";
+import { authAPI } from "@/services/api";
 import { Link, useNavigate } from "react-router-dom";
-import { Mail, Lock, Shield, ArrowLeft } from "lucide-react";
-import Logo from "@/assets/Images/Logo.png";
+import { Mail, Lock, Shield, ArrowLeft, CheckCircle, Eye, EyeOff, Sparkles, AlertCircle } from "lucide-react";
+import Logo from "@/assets/images/Logo.png";
 import ForgotPasswordModal from "@/components/ForgotPasswordModal";
+import { validators, sanitizers } from "@/utils/validation";
 
 const Login = () => {
+  const [step, setStep] = useState(1); // 1: Email & Password, 2: OTP Verification
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
-  const [otpLoading, setOtpLoading] = useState(false);
   const [error, setError] = useState("");
-  const [otpSent, setOtpSent] = useState(false);
   const [otpTimer, setOtpTimer] = useState(0);
-  const [activeTab, setActiveTab] = useState("password");
-  const [userType, setUserType] = useState("regular"); // "regular" or "clinic"
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const navigate = useNavigate();
 
-  const handlePasswordLogin = async (e) => {
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Validate step 1 form
+  const validateStep1 = () => {
+    const errors = [];
+    
+    const emailError = validators.required(email, 'Email') || validators.email(email);
+    if (emailError) errors.push(emailError);
+    
+    const passwordError = validators.required(password, 'Password');
+    if (passwordError) errors.push(passwordError);
+    
+    return errors;
+  };
+
+  // Step 1: Verify password and get OTP
+  const handleStep1 = async (e) => {
     e.preventDefault();
     setError("");
+    
+    // Client-side validation
+    const validationErrors = validateStep1();
+    if (validationErrors.length > 0) {
+      setError(validationErrors[0]);
+      return;
+    }
+    
     setLoading(true);
     try {
-      let res;
-      if (userType === "clinic") {
-        res = await clinicAPI.login({ email: email.trim(), password });
-      } else {
-        res = await authAPI.login({ email: email.trim(), password });
-      }
+      const res = await authAPI.loginStep1({ email: sanitizers.email(email), password });
       
-      authAPI.setToken(res.token);
-      localStorage.setItem('authToken', res.token);
-      localStorage.setItem('authUser', JSON.stringify(res.user || res.doctor || {}));
-      window.dispatchEvent(new Event('auth-changed'));
-      navigate('/');
+      if (res.success && res.requiresOTP) {
+        setIsAnimating(true);
+        setTimeout(() => {
+          setStep(2);
+          setOtpTimer(60); // 60 seconds countdown
+          startTimer();
+          setIsAnimating(false);
+        }, 300);
+      }
     } catch (err) {
       setError(err.message || 'Login failed');
     } finally {
@@ -48,49 +73,64 @@ const Login = () => {
     }
   };
 
-  const handleRequestOTP = async () => {
-    if (!email.trim()) {
-      setError("Please enter your email address first");
+  // Validate step 2 form
+  const validateStep2 = () => {
+    const errors = [];
+    
+    if (!otp || otp.length !== 6) {
+      errors.push('Please enter a valid 6-digit OTP');
+    }
+    
+    if (!/^\d{6}$/.test(otp)) {
+      errors.push('OTP must contain only numbers');
+    }
+    
+    return errors;
+  };
+
+  // Step 2: Verify OTP and complete login
+  const handleStep2 = async (e) => {
+    e.preventDefault();
+    setError("");
+    
+    // Client-side validation
+    const validationErrors = validateStep2();
+    if (validationErrors.length > 0) {
+      setError(validationErrors[0]);
       return;
     }
     
-    setError("");
-    setOtpLoading(true);
+    setLoading(true);
     try {
-      let res;
-      if (userType === "clinic") {
-        res = await clinicAPI.requestOTP(email.trim());
-      } else {
-        res = await authAPI.requestOTP(email.trim());
+      const res = await authAPI.loginStep2({ email: sanitizers.email(email), otp });
+      
+      if (res.success) {
+        // Use new session management with secure token storage
+        await authAPI.setToken(res.token, res.refreshToken, res.expiresIn);
+        localStorage.setItem('authUser', JSON.stringify(res.user || {}));
+        window.dispatchEvent(new Event('auth-changed'));
+        navigate('/');
       }
-      setOtpSent(true);
-      setOtpTimer(60); // 60 seconds countdown
-      startTimer();
     } catch (err) {
-      setError(err.message || 'Failed to send OTP');
+      setError(err.message || 'OTP verification failed');
     } finally {
-      setOtpLoading(false);
+      setLoading(false);
     }
   };
 
-  const handleOTPLogin = async (e) => {
-    e.preventDefault();
+  // Resend OTP
+  const handleResendOTP = async () => {
     setError("");
     setLoading(true);
     try {
-      let res;
-      if (userType === "clinic") {
-        res = await clinicAPI.loginWithOTP(email.trim(), otp);
-      } else {
-        res = await authAPI.loginWithOTP(email.trim(), otp);
+      const res = await authAPI.loginStep1({ email: email.trim(), password });
+      
+      if (res.success && res.requiresOTP) {
+        setOtpTimer(60);
+        startTimer();
       }
-      authAPI.setToken(res.token);
-      localStorage.setItem('authToken', res.token);
-      localStorage.setItem('authUser', JSON.stringify(res.user || res.doctor || {}));
-      window.dispatchEvent(new Event('auth-changed'));
-      navigate('/');
     } catch (err) {
-      setError(err.message || 'OTP verification failed');
+      setError(err.message || 'Failed to resend OTP');
     } finally {
       setLoading(false);
     }
@@ -108,223 +148,303 @@ const Login = () => {
     }, 1000);
   };
 
-  const resetOTP = () => {
-    setOtpSent(false);
-    setOtp("");
-    setOtpTimer(0);
-    setError("");
+  const resetToStep1 = () => {
+    setIsAnimating(true);
+    setTimeout(() => {
+      setStep(1);
+      setOtp("");
+      setOtpTimer(0);
+      setError("");
+      setIsAnimating(false);
+    }, 300);
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-teal-50 to-cyan-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-      <div className="grid lg:grid-cols-2 min-h-screen">
-        {/* Left Side - Branding/Info */}
-        <div className="hidden lg:flex flex-col justify-center items-center p-12 bg-gradient-to-br from-blue-700 via-blue-600 to-teal-500 text-white relative overflow-hidden">
-          <div className="absolute inset-0 bg-black/10"></div>
-          <div className="relative z-10 text-center max-w-lg">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-cyan-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 relative overflow-hidden">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-blue-400/20 to-cyan-600/20 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-br from-sky-400/20 to-blue-600/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-br from-blue-400/10 to-cyan-600/10 rounded-full blur-3xl animate-pulse delay-500"></div>
+      </div>
+
+      <div className="grid lg:grid-cols-2 min-h-screen relative z-10">
+        {/* Left Side - Enhanced Branding */}
+        <div className="hidden lg:flex flex-col justify-center items-center p-12 bg-gradient-to-br from-blue-600 via-blue-700 to-cyan-700 text-white relative overflow-hidden">
+          {/* Animated particles */}
+          <div className="absolute inset-0">
+            {[...Array(20)].map((_, i) => (
+              <div
+                key={i}
+                className="absolute w-2 h-2 bg-white/20 rounded-full animate-pulse"
+                style={{
+                  left: `${Math.random() * 100}%`,
+                  top: `${Math.random() * 100}%`,
+                  animationDelay: `${Math.random() * 3}s`,
+                  animationDuration: `${2 + Math.random() * 2}s`
+                }}
+              />
+            ))}
+          </div>
+          
+          <div className="absolute inset-0 bg-gradient-to-br from-black/20 via-transparent to-black/20"></div>
+          <div className={`relative z-10 text-center max-w-lg transition-all duration-1000 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
             <div className="mb-8">
-              <img src={Logo} alt="Smaart Healthcare Logo" className="w-24 h-24 mx-auto mb-6 object-contain" />
-              <h1 className="text-4xl font-bold mb-4">Smaart Healthcare</h1>
-              <p className="text-xl text-white/90 leading-relaxed">
+              <div className="relative mb-6">
+                <div className="absolute inset-0 bg-white/20 rounded-full blur-xl animate-pulse"></div>
+                <img src={Logo} alt="Smaart Healthcare Logo" className="w-28 h-28 mx-auto relative z-10 object-contain drop-shadow-2xl" />
+              </div>
+              <h1 className="text-5xl font-bold mb-6 bg-gradient-to-r from-white to-blue-100 bg-clip-text text-transparent">
+                Smaart Healthcare
+              </h1>
+              <p className="text-xl text-white/90 leading-relaxed mb-8">
                 Streamline your healthcare operations with our comprehensive management platform
               </p>
+              <div className="flex items-center justify-center space-x-6 text-white/80">
+                <div className="flex items-center space-x-2">
+                  <Shield className="w-5 h-5" />
+                  <span className="text-sm">Secure</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <CheckCircle className="w-5 h-5" />
+                  <span className="text-sm">Reliable</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Sparkles className="w-5 h-5" />
+                  <span className="text-sm">Modern</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Right Side - Login Form */}
-        <div className="flex items-center justify-center p-8 lg:p-12">
-          <Card className="w-full max-w-lg border-0 shadow-2xl bg-white/95 dark:bg-gray-800/95 backdrop-blur">
-            <CardHeader className="text-center pb-8">
-              <div className="lg:hidden mb-4">
-                <img src={Logo} alt="Smaart Healthcare Logo" className="w-16 h-16 mx-auto object-contain" />
-              </div>
-              <CardTitle className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-                Welcome Back
-              </CardTitle>
-              <CardDescription className="text-gray-600 dark:text-gray-300 text-lg">
-                Sign in to access your healthcare dashboard
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="pt-0">
-              {/* User Type Selection */}
-              <div className="mb-8">
-                <Label className="text-base font-semibold text-gray-700 dark:text-gray-200 mb-4 block">Select Account Type</Label>
-                <div className="grid grid-cols-2 gap-4">
-                  <Button
-                    type="button"
-                    variant={userType === "regular" ? "default" : "outline"}
-                    onClick={() => setUserType("regular")}
-                    className={`h-12 text-base font-medium transition-all duration-200 ${userType === "regular" 
-                      ? "bg-blue-600 hover:bg-blue-700 text-white shadow-lg" 
-                      : "border-2 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:border-blue-300"
-                    }`}
-                  >
-                    Healthcare Staff
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={userType === "clinic" ? "default" : "outline"}
-                    onClick={() => setUserType("clinic")}
-                    className={`h-12 text-base font-medium transition-all duration-200 ${userType === "clinic" 
-                      ? "bg-purple-600 hover:bg-purple-700 text-white shadow-lg" 
-                      : "border-2 border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:border-purple-300"
-                    }`}
-                  >
-                    Clinic Administrator
-                  </Button>
+        {/* Right Side - Enhanced Login Form */}
+        <div className="flex items-center justify-center p-2 lg:p-4">
+          <div className={`w-full max-w-lg transition-all duration-700 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
+            <Card className="border-0 shadow-2xl bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl relative overflow-hidden">
+              {/* Card glow effect */}
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-sky-500/10 to-cyan-500/10 opacity-50"></div>
+              
+              <CardHeader className="text-center pb-2 relative z-10">
+                <div className="lg:hidden mb-3">
+                  <div className="relative">
+                    <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 rounded-full blur-lg animate-pulse"></div>
+                    <img src={Logo} alt="Smaart Healthcare Logo" className="w-16 h-16 mx-auto object-contain relative z-10 drop-shadow-lg" />
+                  </div>
                 </div>
-              </div>
+                <CardTitle className="text-3xl font-bold bg-gradient-to-r from-gray-900 via-blue-800 to-cyan-800 dark:from-white dark:via-blue-200 dark:to-cyan-200 bg-clip-text text-transparent mb-2">
+                  Welcome Back
+                </CardTitle>
+                <CardDescription className="text-gray-600 dark:text-gray-300 text-base">
+                  Sign in to access your healthcare dashboard
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-0 relative z-10">
 
-              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="grid w-full grid-cols-2 h-12 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
-                  <TabsTrigger value="password" className="flex items-center gap-2 h-10 text-base font-medium data-[state=active]:bg-white dark:data-[state=active]:bg-gray-600 data-[state=active]:text-gray-900 dark:data-[state=active]:text-white data-[state=active]:shadow-sm text-gray-600 dark:text-gray-300">
-                    <Lock className="w-4 h-4" />
-                    Password Login
-                  </TabsTrigger>
-                  <TabsTrigger value="otp" className="flex items-center gap-2 h-10 text-base font-medium data-[state=active]:bg-white dark:data-[state=active]:bg-gray-600 data-[state=active]:text-gray-900 dark:data-[state=active]:text-white data-[state=active]:shadow-sm text-gray-600 dark:text-gray-300">
-                    <Mail className="w-4 h-4" />
-                    OTP Login
-                  </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="password" className="space-y-6 mt-8">
-                  <form onSubmit={handlePasswordLogin} className="space-y-6">
-                    <div className="space-y-3">
-                      <Label htmlFor="email-password" className="text-base font-medium text-gray-700 dark:text-gray-200">Email Address</Label>
-                      <Input 
-                        id="email-password" 
-                        type="email" 
-                        value={email} 
-                        onChange={(e) => setEmail(e.target.value)} 
-                        required 
-                        className="h-12 text-base border-2 focus-visible:ring-blue-500 dark:focus-visible:ring-blue-400 focus-visible:border-blue-500" 
-                        placeholder="Enter your email address"
-                      />
-                    </div>
-                    <div className="space-y-3">
-                      <Label htmlFor="password" className="text-base font-medium text-gray-700 dark:text-gray-200">Password</Label>
-                      <Input 
-                        id="password" 
-                        type="password" 
-                        value={password} 
-                        onChange={(e) => setPassword(e.target.value)} 
-                        required 
-                        className="h-12 text-base border-2 focus-visible:ring-blue-500 dark:focus-visible:ring-blue-400 focus-visible:border-blue-500" 
-                        placeholder="Enter your password"
-                      />
-                    </div>
-                    
-                    <div className="flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => setForgotPasswordOpen(true)}
-                        className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium"
-                      >
-                        Forgot Password?
-                      </button>
-                    </div>
-                    
-                    {error && <p className="text-sm text-red-600 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-200 dark:border-red-800">{error}</p>}
-                    <Button 
-                      type="submit" 
-                      className={`w-full h-12 text-base font-semibold transition-all duration-200 ${userType === "clinic" 
-                        ? "bg-purple-600 hover:bg-purple-700 shadow-lg hover:shadow-xl"
-                        : "bg-blue-600 hover:bg-blue-700 shadow-lg hover:shadow-xl"
-                      }`}
-                      disabled={loading}
-                    >
-                      {loading ? 'Signing in...' : `Sign In as ${userType === "clinic" ? "Clinic Administrator" : "Healthcare Staff"}`}
-                    </Button>
-                  </form>
-                </TabsContent>
-
-                <TabsContent value="otp" className="space-y-6 mt-8">
-                  {!otpSent ? (
-                    <div className="space-y-6">
-                      <div className="space-y-3">
-                        <Label htmlFor="email-otp" className="text-base font-medium text-gray-700 dark:text-gray-200">Email Address</Label>
-                        <Input 
-                          id="email-otp" 
-                          type="email" 
-                          value={email} 
-                          onChange={(e) => setEmail(e.target.value)} 
-                          required 
-                          className="h-12 text-base border-2 focus-visible:ring-blue-500 dark:focus-visible:ring-blue-400 focus-visible:border-blue-500" 
-                          placeholder="Enter your email address"
-                        />
+                {/* Step 1: Enhanced Email & Password */}
+                {step === 1 && !isAnimating && (
+                  <div className="animate-in slide-in-from-right-5 duration-500">
+                    <form onSubmit={handleStep1} className="space-y-4">
+                      <div className="text-center space-y-1 mb-4">
+                        <div className="relative">
+                          <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 rounded-full blur-xl animate-pulse"></div>
+                          <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center mx-auto relative z-10 shadow-xl">
+                            <Lock className="w-8 h-8 text-white" />
+                          </div>
+                        </div>
+                        <h3 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">
+                          Enter Your Credentials
+                        </h3>
+                        <p className="text-gray-600 dark:text-gray-300 text-sm">
+                          Verify your email and password
+                        </p>
                       </div>
-                      {error && <p className="text-sm text-red-600 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-200 dark:border-red-800">{error}</p>}
+
+                      <div className="space-y-3">
+                        <div className="space-y-2">
+                          <Label htmlFor="email" className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                            Email Address
+                          </Label>
+                          <div className="relative group">
+                            <Input 
+                              id="email" 
+                              type="email" 
+                              value={email} 
+                              onChange={(e) => setEmail(sanitizers.email(e.target.value))} 
+                              required 
+                              className="h-10 text-sm border-2 border-gray-200 dark:border-gray-600 focus-visible:ring-2 focus-visible:ring-blue-500/20 focus-visible:border-blue-500 transition-all duration-300 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm group-hover:border-blue-300" 
+                              placeholder="Enter your email address"
+                              autoComplete="email"
+                            />
+                            <Mail className="absolute right-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-blue-500 transition-colors duration-300" />
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <Label htmlFor="password" className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                            Password
+                          </Label>
+                          <div className="relative group">
+                            <Input 
+                              id="password" 
+                              type={showPassword ? "text" : "password"}
+                              value={password} 
+                              onChange={(e) => setPassword(e.target.value)} 
+                              required 
+                              className="h-10 text-sm border-2 border-gray-200 dark:border-gray-600 focus-visible:ring-2 focus-visible:ring-blue-500/20 focus-visible:border-blue-500 transition-all duration-300 bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm group-hover:border-blue-300 pr-12" 
+                              placeholder="Enter your password"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowPassword(!showPassword)}
+                              className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-blue-500 transition-colors duration-300"
+                            >
+                              {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setForgotPasswordOpen(true)}
+                          className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-semibold transition-colors duration-300 hover:underline"
+                        >
+                          Forgot Password?
+                        </button>
+                      </div>
+                      
+                      {error && (
+                        <div className="animate-in slide-in-from-top-2 duration-300">
+                          <div className="flex items-center gap-2 text-sm text-red-600 bg-gradient-to-r from-red-50 to-pink-50 dark:from-red-900/20 dark:to-pink-900/20 p-4 rounded-xl border border-red-200 dark:border-red-800 shadow-sm">
+                            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                            <p>{error}</p>
+                          </div>
+                        </div>
+                      )}
+                      
                       <Button 
-                        onClick={handleRequestOTP}
-                        className="w-full h-12 text-base font-semibold bg-blue-600 hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all duration-200" 
-                        disabled={otpLoading || !email.trim()}
+                        type="submit" 
+                        className="w-full h-10 text-sm font-semibold transition-all duration-300 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 shadow-xl hover:shadow-2xl hover:scale-[1.02] active:scale-[0.98] text-white border-0"
+                        disabled={loading}
                       >
-                        {otpLoading ? 'Sending OTP...' : 'Send Verification Code'}
+                        {loading ? (
+                          <div className="flex items-center space-x-2">
+                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                            <span>Verifying...</span>
+                          </div>
+                        ) : (
+                          'Continue to Verification'
+                        )}
                       </Button>
-                    </div>
-                  ) : (
-                    <div className="space-y-6">
-                      <div className="text-center space-y-4">
-                        <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto">
-                          <Mail className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+                    </form>
+                  </div>
+                )}
+
+                {/* Step 2: Enhanced OTP Verification */}
+                {step === 2 && !isAnimating && (
+                  <div className="animate-in slide-in-from-left-5 duration-500">
+                    <div className="space-y-4">
+                      <div className="text-center space-y-2">
+                        <div className="relative">
+                          <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 rounded-full blur-xl animate-pulse"></div>
+                          <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-full flex items-center justify-center mx-auto relative z-10 shadow-xl">
+                            <Mail className="w-8 h-8 text-white animate-bounce" />
+                          </div>
                         </div>
                         <div>
-                          <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">Check your email</h3>
-                          <p className="text-gray-600 dark:text-gray-300">
+                          <h3 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent mb-2">
+                            Check your email
+                          </h3>
+                          <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed">
                             We've sent a 6-digit verification code to<br />
-                            <strong className="text-blue-600 dark:text-blue-400">{email}</strong>
+                            <strong className="text-blue-600 dark:text-blue-400 font-semibold">{email}</strong>
                           </p>
                         </div>
                       </div>
                       
-                      <form onSubmit={handleOTPLogin} className="space-y-6">
-                        <div className="space-y-3">
-                          <Label htmlFor="otp" className="text-base font-medium text-gray-700 dark:text-gray-200">Verification Code</Label>
-                          <Input 
-                            id="otp" 
-                            type="text" 
-                            value={otp} 
-                            onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} 
-                            placeholder="Enter 6-digit code"
-                            maxLength={6}
-                            required 
-                            className="h-12 text-center text-xl tracking-[0.5em] border-2 focus-visible:ring-blue-500 dark:focus-visible:ring-blue-400 focus-visible:border-blue-500 font-mono" 
-                          />
+                      <form onSubmit={handleStep2} className="space-y-6">
+                        <div className="space-y-4">
+                          <Label htmlFor="otp" className="text-base font-semibold text-gray-700 dark:text-gray-200 text-center block">
+                            Verification Code
+                          </Label>
+                          <div className="relative">
+                            <Input 
+                              id="otp" 
+                              type="text" 
+                              value={otp} 
+                              onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} 
+                              placeholder="000000"
+                              maxLength={6}
+                              required 
+                              className="h-14 text-center text-2xl tracking-[0.8em] border-2 border-gray-200 dark:border-gray-600 focus-visible:ring-2 focus-visible:ring-blue-500/20 focus-visible:border-blue-500 font-mono bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm transition-all duration-300" 
+                            />
+                            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-blue-500/10 to-cyan-500/10 opacity-0 group-focus-within:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
+                          </div>
                         </div>
                         
                         {otpTimer > 0 && (
-                          <p className="text-sm text-blue-600 dark:text-blue-400 text-center bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
-                            Resend available in {otpTimer} seconds
-                          </p>
+                          <div className="animate-in slide-in-from-top-2 duration-300">
+                            <p className="text-sm text-blue-600 dark:text-blue-400 text-center bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-900/20 dark:to-cyan-900/20 p-4 rounded-xl border border-blue-200 dark:border-blue-800 shadow-sm">
+                              <span className="font-semibold">Resend available in {otpTimer} seconds</span>
+                            </p>
+                          </div>
                         )}
                         
-                        {error && <p className="text-sm text-red-600 bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-200 dark:border-red-800">{error}</p>}
+                        {error && (
+                          <div className="animate-in slide-in-from-top-2 duration-300">
+                            <div className="flex items-center gap-2 text-sm text-red-600 bg-gradient-to-r from-red-50 to-pink-50 dark:from-red-900/20 dark:to-pink-900/20 p-4 rounded-xl border border-red-200 dark:border-red-800 shadow-sm">
+                              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                              <p>{error}</p>
+                            </div>
+                          </div>
+                        )}
                         
-                        <div className="space-y-3">
+                        <div className="space-y-4">
                           <Button 
                             type="submit" 
-                            className="w-full h-12 text-base font-semibold bg-blue-600 hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all duration-200" 
+                            className="w-full h-12 text-base font-semibold transition-all duration-300 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 shadow-xl hover:shadow-2xl hover:scale-[1.02] active:scale-[0.98] text-white border-0" 
                             disabled={loading || otp.length !== 6}
                           >
-                            {loading ? 'Verifying...' : 'Verify & Sign In'}
+                            {loading ? (
+                              <div className="flex items-center space-x-2">
+                                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                <span>Verifying...</span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center space-x-2">
+                                <CheckCircle className="w-5 h-5" />
+                                <span>Complete Sign In</span>
+                              </div>
+                            )}
                           </Button>
                           
                           <div className="flex gap-3">
                             <Button 
                               type="button" 
                               variant="outline" 
-                              onClick={handleRequestOTP}
-                              disabled={otpLoading || otpTimer > 0}
-                              className="flex-1 h-11 border-2"
+                              onClick={handleResendOTP}
+                              disabled={loading || otpTimer > 0}
+                              className="flex-1 h-12 border-2 border-gray-200 dark:border-gray-600 hover:border-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all duration-300"
                             >
-                              {otpLoading ? 'Sending...' : 'Resend Code'}
+                              {loading ? (
+                                <div className="flex items-center space-x-2">
+                                  <div className="w-4 h-4 border-2 border-blue-600/30 border-t-blue-600 rounded-full animate-spin"></div>
+                                  <span>Sending...</span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center space-x-2">
+                                  <Mail className="w-4 h-4" />
+                                  <span>Resend Code</span>
+                                </div>
+                              )}
                             </Button>
                             <Button 
                               type="button" 
                               variant="outline" 
-                              onClick={resetOTP}
-                              className="flex-1 h-11 border-2"
+                              onClick={resetToStep1}
+                              className="flex-1 h-12 border-2 border-gray-200 dark:border-gray-600 hover:border-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-all duration-300"
                             >
                               <ArrowLeft className="w-4 h-4 mr-2" />
                               Back
@@ -333,17 +453,17 @@ const Login = () => {
                         </div>
                       </form>
                     </div>
-                  )}
-                </TabsContent>
-              </Tabs>
+                  </div>
+                )}
 
               <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700 text-center">
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   Secure healthcare management platform
                 </p>
               </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
       
@@ -351,7 +471,6 @@ const Login = () => {
       <ForgotPasswordModal
         isOpen={forgotPasswordOpen}
         onClose={() => setForgotPasswordOpen(false)}
-        userType={userType}
       />
     </div>
   );

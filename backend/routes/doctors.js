@@ -11,19 +11,44 @@ const router = express.Router();
 // GET /api/doctors - Get all doctors (both active and inactive)
 router.get('/', auth, async (req, res) => {
   try {
+    const { page = 1, limit = 100, search } = req.query;
+    
     // Filter doctors by clinic for clinic admins
     const query = {};
     if (req.user.role === 'clinic') {
       query.clinicId = req.user.id;
     }
     
+    // Add search functionality
+    if (search && search.trim()) {
+      const searchRegex = new RegExp(search.trim(), 'i');
+      query.$or = [
+        { fullName: searchRegex },
+        { email: searchRegex },
+        { specialty: searchRegex },
+        { uhid: searchRegex }
+      ];
+    }
+    
+    // Calculate pagination
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const totalCount = await Doctor.countDocuments(query);
+    
     const doctors = await Doctor.find(query)
-      .select('fullName email specialty phone role profileImage uhid qualification currentAddress permanentAddress about isActive createdAt')
-      .sort({ isActive: -1, fullName: 1 }); // Show active doctors first
+      .select('fullName email specialty phone role profileImage uhid qualification currentAddress permanentAddress about languages isActive createdAt')
+      .sort({ isActive: -1, fullName: 1 }) // Show active doctors first
+      .skip(skip)
+      .limit(parseInt(limit));
     
     res.json({
       success: true,
-      data: doctors
+      data: doctors,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(totalCount / parseInt(limit)),
+        totalCount,
+        pageSize: parseInt(limit)
+      }
     });
   } catch (error) {
     console.error('Error fetching doctors:', error);
@@ -158,10 +183,150 @@ const validateDoctor = [
     }
     return true;
   }),
-  body('about').optional().trim().isLength({ max: 1000 }).withMessage('About section cannot exceed 1000 characters')
+  body('about').trim().isLength({ min: 1, max: 1000 }).withMessage('About section is required and cannot exceed 1000 characters'),
+  body('languages').optional().isArray().withMessage('Languages must be an array')
 ];
 
-// POST /api/doctors - Create new doctor
+// POST /api/doctors/upload-image - Upload doctor profile image
+router.post('/upload-image', auth, doctorUpload.single('profileImage'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'No image file provided'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Image uploaded successfully',
+      data: {
+        imageUrl: req.file.path // Cloudinary URL
+      }
+    });
+  } catch (error) {
+    console.error('Error uploading image:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to upload image',
+      error: error.message
+    });
+  }
+});
+
+// POST /api/doctors/create-with-image - Create new doctor with pre-uploaded image URL
+router.post('/create-with-image', auth, validateDoctor, async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        details: errors.array()
+      });
+    }
+
+    // Check if profile image URL was provided
+    if (!req.body.profileImage) {
+      return res.status(400).json({
+        success: false,
+        message: 'Profile image URL is required'
+      });
+    }
+
+    const { 
+      fullName, 
+      email, 
+      password, 
+      specialty, 
+      phone, 
+      role, 
+      uhid, 
+      qualification, 
+      currentAddress, 
+      permanentAddress, 
+      about,
+      languages,
+      profileImage
+    } = req.body;
+
+    // Check if doctor with email already exists
+    const existingDoctor = await Doctor.findOne({ email });
+    if (existingDoctor) {
+      return res.status(400).json({
+        success: false,
+        message: 'Doctor with this email already exists'
+      });
+    }
+
+    // Check if doctor with UHID already exists
+    const existingUHID = await Doctor.findOne({ uhid: uhid.toUpperCase() });
+    if (existingUHID) {
+      return res.status(400).json({
+        success: false,
+        message: 'Doctor with this UHID already exists'
+      });
+    }
+
+    // Hash password
+    const saltRounds = 12;
+    const passwordHash = await bcrypt.hash(password, saltRounds);
+
+    // Create new doctor
+    const doctor = new Doctor({
+      fullName,
+      email,
+      passwordHash,
+      specialty: specialty || 'General Practitioner',
+      phone,
+      profileImage, // Use the provided image URL
+      uhid: uhid.toUpperCase(),
+      qualification,
+      currentAddress: typeof currentAddress === 'string' ? JSON.parse(currentAddress) : currentAddress,
+      permanentAddress: typeof permanentAddress === 'string' ? JSON.parse(permanentAddress) : permanentAddress,
+      about,
+      languages: typeof languages === 'string' ? JSON.parse(languages) : languages || [],
+      role: role || 'doctor',
+      clinicId: req.user.role === 'clinic' ? req.user.id : req.body.clinicId
+    });
+
+    await doctor.save();
+
+    // Return doctor without password hash
+    const doctorResponse = {
+      _id: doctor._id,
+      fullName: doctor.fullName,
+      email: doctor.email,
+      specialty: doctor.specialty,
+      phone: doctor.phone,
+      profileImage: doctor.profileImage,
+      uhid: doctor.uhid,
+      qualification: doctor.qualification,
+      currentAddress: doctor.currentAddress,
+      permanentAddress: doctor.permanentAddress,
+      about: doctor.about,
+      languages: doctor.languages,
+      role: doctor.role,
+      isActive: doctor.isActive,
+      createdAt: doctor.createdAt
+    };
+
+    res.status(201).json({
+      success: true,
+      message: 'Doctor created successfully',
+      data: doctorResponse
+    });
+  } catch (error) {
+    console.error('Error creating doctor:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create doctor',
+      error: error.message
+    });
+  }
+});
+
+// POST /api/doctors - Create new doctor (legacy endpoint with file upload)
 router.post('/', auth, doctorUpload.single('profileImage'), validateDoctor, async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -289,7 +454,7 @@ router.get('/:id', auth, async (req, res) => {
     }
     
     const doctor = await Doctor.findOne(query)
-      .select('fullName email specialty phone role profileImage uhid qualification currentAddress permanentAddress about isActive createdAt');
+      .select('fullName email specialty phone role profileImage uhid qualification currentAddress permanentAddress about languages isActive createdAt');
 
     if (!doctor) {
       return res.status(404).json({

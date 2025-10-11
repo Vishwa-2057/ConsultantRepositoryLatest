@@ -13,11 +13,14 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Clock, User, Phone, Mail, MapPin, Stethoscope, X } from "lucide-react";
+import { Calendar, Clock, User, Phone, Mail, MapPin, Stethoscope, X, AlertCircle } from "lucide-react";
 import { appointmentAPI, patientAPI, doctorAPI } from "@/services/api";
 import { getCurrentUser, isDoctor } from "@/utils/roleUtils";
+import { validators, sanitizers } from "@/utils/validation";
+import { useAuditLog } from "@/hooks/useAuditLog";
 
 const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
+  const { logComponentAccess, logFormSubmission, logAppointmentAccess } = useAuditLog();
   const [formData, setFormData] = useState({
     patientId: "",
     doctorId: "",
@@ -55,8 +58,10 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
     if (isOpen) {
       loadPatients();
       loadDoctors();
+      // Log appointment form access
+      logComponentAccess('AppointmentModal', 'OPEN');
     }
-  }, [isOpen]);
+  }, [isOpen, logComponentAccess]);
 
   const loadPatients = async () => {
     setLoadingPatients(true);
@@ -142,12 +147,28 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
   const priorityOptions = [
     { value: "low", label: "Low", color: "bg-green-100 text-green-800" },
     { value: "normal", label: "Normal", color: "bg-blue-100 text-blue-800" },
-    { value: "high", label: "High", color: "bg-orange-100 text-orange-800" },
-    { value: "urgent", label: "Urgent", color: "bg-red-100 text-red-800" }
+    { value: "high", label: "High", color: "bg-orange-100 text-orange-800" }
   ];
 
   const handleInputChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    // Apply sanitization based on field type
+    let sanitizedValue = value;
+    switch (field) {
+      case 'time':
+        // Ensure time format is HH:MM
+        if (value && value.length === 5) {
+          sanitizedValue = value;
+        }
+        break;
+      case 'notes':
+        sanitizedValue = sanitizers.text(value).slice(0, 500);
+        break;
+      default:
+        sanitizedValue = value;
+    }
+    
+    setFormData(prev => ({ ...prev, [field]: sanitizedValue }));
+    
     // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: "" }));
@@ -157,21 +178,74 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
   const validateForm = () => {
     const newErrors = {};
     
+    // Patient validation
     if (!formData.patientId) {
       newErrors.patientId = "Please select a patient";
     }
-    // Only require doctor selection if user is not a doctor (doctors are auto-selected)
+    
+    // Doctor validation - only require if user is not a doctor
     if (!formData.doctorId && !isDoctorUser && currentUser?.role !== 'doctor') {
       newErrors.doctorId = "Please select a doctor";
     }
+    
+    // Appointment type validation
     if (!formData.appointmentType) {
       newErrors.appointmentType = "Appointment type is required";
     }
-    if (!formData.date) {
-      newErrors.date = "Date is required";
+    
+    // Date validation
+    const dateError = validators.required(formData.date, 'Date');
+    if (dateError) {
+      newErrors.date = dateError;
+    } else {
+      // Check if date is not in the past
+      const selectedDate = new Date(formData.date);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      if (selectedDate < today) {
+        newErrors.date = "Appointment date cannot be in the past";
+      }
+      
+      // Check if date is not too far in the future (e.g., 1 year)
+      const oneYearFromNow = new Date();
+      oneYearFromNow.setFullYear(oneYearFromNow.getFullYear() + 1);
+      
+      if (selectedDate > oneYearFromNow) {
+        newErrors.date = "Appointment date cannot be more than 1 year in the future";
+      }
     }
-    if (!formData.time) {
-      newErrors.time = "Time is required";
+    
+    // Time validation
+    const timeError = validators.required(formData.time, 'Time') || validators.time24(formData.time);
+    if (timeError) {
+      newErrors.time = timeError;
+    } else {
+      // Check business hours (8 AM to 6 PM)
+      const [hours, minutes] = formData.time.split(':').map(Number);
+      const timeInMinutes = hours * 60 + minutes;
+      const startTime = 8 * 60; // 8:00 AM
+      const endTime = 18 * 60; // 6:00 PM
+      
+      if (timeInMinutes < startTime || timeInMinutes >= endTime) {
+        newErrors.time = "Appointment time must be between 8:00 AM and 6:00 PM";
+      }
+    }
+    
+    // Duration validation
+    const durationError = validators.required(formData.duration, 'Duration');
+    if (durationError) {
+      newErrors.duration = durationError;
+    } else {
+      const duration = parseInt(formData.duration, 10);
+      if (duration < 15 || duration > 240) {
+        newErrors.duration = "Duration must be between 15 minutes and 4 hours";
+      }
+    }
+    
+    // Notes validation (optional but if provided, check length)
+    if (formData.notes && formData.notes.length > 500) {
+      newErrors.notes = "Notes must not exceed 500 characters";
     }
 
     setErrors(newErrors);
@@ -199,13 +273,25 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
         // Send to backend API
         const response = await appointmentAPI.create(appointmentData);
         
+        // Log successful appointment creation
+        await logFormSubmission('APPOINTMENT', 'CREATE', response.appointment._id || response.appointment.id, formData.patientId);
+        await logAppointmentAccess(response.appointment._id || response.appointment.id, formData.patientId, formData.doctorId, 'CREATE');
+        
         // Call onSubmit with the appointment data from backend response
         onSubmit(response.appointment);
         handleClose();
+        
+        // Reload the page to refresh the data
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
       } catch (error) {
         console.error('Failed to create appointment:', error);
-        // Show error to user
-        alert(`Failed to create appointment: ${error.message}`);
+        // Set error state instead of alert
+        setErrors(prev => ({ 
+          ...prev, 
+          submit: error.message || 'Failed to create appointment. Please try again.' 
+        }));
       }
     }
   };

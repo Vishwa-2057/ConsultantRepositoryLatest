@@ -8,6 +8,7 @@ const Clinic = require('../models/Clinic');
 const OTP = require('../models/OTP');
 const emailService = require('../services/emailService');
 const ActivityLogger = require('../utils/activityLogger');
+const tokenManager = require('../utils/tokenManager');
 const auth = require('../middleware/auth');
 
 const router = express.Router();
@@ -83,8 +84,8 @@ router.post('/register', registerValidation, async (req, res) => {
   }
 });
 
-// Regular user login (doctors and nurses only)
-router.post('/login', loginValidation, async (req, res) => {
+// Step 1: Verify password and send OTP for 2-step verification
+router.post('/login-step1', loginValidation, async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -93,57 +94,225 @@ router.post('/login', loginValidation, async (req, res) => {
 
     const { email, password } = req.body;
     
+    console.log(`🔐 Login Step 1 Debug:`);
+    console.log(`  - Email: ${email}`);
+    console.log(`  - Password: ${password}`);
+    
+    let user = null;
+    let userType = null;
+    
     // Try to find user in Doctor collection first
-    let user = await Doctor.findOne({ email });
-    let userType = 'doctor';
+    user = await Doctor.findOne({ email });
+    if (user) {
+      userType = 'doctor';
+      console.log(`  - Found user in Doctor collection`);
+    }
     
     // If not found in Doctor, try Nurse collection
     if (!user) {
       user = await Nurse.findOne({ email });
+      if (user) {
+        userType = 'nurse';
+        console.log(`  - Found user in Nurse collection`);
+      }
+    }
+    
+    // If not found in Doctor or Nurse, try Clinic collection
+    if (!user) {
+      console.log(`  - Searching in Clinic collection for email: ${email}`);
+      user = await Clinic.findOne({ 
+        $or: [
+          { adminEmail: email },
+          { adminUsername: email }
+        ]
+      });
+      if (user) {
+        userType = 'clinic';
+        console.log(`  - Found user in Clinic collection: ${user.adminEmail}`);
+        console.log(`  - Clinic Name: ${user.name}`);
+        console.log(`  - Clinic Active: ${user.isActive}`);
+        
+        // Check if clinic is active
+        if (!user.isActive) {
+          console.log(`  - Clinic is inactive, rejecting login`);
+          return res.status(403).json({ error: 'Your clinic account has been deactivated. Please contact support for assistance.' });
+        }
+      } else {
+        console.log(`  - No clinic found with email: ${email}`);
+      }
+    }
+    
+    if (!user) {
+      console.log(`  - No user found in any collection for email: ${email}`);
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    console.log(`  - User found, type: ${userType}, calling comparePassword...`);
+    const ok = await user.comparePassword(password);
+    console.log(`  - Password comparison result: ${ok}`);
+    if (!ok) {
+      console.log(`  - Password comparison failed, rejecting login`);
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    // Password is correct, now create and send OTP for step 2
+    const otp = await OTP.createOTP(
+      email,
+      'login',
+      user._id,
+      req.ip,
+      req.get('User-Agent')
+    );
+
+    // Send email using user's email configuration
+    const emailResult = await emailService.sendOTPEmail(user._id, email, otp.code, 'login');
+
+    if (!emailResult.success) {
+      // If email fails, delete the OTP
+      await OTP.findByIdAndDelete(otp._id);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to send verification code. Please try again.'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Password verified. Verification code sent to your email.',
+      requiresOTP: true,
+      data: {
+        email: otp.email,
+        expiresAt: otp.expiresAt,
+        timeRemaining: otp.timeRemaining
+      }
+    });
+  } catch (err) {
+    console.error('Login step 1 error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Step 2: Verify OTP and complete login for 2-step verification
+router.post('/login-step2', otpLoginValidation, async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Validation failed', 
+        details: errors.array() 
+      });
+    }
+
+    const { email, otp } = req.body;
+
+    // Verify OTP
+    const verificationResult = await OTP.verifyOTP(email, otp, 'login');
+
+    if (!verificationResult.success) {
+      return res.status(400).json({
+        success: false,
+        error: verificationResult.message
+      });
+    }
+
+    const { otp: otpRecord } = verificationResult;
+
+    // Get user information from all collections
+    let user = await Doctor.findById(otpRecord.userId);
+    let userType = 'doctor';
+    
+    if (!user) {
+      user = await Nurse.findById(otpRecord.userId);
       userType = 'nurse';
     }
     
     if (!user) {
-      return res.status(401).json({ error: 'Invalid credentials. Please use the clinic admin login if you are a clinic administrator.' });
+      user = await Clinic.findById(otpRecord.userId);
+      userType = 'clinic';
+      
+      // Check if clinic is active
+      if (user && !user.isActive) {
+        return res.status(403).json({
+          success: false,
+          error: 'Your clinic account has been deactivated. Please contact support for assistance.'
+        });
+      }
+    }
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: 'User account not found'
+      });
     }
 
-    const ok = await user.comparePassword(password);
-    if (!ok) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
+    // Mark OTP as used
+    await otpRecord.markAsUsed();
 
-    const token = jwt.sign({ id: user._id, role: user.role || userType }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    // Generate secure token pair using token manager
+    const userRole = user.role || userType;
+    const userForToken = {
+      _id: user._id,
+      email: user.email || user.adminEmail,
+      role: userRole,
+      fullName: user.fullName || user.adminName,
+      clinicId: userType === 'clinic' ? user._id : user.clinicId
+    };
+    
+    const tokenData = tokenManager.generateTokenPair(userForToken);
     
     // Log the login activity
     try {
       await ActivityLogger.logLogin({
         _id: user._id,
-        fullName: user.fullName,
-        email: user.email,
-        role: user.role || userType,
-        clinicId: user.clinicId,
-        clinicName: user.clinicName || 'Unknown Clinic'
-      }, req, token);
+        fullName: user.fullName || user.adminName,
+        email: user.email || user.adminEmail,
+        role: userRole,
+        clinicId: userType === 'clinic' ? user._id : user.clinicId,
+        clinicName: userType === 'clinic' ? (user.name || user.fullName) : (user.clinicName || 'Unknown Clinic')
+      }, req, tokenData.accessToken);
     } catch (logError) {
-      console.error('Failed to log login activity:', logError);
+      console.error('Failed to log 2-step login activity:', logError);
       // Don't fail the login if logging fails
     }
     
-    res.json({
-      message: 'Login successful',
-      token,
-      user: {
+    // Prepare user response based on user type
+    let userResponse;
+    if (userType === 'clinic') {
+      userResponse = {
+        id: user._id,
+        fullName: user.fullName,
+        name: user.adminName,
+        email: user.adminEmail,
+        specialty: user.organization,
+        role: userRole,
+      };
+    } else {
+      userResponse = {
         id: user._id,
         fullName: user.fullName,
         name: user.name,
         email: user.email,
         specialty: user.specialty || user.department,
-        role: user.role || userType,
-      }
+        role: userRole,
+      };
+    }
+    
+    res.json({
+      success: true,
+      message: 'Login successful',
+      token: tokenData.accessToken,
+      refreshToken: tokenData.refreshToken,
+      expiresIn: tokenData.expiresIn,
+      user: userResponse
     });
   } catch (err) {
-    console.error('Login error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Login step 2 error:', err);
+    res.status(500).json({ 
+      success: false,
+      error: 'Internal server error' 
+    });
   }
 });
 
@@ -214,7 +383,7 @@ router.post('/clinic-login', loginValidation, async (req, res) => {
   }
 });
 
-// POST /api/auth/request-otp - Request OTP for regular users (doctors and nurses)
+// POST /api/auth/request-otp - Request OTP for all user types (doctors, nurses, and clinic admins)
 router.post('/request-otp', requestOTPValidation, async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -228,10 +397,42 @@ router.post('/request-otp', requestOTPValidation, async (req, res) => {
 
     const { email } = req.body;
 
-    // Check if user exists (doctor or nurse only)
-    let user = await Doctor.findOne({ email });
+    let user = null;
+    let userType = null;
+
+    // Check if user exists in Doctor collection first
+    user = await Doctor.findOne({ email });
+    if (user) {
+      userType = 'doctor';
+    }
+    
+    // If not found in Doctor, try Nurse collection
     if (!user) {
       user = await Nurse.findOne({ email });
+      if (user) {
+        userType = 'nurse';
+      }
+    }
+    
+    // If not found in Doctor or Nurse, try Clinic collection
+    if (!user) {
+      user = await Clinic.findOne({ 
+        $or: [
+          { adminEmail: email },
+          { adminUsername: email }
+        ]
+      });
+      if (user) {
+        userType = 'clinic';
+        
+        // Check if clinic is active
+        if (!user.isActive) {
+          return res.status(403).json({ 
+            success: false,
+            error: 'Your clinic account has been deactivated. Please contact support for assistance.' 
+          });
+        }
+      }
     }
     
     if (!user) {
@@ -386,7 +587,7 @@ router.post('/clinic-request-otp', requestOTPValidation, async (req, res) => {
   }
 });
 
-// POST /api/auth/login-otp - Login with OTP for regular users (doctors and nurses)
+// POST /api/auth/login-otp - Login with OTP for all user types (doctors, nurses, and clinic admins)
 router.post('/login-otp', otpLoginValidation, async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -412,10 +613,26 @@ router.post('/login-otp', otpLoginValidation, async (req, res) => {
 
     const { otp: otpRecord } = verificationResult;
 
-    // Get user information (doctor or nurse only)
+    // Get user information from all collections
     let user = await Doctor.findById(otpRecord.userId);
+    let userType = 'doctor';
+    
     if (!user) {
       user = await Nurse.findById(otpRecord.userId);
+      userType = 'nurse';
+    }
+    
+    if (!user) {
+      user = await Clinic.findById(otpRecord.userId);
+      userType = 'clinic';
+      
+      // Check if clinic is active
+      if (user && !user.isActive) {
+        return res.status(403).json({
+          success: false,
+          error: 'Your clinic account has been deactivated. Please contact support for assistance.'
+        });
+      }
     }
     
     if (!user) {
@@ -429,7 +646,7 @@ router.post('/login-otp', otpLoginValidation, async (req, res) => {
     await otpRecord.markAsUsed();
 
     // Generate JWT token
-    const userRole = user.role || (user.specialty ? 'doctor' : 'nurse');
+    const userRole = user.role || userType;
     const token = jwt.sign(
       { id: user._id, role: userRole }, 
       process.env.JWT_SECRET, 
@@ -440,29 +657,44 @@ router.post('/login-otp', otpLoginValidation, async (req, res) => {
     try {
       await ActivityLogger.logLogin({
         _id: user._id,
-        fullName: user.fullName,
-        email: user.email,
+        fullName: user.fullName || user.adminName,
+        email: user.email || user.adminEmail,
         role: userRole,
-        clinicId: user.clinicId,
-        clinicName: user.clinicName || 'Unknown Clinic'
+        clinicId: userType === 'clinic' ? user._id : user.clinicId,
+        clinicName: userType === 'clinic' ? (user.name || user.fullName) : (user.clinicName || 'Unknown Clinic')
       }, req, token);
     } catch (logError) {
       console.error('Failed to log OTP login activity:', logError);
       // Don't fail the login if logging fails
     }
     
-    res.json({
-      success: true,
-      message: 'Login successful',
-      token,
-      user: {
+    // Prepare user response based on user type
+    let userResponse;
+    if (userType === 'clinic') {
+      userResponse = {
+        id: user._id,
+        fullName: user.fullName,
+        name: user.adminName,
+        email: user.adminEmail,
+        specialty: user.organization,
+        role: userRole,
+      };
+    } else {
+      userResponse = {
         id: user._id,
         fullName: user.fullName,
         name: user.name,
         email: user.email,
         specialty: user.specialty || user.department,
         role: userRole,
-      }
+      };
+    }
+    
+    res.json({
+      success: true,
+      message: 'Login successful',
+      token,
+      user: userResponse
     });
   } catch (err) {
     console.error('OTP login error:', err);
@@ -678,7 +910,7 @@ router.post('/clinic-forgot-password', forgotPasswordValidation, async (req, res
 
     // Generate OTP
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
     // Save OTP
     await OTP.findOneAndUpdate(
@@ -778,7 +1010,7 @@ router.post('/clinic-reset-password', resetPasswordValidation, async (req, res) 
   }
 });
 
-// Forgot Password - Send reset OTP
+// Unified Forgot Password - Send reset OTP for all user types
 router.post('/forgot-password', forgotPasswordValidation, async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -788,13 +1020,46 @@ router.post('/forgot-password', forgotPasswordValidation, async (req, res) => {
 
     const { email } = req.body;
 
-    // Check if user exists in Doctor or Nurse collections
-    let user = await Doctor.findOne({ email });
-    let userType = 'doctor';
+    let user = null;
+    let userType = null;
+    let userName = null;
+
+    // Check if user exists in Doctor collection first
+    user = await Doctor.findOne({ email });
+    if (user) {
+      userType = 'doctor';
+      userName = user.fullName;
+    }
     
+    // If not found in Doctor, try Nurse collection
     if (!user) {
       user = await Nurse.findOne({ email });
-      userType = 'nurse';
+      if (user) {
+        userType = 'nurse';
+        userName = user.fullName;
+      }
+    }
+    
+    // If not found in Doctor or Nurse, try Clinic collection
+    if (!user) {
+      user = await Clinic.findOne({ 
+        $or: [
+          { adminEmail: email },
+          { adminUsername: email }
+        ]
+      });
+      if (user) {
+        userType = 'clinic';
+        userName = user.adminName || user.name;
+        
+        // Check if clinic is active
+        if (!user.isActive) {
+          return res.status(403).json({ 
+            error: 'Your clinic account has been deactivated. Please contact support for assistance.',
+            success: false 
+          });
+        }
+      }
     }
 
     if (!user) {
@@ -807,7 +1072,7 @@ router.post('/forgot-password', forgotPasswordValidation, async (req, res) => {
 
     // Generate OTP
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
     // Save OTP
     await OTP.findOneAndUpdate(
@@ -824,7 +1089,7 @@ router.post('/forgot-password', forgotPasswordValidation, async (req, res) => {
 
     // Send email
     try {
-      await emailService.sendPasswordResetOTP(email, user.fullName, otpCode);
+      await emailService.sendPasswordResetOTP(email, userName, otpCode);
     } catch (emailError) {
       console.error('Failed to send password reset email:', emailError);
       return res.status(500).json({ error: 'Failed to send reset code. Please try again.' });
@@ -841,7 +1106,7 @@ router.post('/forgot-password', forgotPasswordValidation, async (req, res) => {
   }
 });
 
-// Reset Password with OTP
+// Unified Reset Password with OTP for all user types
 router.post('/reset-password', resetPasswordValidation, async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -864,13 +1129,40 @@ router.post('/reset-password', resetPasswordValidation, async (req, res) => {
       return res.status(400).json({ error: 'Invalid or expired reset code' });
     }
 
-    // Find user
-    let user = await Doctor.findOne({ email });
-    let userType = 'doctor';
+    // Find user in all collections
+    let user = null;
+    let userType = null;
+    
+    user = await Doctor.findOne({ email });
+    if (user) {
+      userType = 'doctor';
+    }
     
     if (!user) {
       user = await Nurse.findOne({ email });
-      userType = 'nurse';
+      if (user) {
+        userType = 'nurse';
+      }
+    }
+    
+    if (!user) {
+      user = await Clinic.findOne({ 
+        $or: [
+          { adminEmail: email },
+          { adminUsername: email }
+        ]
+      });
+      if (user) {
+        userType = 'clinic';
+        
+        // Check if clinic is active
+        if (!user.isActive) {
+          return res.status(403).json({ 
+            error: 'Your clinic account has been deactivated. Please contact support for assistance.',
+            success: false 
+          });
+        }
+      }
     }
 
     if (!user) {
@@ -880,13 +1172,16 @@ router.post('/reset-password', resetPasswordValidation, async (req, res) => {
     // Hash new password
     const hashedPassword = await bcrypt.hash(newPassword, 12);
 
-    // Update password
+    // Update password based on user type
     if (userType === 'doctor') {
       await Doctor.findByIdAndUpdate(user._id, { passwordHash: hashedPassword });
       console.log(`✅ Password updated for doctor: ${user.email}`);
-    } else {
+    } else if (userType === 'nurse') {
       await Nurse.findByIdAndUpdate(user._id, { passwordHash: hashedPassword });
       console.log(`✅ Password updated for nurse: ${user.email}`);
+    } else if (userType === 'clinic') {
+      await Clinic.findByIdAndUpdate(user._id, { adminPassword: hashedPassword });
+      console.log(`✅ Password updated for clinic admin: ${user.adminEmail}`);
     }
 
     // Mark OTP as used
@@ -897,11 +1192,11 @@ router.post('/reset-password', resetPasswordValidation, async (req, res) => {
     try {
       await ActivityLogger.logPasswordReset({
         _id: user._id,
-        fullName: user.fullName,
-        email: user.email,
+        fullName: user.fullName || user.adminName,
+        email: user.email || user.adminEmail,
         role: userType,
-        clinicId: user.clinicId,
-        clinicName: 'Unknown Clinic'
+        clinicId: userType === 'clinic' ? user._id : user.clinicId,
+        clinicName: userType === 'clinic' ? (user.name || user.fullName) : 'Unknown Clinic'
       }, req);
     } catch (logError) {
       console.error('Failed to log password reset activity:', logError);
@@ -915,6 +1210,180 @@ router.post('/reset-password', resetPasswordValidation, async (req, res) => {
   } catch (error) {
     console.error('Reset password error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /auth/refresh - Refresh access token
+router.post('/refresh', async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+
+    if (!refreshToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'Refresh token is required'
+      });
+    }
+
+    // Refresh the token
+    const tokenData = await tokenManager.refreshAccessToken(refreshToken);
+
+    res.json({
+      success: true,
+      token: tokenData.accessToken,
+      refreshToken: tokenData.refreshToken,
+      expiresIn: tokenData.expiresIn
+    });
+
+  } catch (error) {
+    console.error('Token refresh error:', error);
+    res.status(401).json({
+      success: false,
+      message: error.message || 'Token refresh failed'
+    });
+  }
+});
+
+// GET /auth/me - Get current user info
+router.get('/me', auth, async (req, res) => {
+  try {
+    const user = req.user;
+    
+    // Remove sensitive data
+    const { password, ...userWithoutPassword } = user.toObject ? user.toObject() : user;
+
+    res.json({
+      success: true,
+      user: userWithoutPassword
+    });
+
+  } catch (error) {
+    console.error('Get user info error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get user information'
+    });
+  }
+});
+
+// POST /auth/logout - Logout user
+router.post('/logout', auth, async (req, res) => {
+  try {
+    const token = tokenManager.extractTokenFromHeader(req.headers.authorization);
+    
+    if (token) {
+      // Blacklist the current token
+      tokenManager.blacklistToken(token);
+    }
+
+    // Get refresh token from body or header
+    const refreshToken = req.body.refreshToken || req.headers['x-refresh-token'];
+    
+    if (refreshToken) {
+      // Remove refresh token
+      tokenManager.removeRefreshToken(req.user.id, refreshToken);
+      tokenManager.blacklistToken(refreshToken);
+    }
+
+    // Log activity
+    await ActivityLogger.log(req.user.id, 'LOGOUT', 'User logged out', {
+      userAgent: req.headers['user-agent'],
+      ip: req.ip
+    });
+
+    res.json({
+      success: true,
+      message: 'Logged out successfully'
+    });
+
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Logout failed'
+    });
+  }
+});
+
+// POST /auth/logout-all - Logout from all devices
+router.post('/logout-all', auth, async (req, res) => {
+  try {
+    // Remove all refresh tokens for user
+    tokenManager.removeAllRefreshTokens(req.user.id);
+
+    // Log activity
+    await ActivityLogger.log(req.user.id, 'LOGOUT_ALL', 'User logged out from all devices', {
+      userAgent: req.headers['user-agent'],
+      ip: req.ip
+    });
+
+    res.json({
+      success: true,
+      message: 'Logged out from all devices successfully'
+    });
+
+  } catch (error) {
+    console.error('Logout all error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Logout from all devices failed'
+    });
+  }
+});
+
+// GET /auth/session-info - Get session information
+router.get('/session-info', auth, async (req, res) => {
+  try {
+    const token = tokenManager.extractTokenFromHeader(req.headers.authorization);
+    const tokenInfo = tokenManager.getTokenInfo(token);
+
+    res.json({
+      success: true,
+      sessionInfo: {
+        userId: req.user.id,
+        email: req.user.email,
+        role: req.user.role,
+        tokenInfo: {
+          issuedAt: tokenInfo.payload.iat,
+          expiresAt: tokenInfo.payload.exp,
+          isExpired: tokenInfo.isExpired
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Session info error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get session information'
+    });
+  }
+});
+
+// GET /auth/stats - Get token system statistics (admin only)
+router.get('/stats', auth, async (req, res) => {
+  try {
+    // Check if user is admin
+    if (req.user.role !== 'admin' && req.user.role !== 'clinic') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Admin privileges required.'
+      });
+    }
+
+    const stats = tokenManager.getStats();
+
+    res.json({
+      success: true,
+      stats
+    });
+
+  } catch (error) {
+    console.error('Token stats error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get token statistics'
+    });
   }
 });
 

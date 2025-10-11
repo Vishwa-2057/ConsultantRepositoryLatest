@@ -4,7 +4,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { 
   ArrowLeft, 
   User, 
@@ -31,7 +33,8 @@ import {
   Plus,
   Upload,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  X
 } from "lucide-react";
 import { patientAPI, prescriptionAPI, appointmentAPI, vitalsAPI, referralAPI, medicalImageAPI } from "@/services/api";
 import { toast } from "sonner";
@@ -101,6 +104,18 @@ const PatientDetails = () => {
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState(null);
   const [isDocumentModalOpen, setIsDocumentModalOpen] = useState(false);
+  const [isMedicalHistoryModalOpen, setIsMedicalHistoryModalOpen] = useState(false);
+  const [medicalHistoryForm, setMedicalHistoryForm] = useState({
+    conditions: [],
+    allergies: [],
+    medications: [],
+    surgeries: []
+  });
+  const [newCondition, setNewCondition] = useState('');
+  const [newAllergy, setNewAllergy] = useState('');
+  const [newMedication, setNewMedication] = useState('');
+  const [newSurgery, setNewSurgery] = useState('');
+  const [savingMedicalHistory, setSavingMedicalHistory] = useState(false);
 
   useEffect(() => {
     if (patientId) {
@@ -424,6 +439,68 @@ const PatientDetails = () => {
     setIsEditModalOpen(false);
   };
 
+  const handleOpenMedicalHistory = () => {
+    // Initialize form with existing medical history
+    if (patient.medicalHistory) {
+      setMedicalHistoryForm({
+        conditions: patient.medicalHistory.conditions || [],
+        allergies: patient.medicalHistory.allergies || [],
+        medications: patient.medicalHistory.medications || [],
+        surgeries: patient.medicalHistory.surgeries || []
+      });
+    }
+    setIsMedicalHistoryModalOpen(true);
+  };
+
+  const handleCloseMedicalHistory = () => {
+    setIsMedicalHistoryModalOpen(false);
+    setNewCondition('');
+    setNewAllergy('');
+    setNewMedication('');
+    setNewSurgery('');
+  };
+
+  const addItem = (type, value, setter) => {
+    if (value.trim()) {
+      setMedicalHistoryForm(prev => ({
+        ...prev,
+        [type]: [...prev[type], value.trim()]
+      }));
+      setter('');
+    }
+  };
+
+  const removeItem = (type, index) => {
+    setMedicalHistoryForm(prev => ({
+      ...prev,
+      [type]: prev[type].filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleSaveMedicalHistory = async () => {
+    try {
+      setSavingMedicalHistory(true);
+      
+      const response = await patientAPI.update(patient._id, {
+        medicalHistory: medicalHistoryForm
+      });
+      
+      // Update local patient state
+      setPatient(prev => ({
+        ...prev,
+        medicalHistory: medicalHistoryForm
+      }));
+      
+      toast.success('Medical history updated successfully!');
+      handleCloseMedicalHistory();
+    } catch (error) {
+      console.error('Error updating medical history:', error);
+      toast.error('Failed to update medical history');
+    } finally {
+      setSavingMedicalHistory(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="p-6 space-y-6">
@@ -625,18 +702,103 @@ const PatientDetails = () => {
         <TabsContent value="history" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="w-5 h-5" />
-                Patient History
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Heart className="w-5 h-5" />
+                  Medical History
+                </div>
+                {canEditPatients() && (
+                  <Button onClick={handleOpenMedicalHistory} size="sm">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Medical History
+                  </Button>
+                )}
               </CardTitle>
               <CardDescription>Complete medical history and timeline</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-center py-12 text-gray-500">
-                <FileText className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                <p>Patient history feature coming soon</p>
-                <p className="text-sm">This will show comprehensive medical history</p>
-              </div>
+              {patient.medicalHistory && (
+                patient.medicalHistory.conditions?.length > 0 ||
+                patient.medicalHistory.allergies?.length > 0 ||
+                patient.medicalHistory.medications?.length > 0 ||
+                patient.medicalHistory.surgeries?.length > 0
+              ) ? (
+                <div className="space-y-6">
+                  {/* Medical Conditions */}
+                  {patient.medicalHistory.conditions?.length > 0 && (
+                    <div>
+                      <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-orange-600" />
+                        Medical Conditions
+                      </h4>
+                      <div className="flex flex-wrap gap-2">
+                        {patient.medicalHistory.conditions.map((condition, index) => (
+                          <Badge key={index} variant="secondary" className="bg-orange-100 text-orange-800">
+                            {condition}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Allergies */}
+                  {patient.medicalHistory.allergies?.length > 0 && (
+                    <div>
+                      <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-red-600" />
+                        Allergies
+                      </h4>
+                      <div className="flex flex-wrap gap-2">
+                        {patient.medicalHistory.allergies.map((allergy, index) => (
+                          <Badge key={index} variant="destructive" className="bg-red-100 text-red-800">
+                            {allergy}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Current Medications */}
+                  {patient.medicalHistory.medications?.length > 0 && (
+                    <div>
+                      <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                        <Pill className="w-4 h-4 text-blue-600" />
+                        Current Medications
+                      </h4>
+                      <div className="flex flex-wrap gap-2">
+                        {patient.medicalHistory.medications.map((medication, index) => (
+                          <Badge key={index} variant="outline" className="bg-blue-50 text-blue-800 border-blue-200">
+                            {medication}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Previous Surgeries */}
+                  {patient.medicalHistory.surgeries?.length > 0 && (
+                    <div>
+                      <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                        <Activity className="w-4 h-4 text-purple-600" />
+                        Previous Surgeries
+                      </h4>
+                      <div className="flex flex-wrap gap-2">
+                        {patient.medicalHistory.surgeries.map((surgery, index) => (
+                          <Badge key={index} variant="secondary" className="bg-purple-100 text-purple-800">
+                            {surgery}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-12 text-gray-500">
+                  <Heart className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                  <p>No medical history recorded</p>
+                  <p className="text-sm">Click "Add Medical History" to add patient's medical information</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -1828,6 +1990,187 @@ const PatientDetails = () => {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Medical History Modal */}
+      <Dialog open={isMedicalHistoryModalOpen} onOpenChange={setIsMedicalHistoryModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Heart className="w-5 h-5" />
+              Medical History
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-6">
+            {/* Medical Conditions */}
+            <div className="space-y-3">
+              <Label className="text-base font-semibold flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-orange-600" />
+                Medical Conditions
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  value={newCondition}
+                  onChange={(e) => setNewCondition(e.target.value)}
+                  placeholder="Add medical condition"
+                  onKeyPress={(e) => e.key === 'Enter' && addItem('conditions', newCondition, setNewCondition)}
+                />
+                <Button 
+                  type="button" 
+                  size="sm" 
+                  onClick={() => addItem('conditions', newCondition, setNewCondition)}
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {medicalHistoryForm.conditions.map((condition, index) => (
+                  <Badge key={index} variant="secondary" className="gap-1 bg-orange-100 text-orange-800">
+                    {condition}
+                    <button
+                      type="button"
+                      onClick={() => removeItem('conditions', index)}
+                      className="ml-1 hover:text-red-500"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            </div>
+
+            {/* Allergies */}
+            <div className="space-y-3">
+              <Label className="text-base font-semibold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-red-600" />
+                Allergies
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  value={newAllergy}
+                  onChange={(e) => setNewAllergy(e.target.value)}
+                  placeholder="Add allergy"
+                  onKeyPress={(e) => e.key === 'Enter' && addItem('allergies', newAllergy, setNewAllergy)}
+                />
+                <Button 
+                  type="button" 
+                  size="sm" 
+                  onClick={() => addItem('allergies', newAllergy, setNewAllergy)}
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {medicalHistoryForm.allergies.map((allergy, index) => (
+                  <Badge key={index} variant="destructive" className="gap-1 bg-red-100 text-red-800">
+                    {allergy}
+                    <button
+                      type="button"
+                      onClick={() => removeItem('allergies', index)}
+                      className="ml-1 hover:text-red-500"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            </div>
+
+            {/* Current Medications */}
+            <div className="space-y-3">
+              <Label className="text-base font-semibold flex items-center gap-2">
+                <Pill className="w-4 h-4 text-blue-600" />
+                Current Medications
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  value={newMedication}
+                  onChange={(e) => setNewMedication(e.target.value)}
+                  placeholder="Add medication"
+                  onKeyPress={(e) => e.key === 'Enter' && addItem('medications', newMedication, setNewMedication)}
+                />
+                <Button 
+                  type="button" 
+                  size="sm" 
+                  onClick={() => addItem('medications', newMedication, setNewMedication)}
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {medicalHistoryForm.medications.map((medication, index) => (
+                  <Badge key={index} variant="outline" className="gap-1 bg-blue-50 text-blue-800 border-blue-200">
+                    {medication}
+                    <button
+                      type="button"
+                      onClick={() => removeItem('medications', index)}
+                      className="ml-1 hover:text-red-500"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            </div>
+
+            {/* Previous Surgeries */}
+            <div className="space-y-3">
+              <Label className="text-base font-semibold flex items-center gap-2">
+                <Activity className="w-4 h-4 text-purple-600" />
+                Previous Surgeries
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  value={newSurgery}
+                  onChange={(e) => setNewSurgery(e.target.value)}
+                  placeholder="Add surgery"
+                  onKeyPress={(e) => e.key === 'Enter' && addItem('surgeries', newSurgery, setNewSurgery)}
+                />
+                <Button 
+                  type="button" 
+                  size="sm" 
+                  onClick={() => addItem('surgeries', newSurgery, setNewSurgery)}
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {medicalHistoryForm.surgeries.map((surgery, index) => (
+                  <Badge key={index} variant="secondary" className="gap-1 bg-purple-100 text-purple-800">
+                    {surgery}
+                    <button
+                      type="button"
+                      onClick={() => removeItem('surgeries', index)}
+                      className="ml-1 hover:text-red-500"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCloseMedicalHistory} disabled={savingMedicalHistory}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveMedicalHistory} disabled={savingMedicalHistory}>
+              {savingMedicalHistory ? (
+                <>
+                  <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Heart className="w-4 h-4 mr-2" />
+                  Save Medical History
+                </>
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

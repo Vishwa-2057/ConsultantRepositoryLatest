@@ -31,6 +31,7 @@ const vitalsRoutes = require('./routes/vitals');
 const medicalImageRoutes = require('./routes/medicalImages');
 const clinicRoutes = require('./routes/clinics');
 const activityLogRoutes = require('./routes/activityLogs');
+const auditLogRoutes = require('./routes/auditLogs');
 const revenueRoutes = require('./routes/revenue');
 const teleconsultationRoutes = require('./routes/teleconsultations');
 
@@ -181,23 +182,60 @@ app.get('/test-cloudinary', (req, res) => {
   }
 });
 
-// Test endpoint to check email configuration
-app.get('/test-email-config', (req, res) => {
+// Secure email configuration validation endpoint
+app.get('/test-email-config', async (req, res) => {
   try {
-    res.json({
-      success: true,
-      message: 'Email configuration check',
-      config: {
-        email_user: process.env.EMAIL_USER ? 'Set' : 'Not set',
-        email_pass: process.env.EMAIL_PASS ? 'Set' : 'Not set',
-        email_service: process.env.EMAIL_SERVICE || 'gmail'
-      }
-    });
+    const { EmailService } = require('./services/emailService');
+    const emailService = new EmailService();
+    
+    // Validate configuration without exposing sensitive data
+    const config = emailService.getCentralizedConfig();
+    
+    if (!config) {
+      return res.status(500).json({
+        success: false,
+        message: 'Email configuration is invalid or missing',
+        config: {
+          email_user: process.env.EMAIL_USER ? 'Set' : 'Not set',
+          email_pass: process.env.EMAIL_PASS ? 'Set' : 'Not set',
+          email_service: process.env.EMAIL_SERVICE || 'gmail',
+          status: 'Invalid'
+        }
+      });
+    }
+
+    // Test the actual connection
+    try {
+      const transporter = await emailService.getTransporter();
+      await transporter.verify();
+      
+      res.json({
+        success: true,
+        message: 'Email configuration is valid and connection successful',
+        config: {
+          email_user: emailService.maskEmail(process.env.EMAIL_USER),
+          email_service: process.env.EMAIL_SERVICE || 'gmail',
+          status: 'Connected',
+          timestamp: new Date().toISOString()
+        }
+      });
+    } catch (connectionError) {
+      res.status(500).json({
+        success: false,
+        message: 'Email configuration exists but connection failed',
+        config: {
+          email_user: emailService.maskEmail(process.env.EMAIL_USER),
+          email_service: process.env.EMAIL_SERVICE || 'gmail',
+          status: 'Connection Failed',
+          error: connectionError.message
+        }
+      });
+    }
   } catch (error) {
     res.status(500).json({
       success: false,
       error: error.message,
-      message: 'Failed to check email configuration'
+      message: 'Failed to validate email configuration'
     });
   }
 });
@@ -221,6 +259,7 @@ app.use('/api/vitals', vitalsRoutes);
 app.use('/api/medical-images', medicalImageRoutes);
 app.use('/api/clinics', clinicRoutes);
 app.use('/api/activity-logs', activityLogRoutes);
+app.use('/api/audit-logs', auditLogRoutes);
 app.use('/api/revenue', revenueRoutes);
 app.use('/api/teleconsultations', teleconsultationRoutes);
 
@@ -271,15 +310,50 @@ const connectDB = async () => {
   }
 };
 
+// Validate email configuration on startup
+const validateEmailConfig = async () => {
+  try {
+    const { EmailService } = require('./services/emailService');
+    const emailService = new EmailService();
+    
+    console.log('📧 Validating email configuration...');
+    
+    const config = emailService.getCentralizedConfig();
+    if (!config) {
+      console.warn('⚠️  Email configuration is missing or invalid');
+      console.warn('⚠️  OTP-based authentication will not work');
+      return false;
+    }
+
+    // Test connection
+    const transporter = await emailService.getTransporter();
+    await transporter.verify();
+    
+    console.log('✅ Email service configured and connected successfully');
+    console.log(`📧 Email service: ${process.env.EMAIL_SERVICE || 'gmail'}`);
+    console.log(`📧 Email user: ${emailService.maskEmail(process.env.EMAIL_USER)}`);
+    return true;
+  } catch (error) {
+    console.error('❌ Email service validation failed:', error.message);
+    console.warn('⚠️  OTP-based authentication may not work properly');
+    return false;
+  }
+};
+
 // Start server
 const startServer = async () => {
   try {
     await connectDB();
     
+    // Validate email configuration (non-blocking)
+    await validateEmailConfig();
+    
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`📱 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:8080'}`);
       console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`🔧 Health check: http://localhost:${PORT}/health`);
+      console.log(`📧 Email config test: http://localhost:${PORT}/test-email-config`);
     });
   } catch (error) {
     console.error('❌ Server startup error:', error.message);

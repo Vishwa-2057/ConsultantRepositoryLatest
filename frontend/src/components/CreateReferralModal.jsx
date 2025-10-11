@@ -260,6 +260,11 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
       onSuccess?.(response);
       onClose();
       
+      // Reload the page to refresh the data
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+      
       // Reset form
       setFormData({
         patientId: "",
@@ -455,7 +460,6 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
                   <SelectItem value="Low">Low</SelectItem>
                   <SelectItem value="Medium">Medium</SelectItem>
                   <SelectItem value="High">High</SelectItem>
-                  <SelectItem value="Urgent">Urgent</SelectItem>
                 </SelectContent>
               </Select>
             </div>

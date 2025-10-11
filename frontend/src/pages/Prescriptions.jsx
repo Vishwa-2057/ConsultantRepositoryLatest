@@ -3,6 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -10,27 +12,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { 
   Pill,
   Plus,
@@ -40,7 +21,6 @@ import {
   Eye,
   Edit,
   Trash2,
-  MoreHorizontal,
   Calendar,
   User,
   FileText,
@@ -48,671 +28,801 @@ import {
   Clock,
   CheckCircle,
   XCircle,
+  AlertTriangle,
   ChevronDown,
-  ChevronRight,
-  Phone,
-  Mail,
-  MapPin,
-  AlertCircle,
-  Stethoscope
+  ChevronRight
 } from "lucide-react";
-import PrescriptionModal from "@/components/PrescriptionModal";
 import { useToast } from "@/hooks/use-toast";
 import { prescriptionAPI } from "@/services/api";
-import { isClinic, isDoctor } from "@/utils/roleUtils";
+import { isClinic, isDoctor, getCurrentUser } from "@/utils/roleUtils";
+import PrescriptionModal from "@/components/PrescriptionModal";
 
 const Prescriptions = () => {
-  // Set page title immediately
-  document.title = "Prescriptions - Smart Healthcare";
-  
-  const { toast } = useToast();
-  
-  // State management
   const [prescriptions, setPrescriptions] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [expandedPrescriptions, setExpandedPrescriptions] = useState(new Set());
+  const [stats, setStats] = useState({
+    totalPrescriptions: 0,
+    completedPrescriptions: 0
+  });
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedPrescription, setSelectedPrescription] = useState(null);
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [viewPrescription, setViewPrescription] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  const [pageSize] = useState(10);
-  
-  // Modal states
-  const [isPrescriptionModalOpen, setIsPrescriptionModalOpen] = useState(false);
-  const [editingPrescription, setEditingPrescription] = useState(null);
-  
-  // Expanded prescription state
-  const [expandedPrescriptions, setExpandedPrescriptions] = useState(new Set());
-  
-  // Statistics
-  const [stats, setStats] = useState({
-    totalPrescriptions: 0,
-    activePrescriptions: 0,
-    completedPrescriptions: 0,
-    cancelledPrescriptions: 0
+  const [pageSize, setPageSize] = useState(() => {
+    const saved = localStorage.getItem('prescriptions_pageSize');
+    return saved ? parseInt(saved) : 10;
   });
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+
+  const { toast } = useToast();
+
+  // Use prescriptions directly since filtering is now done server-side
+  const filteredPrescriptions = prescriptions;
 
   // Load prescriptions
-  useEffect(() => {
-    document.title = "Prescriptions - Smart Healthcare";
-    loadPrescriptions();
-  }, [searchTerm, statusFilter, currentPage]);
-
-  // Load statistics
-  useEffect(() => {
-    loadStats();
-  }, []);
-
   const loadPrescriptions = async () => {
-    setLoading(true);
-    setError("");
     try {
-      const filters = {};
-      if (searchTerm.trim()) filters.search = searchTerm.trim();
-      if (statusFilter !== "all") filters.status = statusFilter;
-
-      const response = await prescriptionAPI.getAll(currentPage, pageSize, filters);
-      console.log('Prescriptions API response:', response);
+      setLoading(true);
+      console.log('Loading prescriptions...');
       
-      // Handle different response structures
-      if (response.data) {
-        // If the response has a 'data' wrapper
-        setPrescriptions(response.data.prescriptions || response.data || []);
-        setTotalPages(response.data.pagination?.totalPages || 1);
-        setTotalCount(response.data.pagination?.totalPrescriptions || 0);
-      } else {
-        // Direct response structure
-        setPrescriptions(response.prescriptions || response || []);
-        setTotalPages(response.pagination?.totalPages || 1);
-        setTotalCount(response.pagination?.totalPrescriptions || 0);
+      const filters = {};
+      if (searchTerm.trim()) {
+        filters.search = searchTerm.trim();
       }
-    } catch (err) {
-      console.error('Failed to load prescriptions:', err);
-      setError(err.message || 'Failed to load prescriptions');
+      if (statusFilter !== 'all') {
+        filters.status = statusFilter;
+      }
+      
+      const response = await prescriptionAPI.getAll(currentPage, pageSize, filters);
+      console.log('Prescriptions response:', response);
+      console.log('Response type:', typeof response);
+      console.log('Response keys:', response ? Object.keys(response) : 'null/undefined');
+      
+      if (response && response.success) {
+        const prescriptionData = response.data || response.prescriptions || [];
+        console.log('Setting prescriptions data:', prescriptionData);
+        setPrescriptions(prescriptionData);
+        calculateStats(prescriptionData);
+        
+        // Set pagination info
+        if (response.pagination) {
+          setTotalPages(response.pagination.totalPages || 1);
+          setTotalCount(response.pagination.totalCount || 0);
+        } else {
+          setTotalPages(1);
+          setTotalCount(prescriptionData.length);
+        }
+      } else if (response && response.prescriptions && Array.isArray(response.prescriptions)) {
+        // Handle the actual API response structure with prescriptions array
+        console.log('Using response.prescriptions directly:', response.prescriptions);
+        setPrescriptions(response.prescriptions);
+        calculateStats(response.prescriptions);
+        
+        // Set pagination info
+        if (response.pagination) {
+          setTotalPages(response.pagination.totalPages || 1);
+          setTotalCount(response.pagination.totalCount || 0);
+        } else {
+          setTotalPages(1);
+          setTotalCount(response.prescriptions.length);
+        }
+      } else if (response && response.data && Array.isArray(response.data)) {
+        // Handle case where response doesn't have success flag but has data
+        console.log('Using response.data directly:', response.data);
+        setPrescriptions(response.data);
+        calculateStats(response.data);
+        setTotalPages(1);
+        setTotalCount(response.data.length);
+      } else {
+        console.log('No valid prescription data found in response');
+        console.log('Response structure:', JSON.stringify(response, null, 2));
+        // Set empty data - this is likely a missing/unimplemented endpoint
+        setPrescriptions([]);
+        calculateStats([]);
+        setTotalPages(1);
+        setTotalCount(0);
+        // Don't show error toast for missing service, just log it
+        console.warn('Prescription service appears to be unavailable or not implemented');
+      }
+    } catch (error) {
+      console.error('Error loading prescriptions:', error);
+      console.error('Error details:', {
+        message: error.message,
+        status: error.status,
+        response: error.response
+      });
+      
+      // Set empty data for now instead of showing error
       setPrescriptions([]);
-      setTotalPages(1);
-      setTotalCount(0);
+      calculateStats([]);
+      
+      // Only show toast for actual network errors, not missing endpoints
+      if (error.message && !error.message.includes('404')) {
+        toast({
+          title: "Error",
+          description: "Unable to connect to prescription service",
+          variant: "destructive"
+        });
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const loadStats = async () => {
-    try {
-      const response = await prescriptionAPI.getStats();
-      setStats(response);
-    } catch (err) {
-      console.error('Failed to load prescription stats:', err);
-    }
+  // Calculate statistics
+  const calculateStats = (prescriptionData) => {
+    const stats = {
+      totalPrescriptions: prescriptionData.length,
+      completedPrescriptions: prescriptionData.filter(p => 
+        p.status === 'completed' || p.status === 'Completed'
+      ).length
+    };
+    setStats(stats);
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case "Active": return "success";
-      case "Completed": return "secondary";
-      case "Cancelled": return "destructive";
-      default: return "muted";
+  // Save pageSize to localStorage when it changes (skip initial load)
+  useEffect(() => {
+    if (isInitialLoad) {
+      setIsInitialLoad(false);
+      return;
     }
-  };
+    localStorage.setItem('prescriptions_pageSize', pageSize.toString());
+  }, [pageSize, isInitialLoad]);
 
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case "Active": return <Activity className="w-3 h-3" />;
-      case "Completed": return <CheckCircle className="w-3 h-3" />;
-      case "Cancelled": return <XCircle className="w-3 h-3" />;
-      default: return <Clock className="w-3 h-3" />;
-    }
-  };
+  useEffect(() => {
+    loadPrescriptions();
+  }, [currentPage, pageSize, searchTerm, statusFilter]);
 
+  // Handle actions
   const handleCreatePrescription = () => {
-    setEditingPrescription(null);
-    setIsPrescriptionModalOpen(true);
+    setSelectedPrescription(null);
+    setIsModalOpen(true);
+  };
+
+  const handleViewPrescription = (prescription) => {
+    setSelectedPrescription(prescription);
+    setIsModalOpen(true);
+  };
+
+  const handlePrescriptionClick = (prescription) => {
+    setViewPrescription(prescription);
+    setIsViewModalOpen(true);
   };
 
   const handleEditPrescription = (prescription) => {
-    setEditingPrescription(prescription);
-    setIsPrescriptionModalOpen(true);
-  };
-
-  const handlePrescriptionSubmit = async (prescriptionData) => {
-    try {
-      if (editingPrescription) {
-        await prescriptionAPI.update(editingPrescription._id, prescriptionData);
-      } else {
-        await prescriptionAPI.create(prescriptionData);
-      }
-      
-      loadPrescriptions();
-      loadStats();
-      setIsPrescriptionModalOpen(false);
-      setEditingPrescription(null);
-    } catch (error) {
-      throw error; // Re-throw to be handled by the modal
-    }
-  };
-
-  const handleDeletePrescription = async (prescriptionId) => {
-    if (!window.confirm('Are you sure you want to delete this prescription?')) {
+    // Prevent editing completed prescriptions
+    if (prescription.status === 'Completed' || prescription.status === 'completed') {
+      toast({
+        title: "Cannot Edit",
+        description: "Completed prescriptions cannot be edited",
+        variant: "destructive"
+      });
       return;
     }
+    
+    setSelectedPrescription(prescription);
+    setIsModalOpen(true);
+  };
 
+  const handleModalClose = () => {
+    setIsModalOpen(false);
+    setSelectedPrescription(null);
+  };
+
+  const handleModalSubmit = async (prescriptionData) => {
     try {
-      await prescriptionAPI.delete(prescriptionId);
-      toast({
-        title: "Success",
-        description: "Prescription deleted successfully",
-      });
-      loadPrescriptions();
-      loadStats();
+      let response;
+      if (selectedPrescription) {
+        // Update existing prescription
+        console.log('Updating prescription with ID:', selectedPrescription._id);
+        console.log('Update data:', prescriptionData);
+        response = await prescriptionAPI.update(selectedPrescription._id, prescriptionData);
+      } else {
+        // Create new prescription
+        console.log('Creating new prescription with data:', prescriptionData);
+        response = await prescriptionAPI.create(prescriptionData);
+      }
+      
+      console.log('Prescription API response:', response);
+      
+      // Check if the response indicates success
+      if (response && (response.message || response.prescription)) {
+        // Close modal and reload prescriptions
+        setIsModalOpen(false);
+        setSelectedPrescription(null);
+        loadPrescriptions();
+        
+        // Show success toast
+        toast({
+          title: "Success",
+          description: `Prescription ${selectedPrescription ? 'updated' : 'created'} successfully`,
+        });
+      } else {
+        throw new Error('Invalid response from server');
+      }
+      
     } catch (error) {
-      console.error('Error deleting prescription:', error);
+      console.error('Error submitting prescription:', error);
+      throw error; // Re-throw to let modal handle the error display
+    }
+  };
+
+  const handleCompletePrescription = async (prescriptionId) => {
+    try {
+      const response = await prescriptionAPI.updateStatus(prescriptionId, 'Completed');
+      
+      if (response && (response.message || response.prescription)) {
+        toast({
+          title: "Success",
+          description: "Prescription marked as completed",
+        });
+        loadPrescriptions();
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to complete prescription",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Error completing prescription:', error);
       toast({
         title: "Error",
-        description: error.message || "Failed to delete prescription",
-        variant: "destructive",
+        description: "Failed to complete prescription",
+        variant: "destructive"
       });
     }
-  };
-
-  const handleStatusChange = async (prescriptionId, newStatus) => {
-    try {
-      await prescriptionAPI.updateStatus(prescriptionId, newStatus);
-      toast({
-        title: "Success",
-        description: "Prescription status updated successfully",
-      });
-      loadPrescriptions();
-      loadStats();
-    } catch (error) {
-      console.error('Error updating prescription status:', error);
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update prescription status",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handlePrescriptionModalClose = () => {
-    setIsPrescriptionModalOpen(false);
-    setEditingPrescription(null);
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return 'Not set';
-    return new Date(dateString).toLocaleDateString();
-  };
-
-  const formatMedications = (medications) => {
-    if (!medications || medications.length === 0) return 'No medications';
-    return medications.map(med => med.name).join(', ');
-  };
-
-  const togglePrescriptionExpansion = (prescriptionId) => {
-    const newExpanded = new Set(expandedPrescriptions);
-    if (newExpanded.has(prescriptionId)) {
-      newExpanded.delete(prescriptionId);
-    } else {
-      newExpanded.add(prescriptionId);
-    }
-    setExpandedPrescriptions(newExpanded);
   };
 
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-muted-foreground">
-            {isDoctor() ? "Manage your patient prescriptions" : "View and manage all prescriptions"}
-          </p>
+
+      {/* Search, Stats and Actions - Single Line */}
+      <div className="flex items-center justify-between gap-6 bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+        {/* Search Bar */}
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <Input
+            placeholder="Search prescriptions by patient, doctor, or medication..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10 h-10 bg-white border-gray-200 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          />
         </div>
         
-        {(isClinic() || isDoctor()) && (
-          <Button onClick={handleCreatePrescription} className="flex items-center gap-2">
-            <Plus className="w-4 h-4" />
-            New Prescription
-          </Button>
-        )}
+        {/* Stats */}
+        <div className="flex items-center space-x-6">
+          <div className="flex items-center space-x-2">
+            <div className="p-1.5 bg-blue-100 rounded-full">
+              <Pill className="w-4 h-4 text-blue-600" />
+            </div>
+            <span className="text-sm text-blue-600 font-medium">
+              Total: {stats.totalPrescriptions || 0}
+            </span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="p-1.5 bg-green-100 rounded-full">
+              <CheckCircle className="w-4 h-4 text-green-600" />
+            </div>
+            <span className="text-sm text-green-600 font-medium">
+              Completed: {stats.completedPrescriptions || 0}
+            </span>
+          </div>
+        </div>
+        
+        {/* Filters and Actions */}
+        <div className="flex items-center gap-3">
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-32 h-10 text-sm bg-white border-gray-200 rounded-lg shadow-sm">
+              <SelectValue placeholder="All Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="completed">Completed</SelectItem>
+              <SelectItem value="cancelled">Cancelled</SelectItem>
+            </SelectContent>
+          </Select>
+          
+          {(isClinic() || isDoctor()) && (
+            <Button 
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
+              onClick={handleCreatePrescription}
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              New Prescription
+            </Button>
+          )}
+        </div>
       </div>
 
-      {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="border-0 shadow-soft">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Prescriptions</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.totalPrescriptions}</div>
-            <p className="text-xs text-muted-foreground">All time prescriptions</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-0 shadow-soft">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active</CardTitle>
-            <Activity className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{stats.activePrescriptions}</div>
-            <p className="text-xs text-muted-foreground">Currently active</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-0 shadow-soft">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Completed</CardTitle>
-            <CheckCircle className="h-4 w-4 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{stats.completedPrescriptions}</div>
-            <p className="text-xs text-muted-foreground">Treatment completed</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-0 shadow-soft">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Cancelled</CardTitle>
-            <XCircle className="h-4 w-4 text-red-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">{stats.cancelledPrescriptions}</div>
-            <p className="text-xs text-muted-foreground">Cancelled prescriptions</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filters */}
-      <Card className="border-0 shadow-soft">
-        <CardHeader>
-          <CardTitle>Search & Filter</CardTitle>
-          <CardDescription>Find prescriptions by patient name, prescription number, or medication</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-                <Input
-                  placeholder="Search prescriptions..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
+      {/* Prescriptions List */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+        <div className="px-6 py-4 border-b border-gray-100">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <h2 className="text-xl font-semibold text-gray-900">Prescriptions</h2>
+              <div className="flex items-center space-x-2">
+                <Badge variant="secondary" className="px-3 py-1 text-sm font-medium bg-blue-100 text-blue-700 border-0">
+                  {filteredPrescriptions.length}
+                </Badge>
               </div>
             </div>
-            
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full sm:w-48">
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="Active">Active</SelectItem>
-                <SelectItem value="Completed">Completed</SelectItem>
-                <SelectItem value="Cancelled">Cancelled</SelectItem>
-              </SelectContent>
-            </Select>
-            
-            <Button variant="outline" className="flex items-center gap-2">
-              <Download className="w-4 h-4" />
-              Export
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Prescriptions Table */}
-      <Card className="border-0 shadow-soft">
-        <CardHeader>
-          <CardTitle>Prescriptions ({totalCount})</CardTitle>
-          <CardDescription>Comprehensive prescription management and tracking</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading && <p className="text-sm text-muted-foreground">Loading...</p>}
-          {error && <p className="text-sm text-red-600">{error}</p>}
-          
-          {!loading && !error && (
-            <>
-              <div className="rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Prescription #</TableHead>
-                      <TableHead>Patient</TableHead>
-                      <TableHead>Doctor</TableHead>
-                      <TableHead>Diagnosis</TableHead>
-                      <TableHead>Medications</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {prescriptions.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8">
-                          <div className="flex flex-col items-center gap-2">
-                            <Pill className="w-12 h-12 text-muted-foreground" />
-                            <p className="text-muted-foreground">No prescriptions found</p>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      prescriptions.map((prescription) => {
-                        const isExpanded = expandedPrescriptions.has(prescription._id);
-                        return (
-                          <React.Fragment key={prescription._id}>
-                            <TableRow className="cursor-pointer hover:bg-muted/50">
-                              <TableCell className="font-medium">
-                                <div className="flex items-center gap-2">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => togglePrescriptionExpansion(prescription._id)}
-                                    className="h-6 w-6 p-0"
-                                  >
-                                    {isExpanded ? (
-                                      <ChevronDown className="h-3 w-3" />
-                                    ) : (
-                                      <ChevronRight className="h-3 w-3" />
-                                    )}
-                                  </Button>
-                                  {prescription.prescriptionNumber}
-                                </div>
-                              </TableCell>
-                              <TableCell onClick={() => togglePrescriptionExpansion(prescription._id)}>
-                                <div className="flex items-center gap-2">
-                                  <User className="w-4 h-4 text-muted-foreground" />
-                                  <div>
-                                    <p className="font-medium">{prescription.patientId?.fullName || 'Unknown Patient'}</p>
-                                    <p className="text-xs text-muted-foreground">
-                                      {prescription.patientId?.age || 0}y • {prescription.patientId?.gender || 'Unknown'}
-                                    </p>
-                                  </div>
-                                </div>
-                              </TableCell>
-                              <TableCell onClick={() => togglePrescriptionExpansion(prescription._id)}>
-                                <div>
-                                  <p className="font-medium">{prescription.doctorId?.fullName || 'Unknown Doctor'}</p>
-                                  <p className="text-xs text-muted-foreground">{prescription.doctorId?.specialty || 'General'}</p>
-                                </div>
-                              </TableCell>
-                              <TableCell onClick={() => togglePrescriptionExpansion(prescription._id)}>
-                                <p className="max-w-xs truncate" title={prescription.diagnosis}>
-                                  {prescription.diagnosis}
-                                </p>
-                              </TableCell>
-                              <TableCell onClick={() => togglePrescriptionExpansion(prescription._id)}>
-                                <p className="max-w-xs truncate" title={formatMedications(prescription.medications)}>
-                                  {formatMedications(prescription.medications)}
-                                </p>
-                              </TableCell>
-                              <TableCell onClick={() => togglePrescriptionExpansion(prescription._id)}>
-                                <div className="flex items-center gap-1">
-                                  <Calendar className="w-3 h-3 text-muted-foreground" />
-                                  <span className="text-sm">{formatDate(prescription.date)}</span>
-                                </div>
-                              </TableCell>
-                              <TableCell onClick={() => togglePrescriptionExpansion(prescription._id)}>
-                                <Badge variant={getStatusColor(prescription.status)} className="flex items-center gap-1 w-fit">
-                                  {getStatusIcon(prescription.status)}
-                                  {prescription.status}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button variant="ghost" className="h-8 w-8 p-0">
-                                      <MoreHorizontal className="h-4 w-4" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                    <DropdownMenuItem onClick={() => handleEditPrescription(prescription)}>
-                                      <Edit className="mr-2 h-4 w-4" />
-                                      Edit
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={() => handleStatusChange(prescription._id, 'Active')}>
-                                      <Activity className="mr-2 h-4 w-4" />
-                                      Mark Active
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleStatusChange(prescription._id, 'Completed')}>
-                                      <CheckCircle className="mr-2 h-4 w-4" />
-                                      Mark Completed
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleStatusChange(prescription._id, 'Cancelled')}>
-                                      <XCircle className="mr-2 h-4 w-4" />
-                                      Cancel
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem 
-                                      onClick={() => handleDeletePrescription(prescription._id)}
-                                      className="text-red-600"
-                                    >
-                                      <Trash2 className="mr-2 h-4 w-4" />
-                                      Delete
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              </TableCell>
-                            </TableRow>
-                            
-                            {/* Expanded Details Row */}
-                            {isExpanded && (
-                              <TableRow>
-                                <TableCell colSpan={8} className="bg-muted/30 p-0">
-                                  <div className="p-6 space-y-6">
-                                    {/* Detailed Prescription Information */}
-                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                      {/* Patient Details */}
-                                      <Card className="border-0 shadow-sm">
-                                        <CardHeader className="pb-3">
-                                          <CardTitle className="text-sm flex items-center gap-2">
-                                            <User className="w-4 h-4" />
-                                            Patient Information
-                                          </CardTitle>
-                                        </CardHeader>
-                                        <CardContent className="space-y-3">
-                                          <div className="grid grid-cols-2 gap-4 text-sm">
-                                            <div>
-                                              <p className="text-muted-foreground">Full Name</p>
-                                              <p className="font-medium">{prescription.patientId?.fullName || 'N/A'}</p>
-                                            </div>
-                                            <div>
-                                              <p className="text-muted-foreground">Age & Gender</p>
-                                              <p className="font-medium">{prescription.patientId?.age || 0}y • {prescription.patientId?.gender || 'Unknown'}</p>
-                                            </div>
-                                            <div>
-                                              <p className="text-muted-foreground">Phone</p>
-                                              <p className="font-medium flex items-center gap-1">
-                                                <Phone className="w-3 h-3" />
-                                                {prescription.patientId?.phone || 'N/A'}
-                                              </p>
-                                            </div>
-                                            <div>
-                                              <p className="text-muted-foreground">Email</p>
-                                              <p className="font-medium flex items-center gap-1">
-                                                <Mail className="w-3 h-3" />
-                                                {prescription.patientId?.email || 'N/A'}
-                                              </p>
-                                            </div>
-                                          </div>
-                                        </CardContent>
-                                      </Card>
-
-                                      {/* Doctor Details */}
-                                      <Card className="border-0 shadow-sm">
-                                        <CardHeader className="pb-3">
-                                          <CardTitle className="text-sm flex items-center gap-2">
-                                            <Stethoscope className="w-4 h-4" />
-                                            Prescribing Doctor
-                                          </CardTitle>
-                                        </CardHeader>
-                                        <CardContent className="space-y-3">
-                                          <div className="grid grid-cols-1 gap-4 text-sm">
-                                            <div>
-                                              <p className="text-muted-foreground">Doctor Name</p>
-                                              <p className="font-medium">{prescription.doctorId?.fullName || 'Unknown Doctor'}</p>
-                                            </div>
-                                            <div>
-                                              <p className="text-muted-foreground">Specialty</p>
-                                              <p className="font-medium">{prescription.doctorId?.specialty || 'General Medicine'}</p>
-                                            </div>
-                                            <div>
-                                              <p className="text-muted-foreground">Prescription Date</p>
-                                              <p className="font-medium flex items-center gap-1">
-                                                <Calendar className="w-3 h-3" />
-                                                {formatDate(prescription.date)}
-                                              </p>
-                                            </div>
-                                          </div>
-                                        </CardContent>
-                                      </Card>
-                                    </div>
-
-                                    {/* Diagnosis */}
-                                    <Card className="border-0 shadow-sm">
-                                      <CardHeader className="pb-3">
-                                        <CardTitle className="text-sm flex items-center gap-2">
-                                          <AlertCircle className="w-4 h-4" />
-                                          Diagnosis
-                                        </CardTitle>
-                                      </CardHeader>
-                                      <CardContent>
-                                        <p className="text-sm">{prescription.diagnosis || 'No diagnosis provided'}</p>
-                                      </CardContent>
-                                    </Card>
-
-                                    {/* Medications */}
-                                    <Card className="border-0 shadow-sm">
-                                      <CardHeader className="pb-3">
-                                        <CardTitle className="text-sm flex items-center gap-2">
-                                          <Pill className="w-4 h-4" />
-                                          Prescribed Medications
-                                        </CardTitle>
-                                      </CardHeader>
-                                      <CardContent>
-                                        {prescription.medications && prescription.medications.length > 0 ? (
-                                          <div className="space-y-3">
-                                            {prescription.medications.map((medication, index) => (
-                                              <div key={index} className="border rounded-lg p-3 bg-background">
-                                                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-sm">
-                                                  <div>
-                                                    <p className="text-muted-foreground">Medication</p>
-                                                    <p className="font-medium">{medication.name}</p>
-                                                  </div>
-                                                  <div>
-                                                    <p className="text-muted-foreground">Dosage</p>
-                                                    <p className="font-medium">{medication.dosage}</p>
-                                                  </div>
-                                                  <div>
-                                                    <p className="text-muted-foreground">Frequency</p>
-                                                    <p className="font-medium">{medication.frequency}</p>
-                                                  </div>
-                                                  <div>
-                                                    <p className="text-muted-foreground">Duration</p>
-                                                    <p className="font-medium">{medication.duration}</p>
-                                                  </div>
-                                                </div>
-                                                {medication.instructions && (
-                                                  <div className="mt-2">
-                                                    <p className="text-muted-foreground text-xs">Instructions</p>
-                                                    <p className="text-sm">{medication.instructions}</p>
-                                                  </div>
-                                                )}
-                                              </div>
-                                            ))}
-                                          </div>
-                                        ) : (
-                                          <p className="text-sm text-muted-foreground">No medications prescribed</p>
-                                        )}
-                                      </CardContent>
-                                    </Card>
-
-                                    {/* Notes and Follow-up */}
-                                    {(prescription.notes || prescription.followUpInstructions) && (
-                                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                        {prescription.notes && (
-                                          <Card className="border-0 shadow-sm">
-                                            <CardHeader className="pb-3">
-                                              <CardTitle className="text-sm flex items-center gap-2">
-                                                <FileText className="w-4 h-4" />
-                                                Notes
-                                              </CardTitle>
-                                            </CardHeader>
-                                            <CardContent>
-                                              <p className="text-sm">{prescription.notes}</p>
-                                            </CardContent>
-                                          </Card>
-                                        )}
-                                        
-                                        {prescription.followUpInstructions && (
-                                          <Card className="border-0 shadow-sm">
-                                            <CardHeader className="pb-3">
-                                              <CardTitle className="text-sm flex items-center gap-2">
-                                                <Calendar className="w-4 h-4" />
-                                                Follow-up Instructions
-                                              </CardTitle>
-                                            </CardHeader>
-                                            <CardContent>
-                                              <p className="text-sm">{prescription.followUpInstructions}</p>
-                                            </CardContent>
-                                          </Card>
-                                        )}
-                                      </div>
-                                    )}
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            )}
-                          </React.Fragment>
-                        );
-                      })
-                    )}
-                  </TableBody>
-                </Table>
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-lg border">
+                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                <span className="text-sm font-medium text-gray-700">
+                  {((currentPage - 1) * pageSize) + 1}-{Math.min(currentPage * pageSize, totalCount)} of {totalCount}
+                </span>
               </div>
-
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between mt-6">
-                  <p className="text-sm text-muted-foreground">
-                    Page {currentPage} of {totalPages}
-                  </p>
-                  <div className="space-x-2">
-                    <Button 
-                      variant="outline" 
-                      disabled={currentPage === 1} 
-                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    >
-                      Previous
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      disabled={currentPage === totalPages} 
-                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                    >
-                      Next
-                    </Button>
+              <div className="flex items-center gap-2 px-2.5 py-1 bg-white rounded-md border border-gray-200">
+                <span className="text-xs font-medium text-gray-500">Show</span>
+                <Select value={pageSize.toString()} onValueChange={(value) => {
+                  setPageSize(parseInt(value));
+                  setCurrentPage(1);
+                }}>
+                  <SelectTrigger className="w-12 h-6 text-xs border-0 bg-transparent p-0 focus:ring-0">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="5">5</SelectItem>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="20">20</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="p-6">
+          {loading ? (
+            <div className="flex items-center justify-center h-32">
+              <p className="text-muted-foreground">Loading prescriptions...</p>
+            </div>
+          ) : filteredPrescriptions.length === 0 ? (
+            <div className="flex items-center justify-center h-32">
+              <p className="text-muted-foreground">
+                {searchTerm ? "No prescriptions found matching your search." : "No prescriptions found."}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filteredPrescriptions.map((prescription) => (
+                <div 
+                  key={prescription._id} 
+                  className="bg-gray-50 hover:bg-gray-100 rounded-lg p-4 transition-all duration-200 cursor-pointer"
+                  onClick={() => handlePrescriptionClick(prescription)}
+                >
+                  <div className="flex items-center justify-between gap-6">
+                    {/* Prescription ID - Fixed width */}
+                    <div className="w-24 flex-shrink-0">
+                      <p className="text-sm font-mono font-semibold text-foreground">
+                        #{prescription.prescriptionNumber || prescription._id?.slice(-6)}
+                      </p>
+                    </div>
+                    
+                    {/* Patient - Fixed width */}
+                    <div className="w-40 flex-shrink-0">
+                      <div className="flex items-center gap-2">
+                        <User className="w-3 h-3 text-muted-foreground" />
+                        <span className="text-sm font-medium truncate">
+                          {prescription.patientId?.fullName || 'Unknown Patient'}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    {/* Doctor - Fixed width */}
+                    <div className="w-40 flex-shrink-0">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-3 h-3 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground truncate">
+                          Dr. {prescription.doctorId?.fullName || 'Unknown Doctor'}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    {/* Medications - Flexible width */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Pill className="w-3 h-3 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground truncate">
+                          {prescription.medications?.length > 0 
+                            ? `${prescription.medications[0].name}${prescription.medications.length > 1 ? ` +${prescription.medications.length - 1} more` : ''}`
+                            : 'No medications'
+                          }
+                        </span>
+                      </div>
+                    </div>
+                    
+                    {/* Date - Fixed width */}
+                    <div className="w-24 flex-shrink-0">
+                      <div className="flex items-center gap-1">
+                        <Calendar className="w-3 h-3 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">
+                          {new Date(prescription.createdAt).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    {/* Status - Fixed width */}
+                    <div className="w-20 flex-shrink-0">
+                      <Badge 
+                        variant={
+                          (prescription.status === 'active' || prescription.status === 'Active') ? 'default' : 
+                          (prescription.status === 'completed' || prescription.status === 'Completed') ? 'secondary' : 
+                          'destructive'
+                        } 
+                        className={`text-xs ${
+                          (prescription.status === 'completed' || prescription.status === 'Completed') 
+                            ? 'bg-green-100 text-green-800 hover:bg-green-200' 
+                            : ''
+                        }`}
+                      >
+                        {prescription.status}
+                      </Badge>
+                    </div>
+                    
+                    {/* Actions - Fixed width */}
+                    <div className="w-24 flex-shrink-0 flex items-center justify-end">
+                      {(prescription.status === 'active' || prescription.status === 'Active') && (isClinic() || isDoctor()) ? (
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          className="h-8 px-3 text-xs bg-green-50 hover:bg-green-100 text-green-700 border-green-200 hover:border-green-300"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCompletePrescription(prescription._id);
+                          }}
+                        >
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          Complete
+                        </Button>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
-              )}
-            </>
+              ))}
+            </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
+
+      {/* Page Navigation - Only show when multiple pages */}
+      {totalPages > 1 && (
+        <div className="flex justify-center pb-2">
+          <div className="flex items-center gap-2 bg-white rounded-xl shadow-sm border border-gray-100 p-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+              className="h-10 px-4 text-sm bg-white border-gray-200 rounded-lg shadow-sm hover:bg-gray-50"
+            >
+              First
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="h-10 px-4 text-sm bg-white border-gray-200 rounded-lg shadow-sm hover:bg-gray-50"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            
+            {/* Page Numbers */}
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+                
+                return (
+                  <Button
+                    key={pageNum}
+                    variant={currentPage === pageNum ? "default" : "outline"}
+                    size="sm"
+                    className={`w-8 h-8 p-0 ${currentPage === pageNum ? "bg-blue-600 text-white" : "bg-white border-gray-200 hover:bg-gray-50"} rounded-lg shadow-sm`}
+                    onClick={() => setCurrentPage(pageNum)}
+                  >
+                    {pageNum}
+                  </Button>
+                );
+              })}
+            </div>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              className="h-10 px-4 text-sm bg-white border-gray-200 rounded-lg shadow-sm hover:bg-gray-50"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={currentPage === totalPages}
+              className="h-10 px-4 text-sm bg-white border-gray-200 rounded-lg shadow-sm hover:bg-gray-50"
+            >
+              Last
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Prescription Modal */}
       <PrescriptionModal
-        isOpen={isPrescriptionModalOpen}
-        onClose={handlePrescriptionModalClose}
-        onSubmit={handlePrescriptionSubmit}
-        prescription={editingPrescription}
+        isOpen={isModalOpen}
+        onClose={handleModalClose}
+        onSubmit={handleModalSubmit}
+        prescription={selectedPrescription}
       />
+
+      {/* Prescription Expanded View Modal */}
+      <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center">
+                <Pill className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold">
+                  Prescription #{viewPrescription?.prescriptionNumber || viewPrescription?._id?.slice(-6)}
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  {viewPrescription?.patientId?.fullName} • {viewPrescription?.diagnosis}
+                </p>
+              </div>
+              <Badge 
+                variant={
+                  viewPrescription?.status === 'Active' ? 'default' : 
+                  viewPrescription?.status === 'Completed' ? 'secondary' : 
+                  'destructive'
+                } 
+                className="ml-auto"
+              >
+                {viewPrescription?.status}
+              </Badge>
+            </DialogTitle>
+          </DialogHeader>
+          
+          {viewPrescription && (
+            <div className="space-y-6 py-4">
+              {/* Patient and Doctor Information */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <User className="w-5 h-5" />
+                      Patient Information
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Full Name</Label>
+                      <p className="text-sm font-medium">{viewPrescription.patientId?.fullName || 'Unknown Patient'}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Age & Gender</Label>
+                      <p className="text-sm">{viewPrescription.patientId?.age || 'N/A'} years • {viewPrescription.patientId?.gender || 'Unknown'}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Phone</Label>
+                      <p className="text-sm">{viewPrescription.patientId?.phone || 'Not provided'}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <FileText className="w-5 h-5" />
+                      Doctor Information
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Doctor Name</Label>
+                      <p className="text-sm font-medium">Dr. {viewPrescription.doctorId?.fullName || 'Unknown Doctor'}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Specialty</Label>
+                      <p className="text-sm">{viewPrescription.doctorId?.specialty || 'General Medicine'}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Phone</Label>
+                      <p className="text-sm">{viewPrescription.doctorId?.phone || 'Not provided'}</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Prescription Details */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Activity className="w-5 h-5" />
+                    Prescription Details
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Prescription Number</Label>
+                      <p className="text-sm font-mono bg-muted px-2 py-1 rounded inline-block">
+                        {viewPrescription.prescriptionNumber || viewPrescription._id?.slice(-6)}
+                      </p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Date Issued</Label>
+                      <p className="text-sm">{new Date(viewPrescription.date || viewPrescription.createdAt).toLocaleDateString()}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Status</Label>
+                      <Badge 
+                        variant={
+                          viewPrescription.status === 'Active' ? 'default' : 
+                          viewPrescription.status === 'Completed' ? 'secondary' : 
+                          'destructive'
+                        }
+                      >
+                        {viewPrescription.status}
+                      </Badge>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <Label className="text-sm font-medium text-muted-foreground">Diagnosis</Label>
+                    <p className="text-sm bg-muted p-3 rounded-lg">{viewPrescription.diagnosis}</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Medications */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Pill className="w-5 h-5" />
+                    Medications ({viewPrescription.medications?.length || 0})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {viewPrescription.medications?.length > 0 ? (
+                    viewPrescription.medications.map((medication, index) => (
+                      <div key={index} className="border rounded-lg p-4 bg-muted/50">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                          <div>
+                            <Label className="text-sm font-medium text-muted-foreground">Medication</Label>
+                            <p className="text-sm font-medium">{medication.name}</p>
+                          </div>
+                          <div>
+                            <Label className="text-sm font-medium text-muted-foreground">Dosage</Label>
+                            <p className="text-sm">{medication.dosage}</p>
+                          </div>
+                          <div>
+                            <Label className="text-sm font-medium text-muted-foreground">Frequency</Label>
+                            <p className="text-sm">{medication.frequency}</p>
+                          </div>
+                          <div>
+                            <Label className="text-sm font-medium text-muted-foreground">Duration</Label>
+                            <p className="text-sm">{medication.duration}</p>
+                          </div>
+                        </div>
+                        {medication.instructions && (
+                          <div className="mt-3">
+                            <Label className="text-sm font-medium text-muted-foreground">Instructions</Label>
+                            <p className="text-sm text-muted-foreground">{medication.instructions}</p>
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No medications prescribed</p>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Additional Information */}
+              {(viewPrescription.notes || viewPrescription.followUpDate || viewPrescription.followUpInstructions) && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <FileText className="w-5 h-5" />
+                      Additional Information
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {viewPrescription.notes && (
+                      <div>
+                        <Label className="text-sm font-medium text-muted-foreground">Notes</Label>
+                        <p className="text-sm bg-muted p-3 rounded-lg">{viewPrescription.notes}</p>
+                      </div>
+                    )}
+                    
+                    {viewPrescription.followUpDate && (
+                      <div>
+                        <Label className="text-sm font-medium text-muted-foreground">Follow-up Date</Label>
+                        <p className="text-sm flex items-center gap-2">
+                          <Calendar className="w-4 h-4" />
+                          {new Date(viewPrescription.followUpDate).toLocaleDateString()}
+                        </p>
+                      </div>
+                    )}
+                    
+                    {viewPrescription.followUpInstructions && (
+                      <div>
+                        <Label className="text-sm font-medium text-muted-foreground">Follow-up Instructions</Label>
+                        <p className="text-sm bg-muted p-3 rounded-lg">{viewPrescription.followUpInstructions}</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* System Information */}
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Clock className="w-5 h-5" />
+                    System Information
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Created At</Label>
+                      <p className="text-sm">{new Date(viewPrescription.createdAt).toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">Last Updated</Label>
+                      <p className="text-sm">{new Date(viewPrescription.updatedAt).toLocaleString()}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsViewModalOpen(false)}>
+              Close
+            </Button>
+            {(isClinic() || isDoctor()) && viewPrescription && 
+             viewPrescription.status !== 'Completed' && viewPrescription.status !== 'completed' && (
+              <div className="flex gap-2">
+                <Button
+                  variant="default"
+                  onClick={() => {
+                    setIsViewModalOpen(false);
+                    handleEditPrescription(viewPrescription);
+                  }}
+                >
+                  <Edit className="w-4 h-4 mr-2" />
+                  Edit Prescription
+                </Button>
+              </div>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

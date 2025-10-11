@@ -15,7 +15,8 @@ import Register from "./pages/Register.jsx";
 import SuperAdminRegister from "./pages/SuperAdminRegister.jsx";
 import Logout from "./pages/Logout.jsx";
 import { useEffect, useState } from "react";
-import { authAPI } from "@/services/api";
+import { authAPI } from './services/api';
+import sessionManager from './utils/sessionManager';
 import Teleconsultation from "./pages/Teleconsultation.jsx";
 import Prescriptions from "./pages/Prescriptions.jsx";
 import ReferralSystem from "./pages/ReferralSystem.jsx";
@@ -26,30 +27,54 @@ import NotFound from "./pages/NotFound.jsx";
 import APITest from "./components/APITest.jsx";
 import EmailSettings from "./pages/EmailSettings.jsx";
 import ActivityLogs from "./pages/ActivityLogs.jsx";
+import AuditLogs from "./pages/AuditLogs.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 
 const queryClient = new QueryClient();
 
 const App = () => {
-  const [token, setToken] = useState(localStorage.getItem('authToken'));
+  const [token, setToken] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
   const isAuthed = Boolean(token);
 
   useEffect(() => {
-    const stored = localStorage.getItem('authToken');
-    if (stored) authAPI.setToken(stored);
-    // Listen for auth changes triggered by login/logout
-    const handleAuthChanged = () => {
-      const latest = localStorage.getItem('authToken');
-      setToken(latest);
-      if (latest) {
-        authAPI.setToken(latest);
-      } else {
-        authAPI.clearToken();
+    const initializeAuth = async () => {
+      try {
+        const currentToken = await sessionManager.getToken();
+        setToken(currentToken);
+      } catch (error) {
+        console.error('Failed to initialize auth:', error);
+        setToken(null);
+      } finally {
+        setIsLoading(false);
       }
     };
+
+    initializeAuth();
+
+    // Listen for auth changes triggered by login/logout
+    const handleAuthChanged = async () => {
+      try {
+        const latest = await sessionManager.getToken();
+        setToken(latest);
+      } catch (error) {
+        console.error('Auth change failed:', error);
+        setToken(null);
+      }
+    };
+    
     window.addEventListener('auth-changed', handleAuthChanged);
     return () => window.removeEventListener('auth-changed', handleAuthChanged);
   }, []);
+
+  // Show loading spinner while checking authentication
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -77,6 +102,7 @@ const App = () => {
               <Route path="/community" element={isAuthed ? <ProtectedRoute routeName="community-hub"><CommunityHub /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/email-settings" element={isAuthed ? <ProtectedRoute routeName="email-settings"><EmailSettings /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/activity-logs" element={isAuthed ? <ProtectedRoute routeName="activity-logs"><ActivityLogs /></ProtectedRoute> : <Navigate to="/login" replace />} />
+              <Route path="/audit-logs" element={isAuthed ? <ProtectedRoute routeName="audit-logs"><AuditLogs /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/compliance" element={isAuthed ? <ProtectedRoute routeName="compliance-alerts"><Dashboard /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/api-test" element={<APITest />} />
               <Route path="/logout" element={<Logout />} />

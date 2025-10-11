@@ -45,7 +45,7 @@ const validateReferral = [
   body('patientName').trim().isLength({ min: 1 }).withMessage('Patient name is required'),
   body('specialistName').trim().isLength({ min: 1 }).withMessage('Specialist name is required'),
   body('specialty').trim().isLength({ min: 1 }).withMessage('Specialty is required'),
-  body('urgency').isIn(['Low', 'Medium', 'High', 'Urgent']).withMessage('Valid urgency level is required'),
+  body('urgency').isIn(['Low', 'Medium', 'High']).withMessage('Valid urgency level is required'),
   body('referralType').isIn(['inbound', 'outbound']).withMessage('Valid referral type is required'),
   body('externalClinic').optional().trim(),
   body('preferredDate').optional().isISO8601().withMessage('Valid preferred date is required')

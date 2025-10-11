@@ -62,14 +62,13 @@ const SharedReferral = () => {
   const getPriorityColor = (priority) => {
     switch (priority) {
       case "High": 
-      case "Urgent": 
         return "destructive";
       case "Medium": 
         return "warning";
       case "Low": 
-        return "success";
+        return "secondary";
       default: 
-        return "muted";
+        return "secondary";
     }
   };
 
@@ -94,7 +93,6 @@ const SharedReferral = () => {
   const getPriorityIcon = (priority) => {
     switch (priority) {
       case "High":
-      case "Urgent": 
         return AlertCircle;
       case "Medium": 
         return Clock;

@@ -23,7 +23,8 @@ export const ROLE_PERMISSIONS = {
       'invoice-management',
       'email-settings',
       'compliance-alerts',
-      'activity-logs'
+      'activity-logs',
+      'audit-logs'
     ],
     canViewAllPatients: true,
     canManageDoctors: true,

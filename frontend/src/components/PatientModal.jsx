@@ -13,12 +13,15 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { User, Phone, Mail, MapPin, Calendar, Heart, FileText, Plus, X, UserCheck, Share2 } from "lucide-react";
+import { User, Phone, Mail, MapPin, Calendar, FileText, Plus, X, Share2, AlertCircle } from "lucide-react";
 import { appointmentAPI, patientAPI, doctorAPI } from "@/services/api";
 import { useToast } from "@/hooks/use-toast";
+import { validationSchemas, sanitizers, validators } from "@/utils/validation";
+import { useAuditLog } from "@/hooks/useAuditLog";
 
 const PatientModal = ({ isOpen, onClose, onSubmit }) => {
   const { toast } = useToast();
+  const { logComponentAccess, logFormSubmission, logPatientAccess } = useAuditLog();
   const [formData, setFormData] = useState({
     fullName: "",
     dateOfBirth: "",
@@ -31,8 +34,17 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
     occupation: "",
     referringDoctor: "",
     referredClinic: "",
-    governmentId: "",
-    idNumber: "",
+    // New fields from images
+    maritalStatus: "",
+    handDominance: "",
+    nationality: "",
+    aadhaarNumber: "",
+    isUnder18: false,
+    parentGuardian: {
+      name: "",
+      email: "",
+      mobileNumber: ""
+    },
     address: {
       street: "",
       city: "",
@@ -51,12 +63,6 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
       policyNumber: "",
       groupNumber: ""
     },
-    medicalHistory: {
-      conditions: [],
-      allergies: [],
-      medications: [],
-      surgeries: []
-    },
     notes: ""
   });
 
@@ -64,10 +70,6 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
   const [doctors, setDoctors] = useState([]);
   const [doctorsLoading, setDoctorsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [newCondition, setNewCondition] = useState("");
-  const [newAllergy, setNewAllergy] = useState("");
-  const [newMedication, setNewMedication] = useState("");
-  const [newSurgery, setNewSurgery] = useState("");
   
   // File upload states
   const [profileImage, setProfileImage] = useState(null);
@@ -75,12 +77,14 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
   const [governmentDocument, setGovernmentDocument] = useState(null);
   const [governmentDocumentName, setGovernmentDocumentName] = useState("");
 
-  // Load doctors when modal opens
+  // Load doctors when modal opens and log component access
   useEffect(() => {
     if (isOpen) {
       loadDoctors();
+      // Log patient form access
+      logComponentAccess('PatientModal', 'OPEN');
     }
-  }, [isOpen]);
+  }, [isOpen, logComponentAccess]);
 
   const loadDoctors = async () => {
     setDoctorsLoading(true);
@@ -97,50 +101,61 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
     }
   };
 
-  const handleInputChange = (field, value) => {
+  const handleInputChange = (field, value, sanitize = true) => {
+    // Apply sanitization based on field type
+    let sanitizedValue = value;
+    if (sanitize) {
+      switch (field) {
+        case 'phone':
+        case 'parentGuardian.mobileNumber':
+        case 'emergencyContact.phone':
+          sanitizedValue = sanitizers.phone(value);
+          break;
+        case 'aadhaarNumber':
+          sanitizedValue = sanitizers.aadhaar(value);
+          break;
+        case 'uhid':
+          sanitizedValue = sanitizers.uhid(value);
+          break;
+        case 'fullName':
+        case 'parentGuardian.name':
+        case 'emergencyContact.name':
+          sanitizedValue = sanitizers.name(value);
+          break;
+        case 'email':
+        case 'parentGuardian.email':
+          sanitizedValue = sanitizers.email(value);
+          break;
+        case 'address.zipCode':
+          sanitizedValue = sanitizers.numeric(value).slice(0, 6);
+          break;
+        default:
+          sanitizedValue = typeof value === 'string' ? sanitizers.text(value) : value;
+      }
+    }
+    
     if (field.includes('.')) {
       const [parent, child] = field.split('.');
       setFormData(prev => ({
         ...prev,
         [parent]: {
           ...prev[parent],
-          [child]: value
+          [child]: sanitizedValue
         }
       }));
     } else {
       setFormData(prev => ({
         ...prev,
-        [field]: value
+        [field]: sanitizedValue
       }));
     }
+    
     // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: "" }));
     }
   };
 
-  const addItem = (type, value, setter) => {
-    if (value.trim()) {
-      setFormData(prev => ({
-        ...prev,
-        medicalHistory: {
-          ...prev.medicalHistory,
-          [type]: [...prev.medicalHistory[type], value.trim()]
-        }
-      }));
-      setter("");
-    }
-  };
-
-  const removeItem = (type, index) => {
-    setFormData(prev => ({
-      ...prev,
-      medicalHistory: {
-        ...prev.medicalHistory,
-        [type]: prev.medicalHistory[type].filter((_, i) => i !== index)
-      }
-    }));
-  };
 
   // Handle profile image upload
   const handleProfileImageChange = (e) => {
@@ -197,35 +212,138 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
   const validateForm = () => {
     const newErrors = {};
     
-    if (!formData.fullName.trim()) newErrors.fullName = "Full name is required";
+    // Basic field validations
+    const fullNameError = validators.required(formData.fullName, 'Full name') || 
+                         validators.minLength(formData.fullName, 2, 'Full name') ||
+                         validators.maxLength(formData.fullName, 100, 'Full name');
+    if (fullNameError) newErrors.fullName = fullNameError;
+    
     if (!formData.dateOfBirth) newErrors.dateOfBirth = "Date of birth is required";
-    if (!formData.gender) newErrors.gender = "Gender is required";
-    if (!formData.phone.trim()) newErrors.phone = "Phone number is required";
-    if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = "Please enter a valid email address";
-    }
-    if (!formData.password.trim()) {
-      newErrors.password = "Password is required";
-    } else if (formData.password.length < 6) {
-      newErrors.password = "Password must be at least 6 characters long";
+    
+    // Date of birth should not be in the future
+    if (formData.dateOfBirth) {
+      const dobError = validators.futureDate(formData.dateOfBirth);
+      if (dobError) newErrors.dateOfBirth = dobError;
+      
+      // Check if patient is actually under 18 based on DOB
+      const today = new Date();
+      const dob = new Date(formData.dateOfBirth);
+      const age = today.getFullYear() - dob.getFullYear();
+      const monthDiff = today.getMonth() - dob.getMonth();
+      const actualAge = monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate()) ? age - 1 : age;
+      
+      if (formData.isUnder18 && actualAge >= 18) {
+        newErrors.isUnder18 = "Patient's age based on date of birth is 18 or older";
+      }
+      if (!formData.isUnder18 && actualAge < 18) {
+        newErrors.isUnder18 = "Patient's age based on date of birth is under 18. Please check the 'Under 18' option";
+      }
     }
     
-    // New required fields validation
-    if (!formData.uhid.trim()) newErrors.uhid = "UHID is required";
+    if (!formData.gender) newErrors.gender = "Gender is required";
+    
+    // UHID validation
+    const uhidError = validators.required(formData.uhid, 'UHID') || validators.uhid(formData.uhid);
+    if (uhidError) newErrors.uhid = uhidError;
+    
     if (!formData.bloodGroup) newErrors.bloodGroup = "Blood group is required";
-    if (!formData.occupation.trim()) newErrors.occupation = "Occupation is required";
-    if (!formData.governmentId) newErrors.governmentId = "Government ID type is required";
-    if (!formData.idNumber.trim()) newErrors.idNumber = "ID number is required";
+    
+    const occupationError = validators.required(formData.occupation, 'Occupation') ||
+                           validators.maxLength(formData.occupation, 100, 'Occupation');
+    if (occupationError) newErrors.occupation = occupationError;
+    
+    // Password validation
+    const passwordError = validators.required(formData.password, 'Password') ||
+                         validators.password(formData.password);
+    if (passwordError) newErrors.password = passwordError;
+    
+    // Phone and email validation for patients 18 and older
+    if (!formData.isUnder18) {
+      const phoneError = validators.required(formData.phone, 'Phone number') ||
+                        validators.phone(formData.phone);
+      if (phoneError) newErrors.phone = phoneError;
+      
+      if (formData.email) {
+        const emailError = validators.email(formData.email);
+        if (emailError) newErrors.email = emailError;
+      }
+    }
+    
+    // Aadhaar validation (optional but if provided must be valid)
+    if (formData.aadhaarNumber) {
+      const aadhaarError = validators.aadhaar(formData.aadhaarNumber);
+      if (aadhaarError) newErrors.aadhaarNumber = aadhaarError;
+    }
+    
+    // Nationality validation
+    if (formData.nationality) {
+      const nationalityError = validators.maxLength(formData.nationality, 50, 'Nationality');
+      if (nationalityError) newErrors.nationality = nationalityError;
+    }
+    
+    // Parent/Guardian validation for under 18 patients
+    if (formData.isUnder18) {
+      const parentNameError = validators.required(formData.parentGuardian.name, 'Parent/Guardian name') ||
+                             validators.maxLength(formData.parentGuardian.name, 100, 'Parent/Guardian name');
+      if (parentNameError) newErrors['parentGuardian.name'] = parentNameError;
+      
+      const parentEmailError = validators.required(formData.parentGuardian.email, 'Parent/Guardian email') ||
+                              validators.email(formData.parentGuardian.email);
+      if (parentEmailError) newErrors['parentGuardian.email'] = parentEmailError;
+      
+      const parentPhoneError = validators.required(formData.parentGuardian.mobileNumber, 'Parent/Guardian mobile number') ||
+                              validators.phone(formData.parentGuardian.mobileNumber);
+      if (parentPhoneError) newErrors['parentGuardian.mobileNumber'] = parentPhoneError;
+    }
     
     // Address validation
-    if (!formData.address.street.trim()) newErrors['address.street'] = "Street address is required";
-    if (!formData.address.city.trim()) newErrors['address.city'] = "City is required";
-    if (!formData.address.state.trim()) newErrors['address.state'] = "State is required";
-    if (!formData.address.zipCode.trim()) newErrors['address.zipCode'] = "ZIP code is required";
+    const streetError = validators.required(formData.address.street, 'Street address');
+    if (streetError) newErrors['address.street'] = streetError;
+    
+    const cityError = validators.required(formData.address.city, 'City');
+    if (cityError) newErrors['address.city'] = cityError;
+    
+    const stateError = validators.required(formData.address.state, 'State');
+    if (stateError) newErrors['address.state'] = stateError;
+    
+    const zipError = validators.required(formData.address.zipCode, 'ZIP code') ||
+                    validators.zipCode(formData.address.zipCode);
+    if (zipError) newErrors['address.zipCode'] = zipError;
+    
+    // Emergency contact validation (if provided)
+    if (formData.emergencyContact.name || formData.emergencyContact.phone || formData.emergencyContact.relationship) {
+      if (formData.emergencyContact.name && !formData.emergencyContact.phone) {
+        newErrors['emergencyContact.phone'] = "Emergency contact phone is required when name is provided";
+      }
+      if (formData.emergencyContact.phone && !formData.emergencyContact.name) {
+        newErrors['emergencyContact.name'] = "Emergency contact name is required when phone is provided";
+      }
+      if (formData.emergencyContact.phone) {
+        const emergencyPhoneError = validators.phone(formData.emergencyContact.phone);
+        if (emergencyPhoneError) newErrors['emergencyContact.phone'] = emergencyPhoneError;
+      }
+    }
     
     // File validation
-    if (!profileImage) newErrors.profileImage = "Profile image is required";
-    if (!governmentDocument) newErrors.governmentDocument = "Government document is required";
+    if (!profileImage) {
+      newErrors.profileImage = "Profile image is required";
+    } else {
+      const fileSizeError = validators.fileSize(profileImage, 5);
+      if (fileSizeError) newErrors.profileImage = fileSizeError;
+      
+      const fileTypeError = validators.fileType(profileImage, ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']);
+      if (fileTypeError) newErrors.profileImage = fileTypeError;
+    }
+    
+    if (!governmentDocument) {
+      newErrors.governmentDocument = "Government document is required";
+    } else {
+      const fileSizeError = validators.fileSize(governmentDocument, 10);
+      if (fileSizeError) newErrors.governmentDocument = fileSizeError;
+      
+      const fileTypeError = validators.fileType(governmentDocument, ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'application/pdf']);
+      if (fileTypeError) newErrors.governmentDocument = fileTypeError;
+    }
 
     setErrors(newErrors);
     console.log('Validation errors:', newErrors);
@@ -264,8 +382,20 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
         formDataToSend.append('occupation', formData.occupation.trim());
         formDataToSend.append('referringDoctor', formData.referringDoctor.trim());
         formDataToSend.append('referredClinic', formData.referredClinic.trim());
-        formDataToSend.append('governmentId', formData.governmentId);
-        formDataToSend.append('idNumber', formData.idNumber.trim());
+        
+        // Add new fields
+        formDataToSend.append('maritalStatus', formData.maritalStatus);
+        formDataToSend.append('handDominance', formData.handDominance);
+        formDataToSend.append('nationality', formData.nationality.trim());
+        formDataToSend.append('aadhaarNumber', formData.aadhaarNumber.trim());
+        formDataToSend.append('isUnder18', formData.isUnder18);
+        
+        // Add parent/guardian information as JSON string
+        formDataToSend.append('parentGuardian', JSON.stringify({
+          name: formData.parentGuardian.name.trim(),
+          email: formData.parentGuardian.email.trim(),
+          mobileNumber: formData.parentGuardian.mobileNumber.trim()
+        }));
         
         // Add address as JSON string (easier for backend to parse)
         formDataToSend.append('address', JSON.stringify({
@@ -290,13 +420,6 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
           groupNumber: formData.insurance.groupNumber.trim()
         }));
         
-        // Add medical history as JSON string
-        formDataToSend.append('medicalHistory', JSON.stringify({
-          conditions: formData.medicalHistory.conditions,
-          allergies: formData.medicalHistory.allergies,
-          medications: formData.medicalHistory.medications,
-          surgeries: formData.medicalHistory.surgeries
-        }));
         
         // Add assigned doctors as JSON string
         formDataToSend.append('assignedDoctors', JSON.stringify(formData.assignedDoctors));
@@ -314,6 +437,10 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
         const response = await patientAPI.create(formDataToSend);
         const created = response.patient || response;
         
+        // Log successful patient creation
+        await logFormSubmission('PATIENT', 'CREATE', created._id || created.id, created._id || created.id);
+        await logPatientAccess(created._id || created.id, formData.fullName, 'CREATE');
+        
         toast({
           title: "Patient Added Successfully!",
           description: `${formData.fullName} has been added to the system.`,
@@ -321,6 +448,11 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
         
         onSubmit(created);
         handleClose();
+        
+        // Reload the page to refresh the data
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
       } catch (error) {
         console.error('Error creating patient:', error);
         toast({
@@ -350,8 +482,17 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
       occupation: "",
       referringDoctor: "",
       referredClinic: "",
-      governmentId: "",
-      idNumber: "",
+      // New fields from images
+      maritalStatus: "",
+      handDominance: "",
+      nationality: "",
+      aadhaarNumber: "",
+      isUnder18: false,
+      parentGuardian: {
+        name: "",
+        email: "",
+        mobileNumber: ""
+      },
       address: {
         street: "",
         city: "",
@@ -370,12 +511,6 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
         policyNumber: "",
         groupNumber: ""
       },
-      medicalHistory: {
-        conditions: [],
-        allergies: [],
-        medications: [],
-        surgeries: []
-      },
       notes: ""
     });
     
@@ -388,10 +523,6 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
     // Reset other states
     setErrors({});
     setSubmitting(false);
-    setNewCondition("");
-    setNewAllergy("");
-    setNewMedication("");
-    setNewSurgery("");
     
     onClose();
   };
@@ -423,14 +554,16 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
           </div>
         )}
 
-        <div className={`space-y-6 ${submitting ? 'pointer-events-none opacity-50' : ''}`}>
+        <div className={`space-y-8 ${submitting ? 'pointer-events-none opacity-50' : ''}`}>
           {/* Personal Information */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
-              <User className="w-4 h-4" />
+          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+            <h3 className="text-xl flex items-center gap-3 mb-6 text-gray-800">
+              <div className="p-2 bg-gray-600 rounded-lg">
+                <User className="w-5 h-5 text-white" />
+              </div>
               Personal Information
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <div>
                 <Label htmlFor="fullName">Full Name *</Label>
                 <Input
@@ -514,6 +647,61 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                 />
                 {errors.occupation && <p className="text-sm text-red-500 mt-1">{errors.occupation}</p>}
               </div>
+              
+              <div>
+                <Label htmlFor="maritalStatus">Marital Status</Label>
+                <Select value={formData.maritalStatus} onValueChange={(value) => handleInputChange("maritalStatus", value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select marital status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Single">Single</SelectItem>
+                    <SelectItem value="Married">Married</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div>
+                <Label htmlFor="handDominance">Hand Dominance</Label>
+                <Select value={formData.handDominance} onValueChange={(value) => handleInputChange("handDominance", value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select hand dominance" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Right">Right</SelectItem>
+                    <SelectItem value="Left">Left</SelectItem>
+                    <SelectItem value="Ambidextrous">Ambidextrous</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div>
+                <Label htmlFor="nationality">Nationality</Label>
+                <Input
+                  id="nationality"
+                  value={formData.nationality}
+                  onChange={(e) => handleInputChange("nationality", e.target.value)}
+                  placeholder="Enter nationality"
+                />
+              </div>
+              
+              <div>
+                <Label htmlFor="aadhaarNumber">Aadhaar Number (12-Digit Numeric Input)</Label>
+                <Input
+                  id="aadhaarNumber"
+                  value={formData.aadhaarNumber}
+                  onChange={(e) => handleInputChange("aadhaarNumber", e.target.value)}
+                  placeholder="Enter 12-digit Aadhaar number"
+                  className={errors.aadhaarNumber ? "border-red-500" : ""}
+                  maxLength={12}
+                />
+                {errors.aadhaarNumber && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <AlertCircle className="w-4 h-4 text-red-500" />
+                    <p className="text-sm text-red-500">{errors.aadhaarNumber}</p>
+                  </div>
+                )}
+              </div>
 
               <div>
                 <Label htmlFor="assignedDoctors">Assigned Doctors</Label>
@@ -524,7 +712,7 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                     }
                   }}>
                     <SelectTrigger>
-                      <UserCheck className="w-4 h-4 mr-2" />
+                      <User className="w-4 h-4 mr-2" />
                       <SelectValue placeholder={doctorsLoading ? "Loading doctors..." : "Select doctors (optional)"} />
                     </SelectTrigger>
                     <SelectContent>
@@ -573,37 +761,54 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
             </div>
           </div>
 
-          {/* Contact Information */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
-              <Phone className="w-4 h-4" />
-              Contact Information
+          {/* Login Information */}
+          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+            <h3 className="text-xl flex items-center gap-3 mb-6 text-gray-800">
+              <div className="p-2 bg-gray-600 rounded-lg">
+                <Phone className="w-5 h-5 text-white" />
+              </div>
+              Login Information
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="phone">Phone Number *</Label>
-                <Input
-                  id="phone"
-                  value={formData.phone}
-                  onChange={(e) => handleInputChange("phone", e.target.value)}
-                  placeholder="Enter phone number"
-                  className={errors.phone ? "border-red-500" : ""}
-                />
-                {errors.phone && <p className="text-sm text-red-500 mt-1">{errors.phone}</p>}
-              </div>
-              
-              <div>
-                <Label htmlFor="email">Email Address</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => handleInputChange("email", e.target.value)}
-                  placeholder="Enter email address"
-                  className={errors.email ? "border-red-500" : ""}
-                />
-                {errors.email && <p className="text-sm text-red-500 mt-1">{errors.email}</p>}
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {!formData.isUnder18 && (
+                <>
+                  <div>
+                    <Label htmlFor="phone">Phone Number (If {'>'} 18) *</Label>
+                    <Input
+                      id="phone"
+                      value={formData.phone}
+                      onChange={(e) => handleInputChange("phone", e.target.value)}
+                      placeholder="Enter 10-digit phone number"
+                      className={errors.phone ? "border-red-500" : ""}
+                      maxLength={10}
+                    />
+                    {errors.phone && (
+                      <div className="flex items-center gap-1 mt-1">
+                        <AlertCircle className="w-4 h-4 text-red-500" />
+                        <p className="text-sm text-red-500">{errors.phone}</p>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="email">Email (If {'>'} 18)</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => handleInputChange("email", e.target.value)}
+                      placeholder="Enter email address"
+                      className={errors.email ? "border-red-500" : ""}
+                    />
+                    {errors.email && (
+                      <div className="flex items-center gap-1 mt-1">
+                        <AlertCircle className="w-4 h-4 text-red-500" />
+                        <p className="text-sm text-red-500">{errors.email}</p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
               
               <div>
                 <Label htmlFor="password">Password <span className="text-red-500">*</span></Label>
@@ -612,7 +817,7 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                   type="password"
                   value={formData.password}
                   onChange={(e) => handleInputChange("password", e.target.value)}
-                  placeholder="Enter password (min. 6 characters)"
+                  placeholder="Enter password (min. 8 chars, uppercase, lowercase, number)"
                   className={errors.password ? "border-red-500" : ""}
                   required
                 />
@@ -621,13 +826,85 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
             </div>
           </div>
 
+          {/* Under 18 and Parent/Guardian Information */}
+          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+            <h3 className="text-xl flex items-center gap-3 mb-6 text-gray-800">
+              <div className="p-2 bg-gray-600 rounded-lg">
+                <User className="w-5 h-5 text-white" />
+              </div>
+              Age Verification & Parent/Guardian Details
+            </h3>
+            
+            <div className="flex items-center space-x-3 mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <input
+                type="checkbox"
+                id="isUnder18"
+                checked={formData.isUnder18}
+                onChange={(e) => handleInputChange("isUnder18", e.target.checked)}
+                className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <Label htmlFor="isUnder18" className="text-base font-medium text-gray-700">
+                Patient is under 18 years old
+              </Label>
+            </div>
+            
+            {formData.isUnder18 && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 p-6 bg-blue-50 rounded-xl border border-blue-200">
+                <div>
+                  <Label htmlFor="parentGuardianName">Parent/Guardian Name *</Label>
+                  <Input
+                    id="parentGuardianName"
+                    value={formData.parentGuardian.name}
+                    onChange={(e) => handleInputChange("parentGuardian.name", e.target.value)}
+                    placeholder="Enter parent/guardian name"
+                    className={errors['parentGuardian.name'] ? "border-red-500" : ""}
+                  />
+                  {errors['parentGuardian.name'] && <p className="text-sm text-red-500 mt-1">{errors['parentGuardian.name']}</p>}
+                </div>
+                
+                <div>
+                  <Label htmlFor="parentGuardianEmail">Parent Email (If {'<'}18 age) *</Label>
+                  <Input
+                    id="parentGuardianEmail"
+                    type="email"
+                    value={formData.parentGuardian.email}
+                    onChange={(e) => handleInputChange("parentGuardian.email", e.target.value)}
+                    placeholder="Enter parent/guardian email"
+                    className={errors['parentGuardian.email'] ? "border-red-500" : ""}
+                  />
+                  {errors['parentGuardian.email'] && <p className="text-sm text-red-500 mt-1">{errors['parentGuardian.email']}</p>}
+                </div>
+                
+                <div>
+                  <Label htmlFor="parentGuardianMobile">Parent Mobile No. (If {'<'}18 age) *</Label>
+                  <Input
+                    id="parentGuardianMobile"
+                    value={formData.parentGuardian.mobileNumber}
+                    onChange={(e) => handleInputChange("parentGuardian.mobileNumber", e.target.value)}
+                    placeholder="Enter 10-digit mobile number"
+                    className={errors['parentGuardian.mobileNumber'] ? "border-red-500" : ""}
+                    maxLength={10}
+                  />
+                  {errors['parentGuardian.mobileNumber'] && (
+                    <div className="flex items-center gap-1 mt-1">
+                      <AlertCircle className="w-4 h-4 text-red-500" />
+                      <p className="text-sm text-red-500">{errors['parentGuardian.mobileNumber']}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* File Uploads */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
-              <FileText className="w-4 h-4" />
+          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+            <h3 className="text-xl flex items-center gap-3 mb-6 text-gray-800">
+              <div className="p-2 bg-gray-600 rounded-lg">
+                <FileText className="w-5 h-5 text-white" />
+              </div>
               Documents & Images
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <Label htmlFor="profileImage">Profile Image *</Label>
                 <div className="flex flex-col gap-2">
@@ -672,52 +949,16 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
             </div>
           </div>
 
-          {/* Government ID Information */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
-              <UserCheck className="w-4 h-4" />
-              Government Identification
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="governmentId">Government ID Type *</Label>
-                <Select value={formData.governmentId} onValueChange={(value) => handleInputChange("governmentId", value)}>
-                  <SelectTrigger className={errors.governmentId ? "border-red-500" : ""}>
-                    <SelectValue placeholder="Select ID type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Aadhaar Card">Aadhaar Card</SelectItem>
-                    <SelectItem value="PAN Card">PAN Card</SelectItem>
-                    <SelectItem value="Passport">Passport</SelectItem>
-                    <SelectItem value="Driving License">Driving License</SelectItem>
-                    <SelectItem value="Voter ID">Voter ID</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-                {errors.governmentId && <p className="text-sm text-red-500 mt-1">{errors.governmentId}</p>}
-              </div>
-              
-              <div>
-                <Label htmlFor="idNumber">ID Number *</Label>
-                <Input
-                  id="idNumber"
-                  value={formData.idNumber}
-                  onChange={(e) => handleInputChange("idNumber", e.target.value)}
-                  placeholder="Enter ID number"
-                  className={errors.idNumber ? "border-red-500" : ""}
-                />
-                {errors.idNumber && <p className="text-sm text-red-500 mt-1">{errors.idNumber}</p>}
-              </div>
-            </div>
-          </div>
 
           {/* Referral Information */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
-              <Share2 className="w-4 h-4" />
+          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+            <h3 className="text-xl flex items-center gap-3 mb-6 text-gray-800">
+              <div className="p-2 bg-gray-600 rounded-lg">
+                <Share2 className="w-5 h-5 text-white" />
+              </div>
               Referral Information (Optional)
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <Label htmlFor="referringDoctor">Referring Doctor</Label>
                 <Input
@@ -741,12 +982,15 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
           </div>
 
           {/* Address Information */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
-              <MapPin className="w-4 h-4" />
+          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+            <h3 className="text-xl flex items-center gap-3 mb-6 text-gray-800">
+              <div className="p-2 bg-gray-600 rounded-lg">
+                <MapPin className="w-5 h-5 text-white" />
+              </div>
               Address Information
+              <span className="text-sm text-gray-500 ml-2">(Required)</span>
             </h3>
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div>
                 <Label htmlFor="address.street">Street Address *</Label>
                 <Input
@@ -759,7 +1003,7 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                 {errors['address.street'] && <p className="text-sm text-red-500 mt-1">{errors['address.street']}</p>}
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div>
                   <Label htmlFor="address.city">City *</Label>
                   <Input
@@ -800,12 +1044,14 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
           </div>
 
           {/* Emergency Contact */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
-              <User className="w-4 h-4" />
+          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+            <h3 className="text-xl flex items-center gap-3 mb-6 text-gray-800">
+              <div className="p-2 bg-gray-600 rounded-lg">
+                <User className="w-5 h-5 text-white" />
+              </div>
               Emergency Contact
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
                 <Label htmlFor="emergencyName">Contact Name</Label>
                 <Input
@@ -839,12 +1085,14 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
           </div>
 
           {/* Insurance Information */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
-              <FileText className="w-4 h-4" />
+          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+            <h3 className="text-xl flex items-center gap-3 mb-6 text-gray-800">
+              <div className="p-2 bg-gray-600 rounded-lg">
+                <FileText className="w-5 h-5 text-white" />
+              </div>
               Insurance Information
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
                 <Label htmlFor="insuranceProvider">Insurance Provider</Label>
                 <Input
@@ -877,190 +1125,61 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
             </div>
           </div>
 
-          {/* Medical History */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold flex items-center gap-2">
-              <Heart className="w-4 h-4" />
-              Medical History
-            </h3>
-            
-            {/* Medical Conditions */}
-            <div className="space-y-2">
-              <Label>Medical Conditions</Label>
-              <div className="flex gap-2">
-                <Input
-                  value={newCondition}
-                  onChange={(e) => setNewCondition(e.target.value)}
-                  placeholder="Add medical condition"
-                  onKeyPress={(e) => e.key === 'Enter' && addItem('conditions', newCondition, setNewCondition)}
-                />
-                <Button 
-                  type="button" 
-                  size="sm" 
-                  onClick={() => addItem('conditions', newCondition, setNewCondition)}
-                >
-                  <Plus className="w-4 h-4" />
-                </Button>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {formData.medicalHistory.conditions.map((condition, index) => (
-                  <Badge key={index} variant="secondary" className="gap-1">
-                    {condition}
-                    <button
-                      type="button"
-                      onClick={() => removeItem('conditions', index)}
-                      className="ml-1 hover:text-red-500"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-            </div>
-
-            {/* Allergies */}
-            <div className="space-y-2">
-              <Label>Allergies</Label>
-              <div className="flex gap-2">
-                <Input
-                  value={newAllergy}
-                  onChange={(e) => setNewAllergy(e.target.value)}
-                  placeholder="Add allergy"
-                  onKeyPress={(e) => e.key === 'Enter' && addItem('allergies', newAllergy, setNewAllergy)}
-                />
-                <Button 
-                  type="button" 
-                  size="sm" 
-                  onClick={() => addItem('allergies', newAllergy, setNewAllergy)}
-                >
-                  <Plus className="w-4 h-4" />
-                </Button>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {formData.medicalHistory.allergies.map((allergy, index) => (
-                  <Badge key={index} variant="destructive" className="gap-1">
-                    {allergy}
-                    <button
-                      type="button"
-                      onClick={() => removeItem('allergies', index)}
-                      className="ml-1 hover:text-red-500"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-            </div>
-
-            {/* Current Medications */}
-            <div className="space-y-2">
-              <Label>Current Medications</Label>
-              <div className="flex gap-2">
-                <Input
-                  value={newMedication}
-                  onChange={(e) => setNewMedication(e.target.value)}
-                  placeholder="Add medication"
-                  onKeyPress={(e) => e.key === 'Enter' && addItem('medications', newMedication, setNewMedication)}
-                />
-                <Button 
-                  type="button" 
-                  size="sm" 
-                  onClick={() => addItem('medications', newMedication, setNewMedication)}
-                >
-                  <Plus className="w-4 h-4" />
-                </Button>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {formData.medicalHistory.medications.map((medication, index) => (
-                  <Badge key={index} variant="outline" className="gap-1">
-                    {medication}
-                    <button
-                      type="button"
-                      onClick={() => removeItem('medications', index)}
-                      className="ml-1 hover:text-red-500"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-            </div>
-
-            {/* Previous Surgeries */}
-            <div className="space-y-2">
-              <Label>Previous Surgeries</Label>
-              <div className="flex gap-2">
-                <Input
-                  value={newSurgery}
-                  onChange={(e) => setNewSurgery(e.target.value)}
-                  placeholder="Add surgery"
-                  onKeyPress={(e) => e.key === 'Enter' && addItem('surgeries', newSurgery, setNewSurgery)}
-                />
-                <Button 
-                  type="button" 
-                  size="sm" 
-                  onClick={() => addItem('surgeries', newSurgery, setNewSurgery)}
-                >
-                  <Plus className="w-4 h-4" />
-                </Button>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {formData.medicalHistory.surgeries.map((surgery, index) => (
-                  <Badge key={index} variant="secondary" className="gap-1">
-                    {surgery}
-                    <button
-                      type="button"
-                      onClick={() => removeItem('surgeries', index)}
-                      className="ml-1 hover:text-red-500"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          </div>
 
           {/* Additional Notes */}
-          <div className="space-y-2">
-            <Label htmlFor="notes">Additional Notes</Label>
+          <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
+            <h3 className="text-xl flex items-center gap-3 mb-6 text-gray-800">
+              <div className="p-2 bg-gray-600 rounded-lg">
+                <FileText className="w-5 h-5 text-white" />
+              </div>
+              Additional Notes
+            </h3>
             <Textarea
               id="notes"
               value={formData.notes}
               onChange={(e) => handleInputChange("notes", e.target.value)}
               placeholder="Enter any additional notes or special considerations"
-              rows={3}
+              rows={4}
+              className="w-full resize-none"
             />
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={handleClose} disabled={submitting}>
-            Cancel
-          </Button>
-          <Button 
-            onClick={(e) => {
-              console.log('Button clicked - event triggered');
-              e.preventDefault();
-              e.stopPropagation();
-              handleSubmit();
-            }} 
-            className="gradient-button"
-            type="button"
-            disabled={submitting}
-          >
-            {submitting ? (
-              <>
-                <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                Creating Patient...
-              </>
-            ) : (
-              <>
-                <Plus className="w-4 h-4 mr-2" />
-                Add Patient
-              </>
-            )}
-          </Button>
+        <DialogFooter className="bg-gradient-to-r from-gray-50 to-slate-50 p-6 rounded-b-xl border-t border-gray-200">
+          <div className="flex gap-4 w-full justify-end">
+            <Button 
+              variant="outline" 
+              onClick={handleClose} 
+              disabled={submitting}
+              className="px-8 py-3 text-base font-medium border-2 hover:bg-gray-50"
+            >
+              <X className="w-4 h-4 mr-2" />
+              Cancel
+            </Button>
+            <Button 
+              onClick={(e) => {
+                console.log('Button clicked - event triggered');
+                e.preventDefault();
+                e.stopPropagation();
+                handleSubmit();
+              }} 
+              className="px-8 py-3 text-base font-medium bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all duration-200"
+              type="button"
+              disabled={submitting}
+            >
+              {submitting ? (
+                <>
+                  <div className="w-5 h-5 mr-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Creating Patient...
+                </>
+              ) : (
+                <>
+                  <Plus className="w-5 h-5 mr-3" />
+                  Add Patient
+                </>
+              )}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

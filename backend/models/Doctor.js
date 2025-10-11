@@ -62,9 +62,14 @@ const doctorSchema = new mongoose.Schema({
   },
   about: {
     type: String,
+    required: [true, 'About section is required'],
     trim: true,
     maxlength: [1000, 'About section cannot exceed 1000 characters']
   },
+  languages: [{
+    type: String,
+    trim: true
+  }],
   role: {
     type: String,
     enum: ['doctor', 'admin'],

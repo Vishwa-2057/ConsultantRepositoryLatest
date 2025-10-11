@@ -18,7 +18,7 @@ const validateAppointment = [
   body('date').isISO8601().withMessage('Valid appointment date is required'),
   body('time').trim().isLength({ min: 1 }).withMessage('Appointment time is required'),
   body('duration').optional().isInt({ min: 15, max: 240 }).withMessage('Duration must be between 15 and 240 minutes'),
-  body('priority').optional().isIn(['low', 'normal', 'high', 'urgent']).withMessage('Valid priority level is required')
+  body('priority').optional().isIn(['low', 'normal', 'high']).withMessage('Valid priority level is required')
 ];
 
 // GET /api/appointments/check-conflicts - Check for appointment conflicts

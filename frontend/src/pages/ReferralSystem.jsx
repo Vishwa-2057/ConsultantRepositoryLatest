@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import CreateReferralModal from "@/components/CreateReferralModal";
 import { useToast } from "@/hooks/use-toast";
 import { referralAPI } from "@/services/api";
@@ -69,6 +69,14 @@ const ReferralSystem = () => {
   const [inboundReferrals, setInboundReferrals] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("outbound");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [pageSize, setPageSize] = useState(() => {
+    const saved = localStorage.getItem('referralSystem_pageSize');
+    return saved ? parseInt(saved) : 10;
+  });
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [stats, setStats] = useState({
     outboundPending: 0,
     inboundNew: 0,
@@ -98,7 +106,7 @@ const ReferralSystem = () => {
     }).length;
 
     const highPriority = referrals.filter(r => 
-      r.urgency === 'High' || r.urgency === 'Urgent'
+      r.urgency === 'High'
     ).length;
 
     return {
@@ -113,7 +121,12 @@ const ReferralSystem = () => {
   const fetchReferrals = async () => {
     try {
       setIsLoading(true);
-      const response = await referralAPI.getAll(1, 100);
+      const filters = {};
+      if (searchTerm.trim()) {
+        filters.search = searchTerm.trim();
+      }
+      
+      const response = await referralAPI.getAll(currentPage, pageSize, filters);
       
       // Separate outbound and inbound referrals based on referralType field
       const referrals = response.referrals || [];
@@ -122,6 +135,15 @@ const ReferralSystem = () => {
       
       setOutboundReferrals(outbound);
       setInboundReferrals(inbound);
+      
+      // Set pagination info
+      if (response.pagination) {
+        setTotalPages(response.pagination.totalPages || 1);
+        setTotalCount(response.pagination.totalCount || 0);
+      } else {
+        setTotalPages(1);
+        setTotalCount(referrals.length);
+      }
       
       // Calculate and set statistics
       const calculatedStats = calculateStats(referrals);
@@ -136,14 +158,25 @@ const ReferralSystem = () => {
       const allMockReferrals = [...mockOutboundReferrals, ...mockInboundReferrals];
       const mockStats = calculateStats(allMockReferrals);
       setStats(mockStats);
+      setTotalPages(1);
+      setTotalCount(allMockReferrals.length);
     } finally {
       setIsLoading(false);
     }
   };
 
+  // Save pageSize to localStorage when it changes (skip initial load)
+  useEffect(() => {
+    if (isInitialLoad) {
+      setIsInitialLoad(false);
+      return;
+    }
+    localStorage.setItem('referralSystem_pageSize', pageSize.toString());
+  }, [pageSize, isInitialLoad]);
+
   useEffect(() => {
     fetchReferrals();
-  }, []);
+  }, [currentPage, pageSize, searchTerm]);
 
   const handleCreateSuccess = (newReferral) => {
     // Add to appropriate list based on referral type
@@ -167,6 +200,11 @@ const ReferralSystem = () => {
       description: "Referral created successfully!",
     });
     setIsCreateModalOpen(false);
+    
+    // Reload the page to refresh the data
+    setTimeout(() => {
+      window.location.reload();
+    }, 1000);
   };
 
   const handleCompleteReferral = async (referralId) => {
@@ -349,6 +387,18 @@ const ReferralSystem = () => {
     )
   );
 
+  // Combine both inbound and outbound referrals for unified display
+  const filteredReferrals = [
+    ...filteredOutbound.map(ref => ({ ...ref, type: 'outbound' })),
+    ...filteredInbound.map(ref => ({ ...ref, type: 'inbound' }))
+  ].filter(referral => 
+    referral.patientName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    referral.specialistName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    referral.reason?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    referral.externalClinic?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    referral.hospital?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -366,17 +416,59 @@ const ReferralSystem = () => {
         onSuccess={handleCreateSuccess}
       />
       
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-muted-foreground">Manage inbound and outbound patient referrals</p>
+      {/* Search, Stats and Actions - Single Line */}
+      <div className="flex items-center justify-between gap-6 bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+        {/* Search Bar */}
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <Input
+            placeholder="Search referrals by patient name, doctor, or reason..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10 h-10 bg-white border-gray-200 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          />
         </div>
-        <div className="flex gap-2">
+        
+        {/* Stats */}
+        <div className="flex items-center space-x-6">
+          <div className="flex items-center space-x-2">
+            <div className="p-1.5 bg-blue-100 rounded-full">
+              <ArrowRight className="w-4 h-4 text-blue-600" />
+            </div>
+            <span className="text-sm text-blue-600 font-medium">
+              Outbound: {stats.outboundPending || 0}
+            </span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="p-1.5 bg-green-100 rounded-full">
+              <ArrowLeft className="w-4 h-4 text-green-600" />
+            </div>
+            <span className="text-sm text-green-600 font-medium">
+              Inbound: {stats.inboundNew || 0}
+            </span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="p-1.5 bg-purple-100 rounded-full">
+              <CheckCircle className="w-4 h-4 text-purple-600" />
+            </div>
+            <span className="text-sm text-purple-600 font-medium">
+              Completed: {stats.completedThisMonth || 0}
+            </span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="p-1.5 bg-red-100 rounded-full">
+              <AlertCircle className="w-4 h-4 text-red-600" />
+            </div>
+            <span className="text-sm text-red-600 font-medium">
+              High Priority: {stats.highPriority || 0}
+            </span>
+          </div>
+        </div>
+        
+        {/* Actions */}
+        <div className="flex items-center gap-3">
           <Button 
-            className="shadow-lg"
-            style={{ backgroundColor: '#0059B3', color: 'white' }}
-            onMouseEnter={(e) => e.target.style.backgroundColor = '#004494'}
-            onMouseLeave={(e) => e.target.style.backgroundColor = '#0059B3'}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
             onClick={() => setIsCreateModalOpen(true)}
           >
             <Plus className="w-4 h-4 mr-2" />
@@ -385,116 +477,73 @@ const ReferralSystem = () => {
         </div>
       </div>
 
-      {/* Search */}
-      <Card className="border-0 shadow-soft">
-        <CardContent className="p-6">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Search referrals by patient name, doctor, or reason..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+      {/* Referrals List */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+        <div className="px-6 py-4 border-b border-gray-100">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <h2 className="text-xl font-semibold text-gray-900">Referrals</h2>
+              <div className="flex items-center space-x-2">
+                <Badge variant="secondary" className="px-3 py-1 text-sm font-medium bg-blue-100 text-blue-700 border-0">
+                  {filteredReferrals.length}
+                </Badge>
+              </div>
+            </div>
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-lg border">
+                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                <span className="text-sm font-medium text-gray-700">
+                  {((currentPage - 1) * pageSize) + 1}-{Math.min(currentPage * pageSize, totalCount)} of {totalCount}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 px-2.5 py-1 bg-white rounded-md border border-gray-200">
+                <span className="text-xs font-medium text-gray-500">Show</span>
+                <Select value={pageSize.toString()} onValueChange={(value) => {
+                  setPageSize(parseInt(value));
+                  setCurrentPage(1);
+                }}>
+                  <SelectTrigger className="w-12 h-6 text-xs border-0 bg-transparent p-0 focus:ring-0">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="5">5</SelectItem>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="20">20</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card 
-          className="border-0 shadow-soft cursor-pointer hover:shadow-lg transition-shadow" 
-          onClick={() => setActiveTab("outbound")}
-        >
-          <CardContent className="p-4 text-center">
-            <div className="w-8 h-8 bg-gradient-primary rounded-full flex items-center justify-center mx-auto mb-2">
-              <ArrowRight className="w-4 h-4 text-white" />
+        </div>
+        <div className="p-6">
+          {isLoading ? (
+            <div className="flex items-center justify-center h-32">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
             </div>
-            <p className="text-2xl font-bold text-foreground">{stats.outboundPending}</p>
-            <p className="text-sm text-muted-foreground">Outbound Pending</p>
-          </CardContent>
-        </Card>
-
-        <Card 
-          className="border-0 shadow-soft cursor-pointer hover:shadow-lg transition-shadow" 
-          onClick={() => setActiveTab("inbound")}
-        >
-          <CardContent className="p-4 text-center">
-            <div className="w-8 h-8 bg-secondary rounded-full flex items-center justify-center mx-auto mb-2">
-              <ArrowLeft className="w-4 h-4 text-white" />
+          ) : filteredReferrals.length === 0 ? (
+            <div className="flex items-center justify-center h-32">
+              <p className="text-muted-foreground">
+                {searchTerm ? "No referrals found matching your search." : "No referrals found."}
+              </p>
             </div>
-            <p className="text-2xl font-bold text-foreground">{stats.inboundNew}</p>
-            <p className="text-sm text-muted-foreground">Inbound New</p>
-          </CardContent>
-        </Card>
-
-        <Card 
-          className="border-0 shadow-soft cursor-pointer hover:shadow-lg transition-shadow"
-          onClick={() => {
-            // Show completed referrals - could switch to a filtered view
-            toast({
-              title: "Completed Referrals",
-              description: `${stats.completedThisMonth} referrals completed this month`,
-            });
-          }}
-        >
-          <CardContent className="p-4 text-center">
-            <div className="w-8 h-8 bg-success rounded-full flex items-center justify-center mx-auto mb-2">
-              <CheckCircle className="w-4 h-4 text-white" />
-            </div>
-            <p className="text-2xl font-bold text-foreground">{stats.completedThisMonth}</p>
-            <p className="text-sm text-muted-foreground">Completed This Month</p>
-          </CardContent>
-        </Card>
-
-        <Card 
-          className="border-0 shadow-soft cursor-pointer hover:shadow-lg transition-shadow"
-          onClick={() => {
-            // Show high priority referrals - could switch to a filtered view
-            toast({
-              title: "High Priority Referrals",
-              description: `${stats.highPriority} high priority referrals require attention`,
-            });
-          }}
-        >
-          <CardContent className="p-4 text-center">
-            <div className="w-8 h-8 bg-warning rounded-full flex items-center justify-center mx-auto mb-2">
-              <AlertCircle className="w-4 h-4 text-white" />
-            </div>
-            <p className="text-2xl font-bold text-foreground">{stats.highPriority}</p>
-            <p className="text-sm text-muted-foreground">High Priority</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="outbound">
-            <ArrowRight className="w-4 h-4 mr-2" />
-            Outbound Referrals
-          </TabsTrigger>
-          <TabsTrigger value="inbound">
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Inbound Referrals
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="outbound">
-          <Card className="border-0 shadow-soft">
-            <CardHeader>
-              <CardTitle>Outbound Referrals</CardTitle>
-              <CardDescription>Patients referred to other specialists</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {filteredOutbound.map((referral) => {
-                  const PriorityIcon = getPriorityIcon(referral.urgency);
-                  return (
-                    <div key={referral._id || referral.id} className="p-4 rounded-lg border border-border hover:bg-muted/30 transition-colors">
+          ) : (
+            <div className="space-y-2">
+              {filteredReferrals.map((referral) => {
+                const PriorityIcon = getPriorityIcon(referral.urgency);
+                const isOutbound = referral.type === 'outbound' || referral.direction === 'outbound';
+                return (
+                  <div key={referral._id || referral.id} className="p-4 rounded-lg bg-gray-50 hover:bg-gray-100 transition-all duration-200 border-0">
                       <div className="flex items-start justify-between">
                         <div className="flex items-start space-x-4">
-                          <div className="w-12 h-12 bg-gradient-primary rounded-full flex items-center justify-center">
-                            <ArrowRight className="w-6 h-6 text-white" />
+                          <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                            isOutbound ? 'bg-gradient-to-r from-blue-500 to-blue-600' : 'bg-gradient-to-r from-green-500 to-green-600'
+                          }`}>
+                            {isOutbound ? (
+                              <ArrowRight className="w-6 h-6 text-white" />
+                            ) : (
+                              <ArrowLeft className="w-6 h-6 text-white" />
+                            )}
                           </div>
                           <div className="flex-1">
                             <h3 className="font-semibold text-foreground">{referral.patientName}</h3>
@@ -557,7 +606,7 @@ const ReferralSystem = () => {
                             <Button 
                               variant="ghost" 
                               size="sm"
-                              onClick={() => handleDownloadReferralPDF(referral, 'outbound')}
+                              onClick={() => handleDownloadReferralPDF(referral, isOutbound ? 'outbound' : 'inbound')}
                               title="Download Referral PDF"
                             >
                               <Download className="w-4 h-4" />
@@ -568,102 +617,83 @@ const ReferralSystem = () => {
                     </div>
                   );
                 })}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+            </div>
+          )}
+        </div>
+      </div>
 
-        <TabsContent value="inbound">
-          <Card className="border-0 shadow-soft">
-            <CardHeader>
-              <CardTitle>Inbound Referrals</CardTitle>
-              <CardDescription>Patients referred to your practice</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {filteredInbound.map((referral) => {
-                  const PriorityIcon = getPriorityIcon(referral.urgency);
-                  return (
-                    <div key={referral._id || referral.id} className="p-4 rounded-lg border border-border hover:bg-muted/30 transition-colors">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-start space-x-4">
-                          <div className="w-12 h-12 bg-secondary rounded-full flex items-center justify-center">
-                            <ArrowLeft className="w-6 h-6 text-white" />
-                          </div>
-                          <div className="flex-1">
-                            <h3 className="font-semibold text-foreground">{referral.patientName}</h3>
-                            <p className="text-sm text-muted-foreground mb-2">ID: {referral.id}</p>
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm mb-3">
-                              <div className="flex items-center space-x-2">
-                                <Hospital className="w-4 h-4 text-muted-foreground" />
-                                <span><strong>From:</strong> {referral.referringProvider?.name || 'Unknown Provider'}</span>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                <User className="w-4 h-4 text-muted-foreground" />
-                                <span><strong>To:</strong> {referral.specialistName}</span>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                <FileText className="w-4 h-4 text-muted-foreground" />
-                                <span>{referral.specialty}</span>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                <Hospital className="w-4 h-4 text-muted-foreground" />
-                                <span>{referral.hospital}</span>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                <Calendar className="w-4 h-4 text-muted-foreground" />
-                                <span>{formatDate(referral.preferredDate)}</span>
-                              </div>
-                              <div className="flex items-center space-x-2">
-                                <PriorityIcon className="w-4 h-4 text-muted-foreground" />
-                                <span>{referral.urgency} Priority</span>
-                              </div>
-                            </div>
-                            
-                            <p className="text-sm text-foreground mb-2">
-                              <strong>Reason:</strong> {referral.reason}
-                            </p>
-                            <p className="text-sm text-muted-foreground">{referral.notes}</p>
-                          </div>
-                        </div>
-                        
-                        <div className="flex flex-col items-end space-y-2">
-                          <Badge variant={getStatusColor(referral.status)}>
-                            {referral.status}
-                          </Badge>
-                          <Badge variant={getPriorityColor(referral.urgency)}>
-                            {referral.urgency}
-                          </Badge>
-                          <div className="flex space-x-2">
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => handleCompleteReferral(referral._id || referral.id)}
-                              className="text-green-600 border-green-600 hover:bg-green-50"
-                            >
-                              <CheckCircle className="w-4 h-4 mr-1" />
-                              Complete
-                            </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="sm"
-                              onClick={() => handleDownloadReferralPDF(referral, 'inbound')}
-                              title="Download Referral PDF"
-                            >
-                              <Download className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+      {/* Page Navigation - Only show when multiple pages */}
+      {totalPages > 1 && (
+        <div className="flex justify-center pb-2">
+          <div className="flex items-center gap-2 bg-white rounded-xl shadow-sm border border-gray-100 p-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+              className="h-10 px-4 text-sm bg-white border-gray-200 rounded-lg shadow-sm hover:bg-gray-50"
+            >
+              First
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="h-10 px-4 text-sm bg-white border-gray-200 rounded-lg shadow-sm hover:bg-gray-50"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            
+            {/* Page Numbers */}
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+                
+                return (
+                  <Button
+                    key={pageNum}
+                    variant={currentPage === pageNum ? "default" : "outline"}
+                    size="sm"
+                    className={`w-8 h-8 p-0 ${currentPage === pageNum ? "bg-blue-600 text-white" : "bg-white border-gray-200 hover:bg-gray-50"} rounded-lg shadow-sm`}
+                    onClick={() => setCurrentPage(pageNum)}
+                  >
+                    {pageNum}
+                  </Button>
+                );
+              })}
+            </div>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              className="h-10 px-4 text-sm bg-white border-gray-200 rounded-lg shadow-sm hover:bg-gray-50"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={currentPage === totalPages}
+              className="h-10 px-4 text-sm bg-white border-gray-200 rounded-lg shadow-sm hover:bg-gray-50"
+            >
+              Last
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

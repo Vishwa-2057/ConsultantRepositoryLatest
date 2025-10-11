@@ -50,26 +50,64 @@ class EmailService {
   }
 
   getCentralizedConfig() {
-    // Use environment variables for centralized email service
-    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    // Validate environment variables
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.error('❌ EmailService: Missing required EMAIL_USER or EMAIL_PASS environment variables');
+      return null;
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(process.env.EMAIL_USER)) {
+      console.error('❌ EmailService: Invalid EMAIL_USER format');
+      return null;
+    }
+
+    try {
       const config = {
         service: process.env.EMAIL_SERVICE || 'gmail',
         auth: {
           user: process.env.EMAIL_USER,
           pass: process.env.EMAIL_PASS
         },
-        // Add additional Gmail-specific settings
-        secure: true,
-        port: 465,
+        // Enhanced security settings
+        secure: true, // Use TLS
+        port: 465, // Secure port for Gmail
         tls: {
-          rejectUnauthorized: false
+          rejectUnauthorized: true, // Verify SSL certificates
+          minVersion: 'TLSv1.2' // Minimum TLS version
+        },
+        // Connection settings
+        connectionTimeout: 60000, // 60 seconds
+        greetingTimeout: 30000, // 30 seconds
+        socketTimeout: 60000, // 60 seconds
+        // Rate limiting
+        pool: true,
+        maxConnections: 5,
+        maxMessages: 100,
+        // Security headers
+        dkim: {
+          domainName: process.env.EMAIL_DOMAIN || 'gmail.com',
+          keySelector: 'default',
+          privateKey: process.env.DKIM_PRIVATE_KEY || ''
         }
       };
-      console.log(`📧 EmailService: Created config for ${config.auth.user} using ${config.service}`);
+
+      // Log configuration (without sensitive data)
+      console.log(`📧 EmailService: Created secure config for ${this.maskEmail(config.auth.user)} using ${config.service}`);
       return config;
+    } catch (error) {
+      console.error('❌ EmailService: Error creating email configuration:', error.message);
+      return null;
     }
-    console.log(`📧 EmailService: Missing EMAIL_USER or EMAIL_PASS environment variables`);
-    return null;
+  }
+
+  // Helper method to mask email for logging
+  maskEmail(email) {
+    if (!email) return 'unknown';
+    const [username, domain] = email.split('@');
+    const maskedUsername = username.substring(0, 2) + '*'.repeat(username.length - 2);
+    return `${maskedUsername}@${domain}`;
   }
 
   getFallbackConfig() {
@@ -94,16 +132,40 @@ class EmailService {
 
   async sendOTPEmail(doctorId, email, otpCode, purpose = 'login') {
     try {
+      // Input validation
+      if (!email || !otpCode) {
+        throw new Error('Email and OTP code are required');
+      }
+
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        throw new Error('Invalid email format');
+      }
+
+      // Validate OTP format (should be numeric and specific length)
+      if (!/^\d{6}$/.test(otpCode)) {
+        throw new Error('Invalid OTP format');
+      }
+
+      // Rate limiting check (prevent spam)
+      const rateLimitKey = `email_rate_limit_${email}`;
+      if (this.isRateLimited(rateLimitKey)) {
+        throw new Error('Too many email requests. Please wait before requesting another OTP.');
+      }
+
       // Get the centralized transporter
       const transporter = await this.getTransporter();
       
-      // Get doctor's name from database
-      let doctorName = 'Doctor';
+      // Get doctor's name from database with better error handling
+      let doctorName = 'Healthcare Professional';
       try {
-        const Doctor = require('../models/Doctor');
-        const doctor = await Doctor.findById(doctorId);
-        if (doctor) {
-          doctorName = doctor.fullName;
+        if (doctorId) {
+          const Doctor = require('../models/Doctor');
+          const doctor = await Doctor.findById(doctorId);
+          if (doctor && doctor.fullName) {
+            doctorName = doctor.fullName;
+          }
         }
       } catch (dbError) {
         console.warn('Could not fetch doctor name from database:', dbError.message);
@@ -121,16 +183,64 @@ class EmailService {
         to: email,
         subject: subject,
         text: textContent,
-        html: htmlContent
+        html: htmlContent,
+        // Security headers
+        headers: {
+          'X-Priority': '1',
+          'X-MSMail-Priority': 'High',
+          'Importance': 'high'
+        },
+        // Prevent auto-replies and out-of-office responses
+        disableFileAccess: true,
+        disableUrlAccess: true
       };
 
       const result = await transporter.sendMail(mailOptions);
-      console.log(`✅ OTP email sent successfully to ${email} (${doctorName}):`, result.messageId);
-      return { success: true, messageId: result.messageId };
+      
+      // Set rate limit after successful send
+      this.setRateLimit(rateLimitKey, 60000); // 1 minute cooldown
+      
+      console.log(`✅ OTP email sent successfully to ${this.maskEmail(email)} (${doctorName}):`, result.messageId);
+      return { 
+        success: true, 
+        messageId: result.messageId,
+        timestamp: new Date().toISOString()
+      };
     } catch (error) {
-      console.error('❌ Failed to send OTP email:', error);
-      return { success: false, error: error.message };
+      console.error('❌ Failed to send OTP email:', {
+        error: error.message,
+        email: this.maskEmail(email),
+        purpose,
+        timestamp: new Date().toISOString()
+      });
+      return { 
+        success: false, 
+        error: error.message,
+        timestamp: new Date().toISOString()
+      };
     }
+  }
+
+  // Simple in-memory rate limiting (in production, use Redis)
+  rateLimitStore = new Map();
+
+  isRateLimited(key) {
+    const now = Date.now();
+    const limit = this.rateLimitStore.get(key);
+    if (limit && now < limit) {
+      return true;
+    }
+    return false;
+  }
+
+  setRateLimit(key, duration) {
+    const expiry = Date.now() + duration;
+    this.rateLimitStore.set(key, expiry);
+    
+    // Clean up expired entries
+    setTimeout(() => {
+      this.rateLimitStore.delete(key);
+    }, duration);
   }
 
   getEmailSubject(purpose) {
@@ -239,7 +349,7 @@ class EmailService {
             
             <div class="otp-code">
                 <div class="otp-number">${otpCode}</div>
-                <p><strong>This code will expire in 10 minutes</strong></p>
+                <p><strong>This code will expire in 5 minutes</strong></p>
             </div>
             
             <div class="warning">
@@ -280,7 +390,7 @@ You have requested to ${purposeText[purpose] || 'access your account'}. Please u
 
 VERIFICATION CODE: ${otpCode}
 
-This code will expire in 10 minutes.
+This code will expire in 5 minutes.
 
 SECURITY NOTICE:
 - Never share this code with anyone
@@ -455,7 +565,7 @@ This is an automated message from ${doctorName}. Please do not reply to this ema
   }
 
   getReferralEmailSubject(referral, emailType) {
-    const urgencyText = referral.urgency === 'Urgent' || referral.urgency === 'High' ? '[URGENT] ' : '';
+    const urgencyText = referral.urgency === 'High' ? '[URGENT] ' : '';
     if (emailType === 'outbound') {
       return `${urgencyText}New External Referral - ${referral.patientName} (${referral.specialty})`;
     } else {
@@ -465,8 +575,8 @@ This is an automated message from ${doctorName}. Please do not reply to this ema
 
   generateReferralEmailHTML(referral, emailType, recipientName) {
     const isOutbound = emailType === 'outbound';
-    const urgencyColor = referral.urgency === 'Urgent' || referral.urgency === 'High' ? '#dc3545' : '#28a745';
-    const urgencyBadge = referral.urgency === 'Urgent' || referral.urgency === 'High' ? 'URGENT' : referral.urgency;
+    const urgencyColor = referral.urgency === 'High' ? '#dc3545' : '#28a745';
+    const urgencyBadge = referral.urgency === 'High' ? 'URGENT' : referral.urgency;
 
     return `
     <!DOCTYPE html>
@@ -697,7 +807,7 @@ This is an automated message from ${doctorName}. Please do not reply to this ema
 
   generateReferralEmailText(referral, emailType, recipientName) {
     const isOutbound = emailType === 'outbound';
-    const urgencyText = referral.urgency === 'Urgent' || referral.urgency === 'High' ? '[URGENT] ' : '';
+    const urgencyText = referral.urgency === 'High' ? '[URGENT] ' : '';
 
     return `
 ${urgencyText}Healthcare Management System - ${isOutbound ? 'New External Patient Referral' : 'New Internal Patient Referral'}
@@ -886,7 +996,7 @@ We received a request to reset your password for your Healthcare Management Syst
 Your password reset verification code is: ${otpCode}
 
 SECURITY NOTICE:
-- This code will expire in 10 minutes
+- This code will expire in 5 minutes
 - Never share this code with anyone
 - If you didn't request this reset, please ignore this email
 

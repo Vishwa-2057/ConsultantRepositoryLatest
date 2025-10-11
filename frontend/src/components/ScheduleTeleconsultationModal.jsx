@@ -189,6 +189,11 @@ const ScheduleTeleconsultationModal = ({ isOpen, onClose, onSuccess, selectedPat
       }
       
       onClose();
+      
+      // Reload the page to refresh the data
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
     } catch (error) {
       console.error('Error scheduling teleconsultation:', error);
       toast.error(error.message || 'Failed to schedule teleconsultation');

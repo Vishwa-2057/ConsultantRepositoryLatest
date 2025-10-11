@@ -118,7 +118,11 @@ const Dashboard = () => {
     const loadAppointments = async () => {
       setAppointmentsLoading(true);
       try {
-        const response = await appointmentAPI.getAll(1, 3, { sortBy: 'date', sortOrder: 'asc' });
+        // For doctors, filter by doctorId to show only appointments they are conducting
+        const filters = isDoctor() 
+          ? { sortBy: 'date', sortOrder: 'asc', doctorId: currentUser?.id }
+          : { sortBy: 'date', sortOrder: 'asc' };
+        const response = await appointmentAPI.getAll(1, 3, filters);
         const appointmentsList = response.appointments || response.data || [];
         setAppointments(appointmentsList);
       } catch (error) {
@@ -182,7 +186,9 @@ const Dashboard = () => {
       setTodayAppointmentsLoading(true);
       try {
         const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-        const response = await appointmentAPI.getAll(1, 100, { date: today });
+        // For doctors, filter by doctorId to show only appointments they are conducting
+        const filters = isDoctor() ? { date: today, doctorId: currentUser?.id } : { date: today };
+        const response = await appointmentAPI.getAll(1, 100, filters);
         const todayCount = response?.appointments?.length || 0;
         setTodayAppointments(todayCount);
       } catch (error) {
@@ -458,13 +464,16 @@ const Dashboard = () => {
       const appointmentTrend = [];
       const today = new Date();
       
+      // For doctors, filter by doctorId to show only appointments they are conducting
+      const baseFilters = isDoctor() ? { doctorId: currentUser?.id } : {};
+      
       for (let i = 6; i >= 0; i--) {
         const date = new Date(today);
         date.setDate(date.getDate() - i);
         const dateStr = date.toISOString().split('T')[0];
         
         try {
-          const response = await appointmentAPI.getAll(1, 100, { date: dateStr });
+          const response = await appointmentAPI.getAll(1, 100, { ...baseFilters, date: dateStr });
           const count = response.appointments?.length || response.data?.length || 0;
           
           appointmentTrend.push({

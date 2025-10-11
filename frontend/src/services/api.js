@@ -1,44 +1,70 @@
 import { config } from '../config/env.js';
+import sessionManager from '../utils/sessionManager.js';
 
 const API_BASE_URL = config.API_BASE_URL || 'http://localhost:5000/api';
-let authToken = null;
 
-// Initialize auth token from localStorage
-const initializeAuth = () => {
-  const token = localStorage.getItem('authToken');
-  if (token) {
-    authToken = token;
-  }
-};
-
-// Call initialization
-initializeAuth();
-
-// Generic API request function
+// Generic API request function with session management
 const apiRequest = async (endpoint, options = {}) => {
   const url = `${API_BASE_URL}${endpoint}`;
   
-  // Always get fresh token from localStorage
-  const currentToken = localStorage.getItem('authToken');
-  
-  const defaultOptions = {
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      ...(currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {}),
-    },
-    ...options,
-  };
-
-  // Add debugging
-  console.log('Making API request to:', url);
-  console.log('Request options:', defaultOptions);
-
   try {
+    // Get current token with automatic refresh if needed
+    const currentToken = await sessionManager.checkTokenRefresh();
+    
+    const defaultOptions = {
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        ...(currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {}),
+      },
+      ...options,
+    };
+
+    // Add debugging (remove in production)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Making API request to:', url);
+      console.log('Request options:', { ...defaultOptions, headers: { ...defaultOptions.headers, Authorization: currentToken ? 'Bearer [HIDDEN]' : undefined } });
+    }
+
     const response = await fetch(url, defaultOptions);
     
-    console.log('Response status:', response.status);
-    console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Response status:', response.status);
+    }
+    
+    // Handle authentication errors
+    if (response.status === 401) {
+      const errorData = await response.json().catch(() => ({}));
+      
+      // Check if it's a token expiry or invalid token
+      if (errorData.code === 'TOKEN_EXPIRED') {
+        // Try to refresh token one more time
+        try {
+          const newToken = await sessionManager.refreshAuthToken();
+          if (newToken) {
+            // Retry the request with new token
+            const retryOptions = {
+              ...defaultOptions,
+              headers: {
+                ...defaultOptions.headers,
+                'Authorization': `Bearer ${newToken}`
+              }
+            };
+            const retryResponse = await fetch(url, retryOptions);
+            if (retryResponse.ok) {
+              return await retryResponse.json();
+            }
+          }
+        } catch (refreshError) {
+          console.error('Token refresh failed:', refreshError);
+        }
+      }
+      
+      // If refresh failed or other auth error, redirect to login
+      console.warn('Authentication failed, redirecting to login');
+      sessionManager.redirectToLogin('Session expired. Please log in again.');
+      throw new Error('Authentication failed');
+    }
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -58,12 +84,13 @@ const apiRequest = async (endpoint, options = {}) => {
     
     return await response.json();
   } catch (error) {
-    console.error('API request failed:', {
-      url,
-      error: error.message,
-      stack: error.stack,
-      type: error.name
-    });
+    if (process.env.NODE_ENV === 'development') {
+      console.error('API request failed:', {
+        url,
+        error: error.message,
+        type: error.name
+      });
+    }
     
     // Provide more specific error messages
     if (error.name === 'TypeError' && error.message.includes('fetch')) {
@@ -95,7 +122,7 @@ export const patientAPI = {
   create: async (patientData) => {
     // Handle FormData differently (for file uploads)
     if (patientData instanceof FormData) {
-      const currentToken = localStorage.getItem('authToken');
+      const currentToken = await sessionManager.getToken();
       const url = `${API_BASE_URL}/patients`;
       
       const response = await fetch(url, {
@@ -308,6 +335,24 @@ export const consultationAPI = {
       method: 'PATCH',
       body: JSON.stringify({ status }),
     });
+  },
+
+  // Get upcoming consultations
+  getUpcoming: async () => {
+    return apiRequest('/consultations?status=Scheduled&sortBy=scheduledDate&sortOrder=asc');
+  },
+
+  // Get consultation history
+  getHistory: async (page = 1, limit = 10, filters = {}) => {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      limit: limit.toString(),
+      status: 'Completed,Cancelled',
+      sortBy: 'scheduledDate',
+      sortOrder: 'desc',
+      ...filters
+    });
+    return apiRequest(`/consultations?${params}`);
   },
 };
 
@@ -522,7 +567,7 @@ export const activityLogAPI = {
     if (endDate) queryParams.append('endDate', endDate.toISOString());
 
     // For file downloads, we need to handle the response differently
-    const currentToken = localStorage.getItem('authToken');
+    const currentToken = await sessionManager.getToken();
     const url = `${API_BASE_URL}/activity-logs/export?${queryParams}`;
     
     const response = await fetch(url, {
@@ -739,8 +784,17 @@ export const doctorAPI = {
   // Get all doctors
   getAll: async (page = 1, limit = 100, filters = {}) => {
     console.log('doctorAPI.getAll called');
-    console.log('Auth token in API:', authToken ? 'Present' : 'Missing');
-    const result = await apiRequest('/doctors');
+    const currentToken = await sessionManager.getToken();
+    console.log('Auth token in API:', currentToken ? 'Present' : 'Missing');
+    
+    // Build query parameters
+    const queryParams = new URLSearchParams({
+      page: page.toString(),
+      limit: limit.toString(),
+      ...filters
+    });
+    
+    const result = await apiRequest(`/doctors?${queryParams}`);
     console.log('doctorAPI.getAll result:', result);
     
     // Normalize response format - backend returns { success: true, data: [...] }
@@ -766,11 +820,19 @@ export const doctorAPI = {
     return apiRequest(`/doctors/clinic/${clinicId}`);
   },
 
-  // Create new doctor
+  // Create new doctor with pre-uploaded image
+  createWithImage: async (doctorData) => {
+    return apiRequest('/doctors/create-with-image', {
+      method: 'POST',
+      body: JSON.stringify(doctorData),
+    });
+  },
+
+  // Create new doctor (legacy method with file upload)
   create: async (doctorData) => {
     // Handle FormData differently (for file uploads)
     if (doctorData instanceof FormData) {
-      const currentToken = localStorage.getItem('authToken');
+      const currentToken = await sessionManager.getToken();
       const url = `${API_BASE_URL}/doctors`;
       
       const response = await fetch(url, {
@@ -801,11 +863,41 @@ export const doctorAPI = {
       return await response.json();
     }
     
-    // Handle regular JSON data
-    return apiRequest('/doctors', {
+    // Handle regular JSON data - use the new endpoint
+    return this.createWithImage(doctorData);
+  },
+
+  // Upload doctor profile image
+  uploadImage: async (imageFile) => {
+    const formData = new FormData();
+    formData.append('profileImage', imageFile);
+    
+    const currentToken = localStorage.getItem('authToken');
+    const url = `${API_BASE_URL}/doctors/upload-image`;
+    
+    const response = await fetch(url, {
       method: 'POST',
-      body: JSON.stringify(doctorData),
+      headers: {
+        ...(currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {}),
+        // Don't set Content-Type for FormData - browser will set it with boundary
+      },
+      body: formData,
     });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      let message = `HTTP error! status: ${response.status}`;
+      if (errorData) {
+        const backendMsg = errorData.message || errorData.error;
+        message = backendMsg || message;
+      }
+      const error = new Error(message);
+      error.response = response;
+      error.data = errorData;
+      throw error;
+    }
+    
+    return await response.json();
   },
 
   // Update doctor
@@ -846,8 +938,15 @@ export const doctorAPI = {
 // Nurse API functions
 export const nurseAPI = {
   // Get all nurses
-  getAll: async () => {
-    return apiRequest('/nurses');
+  getAll: async (page = 1, limit = 100, filters = {}) => {
+    // Build query parameters
+    const queryParams = new URLSearchParams({
+      page: page.toString(),
+      limit: limit.toString(),
+      ...filters
+    });
+    
+    return apiRequest(`/nurses?${queryParams}`);
   },
 
   // Get nurse by ID
@@ -855,11 +954,52 @@ export const nurseAPI = {
     return apiRequest(`/nurses/${id}`);
   },
 
-  // Create new nurse
+  // Upload nurse profile image
+  uploadImage: async (imageFile) => {
+    const formData = new FormData();
+    formData.append('profileImage', imageFile);
+    
+    const currentToken = await sessionManager.getToken();
+    const url = `${API_BASE_URL}/nurses/upload-image`;
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        ...(currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {}),
+        // Don't set Content-Type for FormData - browser will set it with boundary
+      },
+      body: formData,
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      let message = `HTTP error! status: ${response.status}`;
+      if (errorData) {
+        const backendMsg = errorData.message || errorData.error;
+        message = backendMsg || message;
+      }
+      const error = new Error(message);
+      error.response = response;
+      error.data = errorData;
+      throw error;
+    }
+    
+    return await response.json();
+  },
+
+  // Create new nurse with pre-uploaded image
+  createWithImage: async (nurseData) => {
+    return apiRequest('/nurses/create-with-image', {
+      method: 'POST',
+      body: JSON.stringify(nurseData),
+    });
+  },
+
+  // Create new nurse (legacy method with file upload)
   create: async (nurseData) => {
     // Handle FormData differently (for file uploads)
     if (nurseData instanceof FormData) {
-      const currentToken = localStorage.getItem('authToken');
+      const currentToken = await sessionManager.getToken();
       const url = `${API_BASE_URL}/nurses`;
       
       const response = await fetch(url, {
@@ -890,11 +1030,8 @@ export const nurseAPI = {
       return await response.json();
     }
     
-    // Handle regular JSON data
-    return apiRequest('/nurses', {
-      method: 'POST',
-      body: JSON.stringify(nurseData),
-    });
+    // Handle regular JSON data - use the new endpoint
+    return this.createWithImage(nurseData);
   },
 
   // Update nurse
@@ -1002,15 +1139,20 @@ export const clinicAPI = {
 
 // Auth API functions
 export const authAPI = {
-  setToken: (token) => {
-    authToken = token;
+  setToken: async (token, refreshToken = null, expiresIn = 3600) => {
+    // Use session manager for secure token storage
     if (token) {
-      localStorage.setItem('authToken', token);
+      await sessionManager.setToken(token, refreshToken, expiresIn);
     } else {
-      localStorage.removeItem('authToken');
+      await sessionManager.clearSession();
     }
   },
-  clearToken: () => authToken = null,
+  clearToken: async () => {
+    await sessionManager.clearSession();
+  },
+  getToken: async () => {
+    return await sessionManager.getToken();
+  },
   register: async (payload) => {
     return apiRequest('/auth/register', {
       method: 'POST',
@@ -1019,6 +1161,19 @@ export const authAPI = {
   },
   login: async (payload) => {
     return apiRequest('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  // 2-step verification endpoints
+  loginStep1: async (payload) => {
+    return apiRequest('/auth/login-step1', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  loginStep2: async (payload) => {
+    return apiRequest('/auth/login-step2', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
@@ -1242,7 +1397,7 @@ export const medicalImageAPI = {
 
   // Upload new medical image
   upload: async (formData) => {
-    const currentToken = localStorage.getItem('authToken');
+    const currentToken = await sessionManager.getToken();
     const url = `${API_BASE_URL}/medical-images`;
     
     const response = await fetch(url, {
@@ -1400,8 +1555,23 @@ export const teleconsultationAPI = {
   getToday: async () => {
     const today = new Date().toISOString().split('T')[0];
     return apiRequest(`/teleconsultations?date=${today}`);
+  },
+
+  // Get teleconsultation history
+  getHistory: async (page = 1, limit = 10, filters = {}) => {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      limit: limit.toString(),
+      status: 'Completed,Cancelled',
+      sortBy: 'scheduledDate',
+      sortOrder: 'desc',
+      ...filters
+    });
+    return apiRequest(`/teleconsultations?${params}`);
   }
 };
+
+// Note: consultationAPI and teleconsultationAPI are separate APIs
 
 export default {
   patientAPI,

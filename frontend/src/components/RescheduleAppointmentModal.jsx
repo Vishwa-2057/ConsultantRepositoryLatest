@@ -165,6 +165,11 @@ const RescheduleAppointmentModal = ({ isOpen, onClose, appointment, onSuccess })
       toast.success('Appointment rescheduled successfully');
       onSuccess();
       handleClose();
+      
+      // Reload the page to refresh the data
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
     } catch (error) {
       console.error('Failed to reschedule appointment:', error);
       toast.error(`Failed to reschedule appointment: ${error.message}`);
