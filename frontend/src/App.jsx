@@ -29,6 +29,7 @@ import EmailSettings from "./pages/EmailSettings.jsx";
 import ActivityLogs from "./pages/ActivityLogs.jsx";
 import AuditLogs from "./pages/AuditLogs.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
+import PublicRoute from "./components/PublicRoute.jsx";
 
 const queryClient = new QueryClient();
 
@@ -40,6 +41,15 @@ const App = () => {
   useEffect(() => {
     const initializeAuth = async () => {
       try {
+        // Skip token check if on login/register pages
+        if (window.location.pathname === '/login' || 
+            window.location.pathname === '/register' || 
+            window.location.pathname.includes('/superadmin/register')) {
+          setToken(null);
+          setIsLoading(false);
+          return;
+        }
+        
         const currentToken = await sessionManager.getToken();
         setToken(currentToken);
       } catch (error) {
@@ -55,7 +65,8 @@ const App = () => {
     // Listen for auth changes triggered by login/logout
     const handleAuthChanged = async () => {
       try {
-        const latest = await sessionManager.getToken();
+        // Bypass login page check when auth-changed event fires (user just logged in)
+        const latest = await sessionManager.getToken(true);
         setToken(latest);
       } catch (error) {
         console.error('Auth change failed:', error);
@@ -84,9 +95,9 @@ const App = () => {
         <BrowserRouter>
           <Layout>
             <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route path="/register" element={<Register />} />
-              <Route path="/superadmin/register" element={<SuperAdminRegister />} />
+              <Route path="/login" element={<PublicRoute isAuthed={isAuthed}><Login /></PublicRoute>} />
+              <Route path="/register" element={<PublicRoute isAuthed={isAuthed}><Register /></PublicRoute>} />
+              <Route path="/superadmin/register" element={<PublicRoute isAuthed={isAuthed}><SuperAdminRegister /></PublicRoute>} />
               <Route path="/" element={isAuthed ? <ProtectedRoute routeName="dashboard"><Dashboard /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/patients" element={isAuthed ? <ProtectedRoute routeName="patient-management"><PatientManagement /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/patients/:patientId" element={isAuthed ? <ProtectedRoute routeName="patient-management"><PatientDetails /></ProtectedRoute> : <Navigate to="/login" replace />} />

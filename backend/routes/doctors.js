@@ -8,15 +8,20 @@ const path = require('path');
 const fs = require('fs');
 const router = express.Router();
 
-// GET /api/doctors - Get all doctors (both active and inactive)
+// GET /api/doctors - Get all doctors (with optional activeOnly filter)
 router.get('/', auth, async (req, res) => {
   try {
-    const { page = 1, limit = 100, search } = req.query;
+    const { page = 1, limit = 100, search, activeOnly } = req.query;
     
     // Filter doctors by clinic for clinic admins
     const query = {};
     if (req.user.role === 'clinic') {
       query.clinicId = req.user.id;
+    }
+    
+    // Filter for active doctors only if requested (for forms/dropdowns)
+    if (activeOnly === 'true') {
+      query.isActive = true;
     }
     
     // Add search functionality
@@ -87,7 +92,7 @@ router.get('/clinic/:clinicId', auth, async (req, res) => {
 // GET /api/doctors/search - Search doctors by name or specialty
 router.get('/search', auth, async (req, res) => {
   try {
-    const { q } = req.query;
+    const { q, activeOnly } = req.query;
     
     if (!q) {
       return res.status(400).json({
@@ -105,6 +110,11 @@ router.get('/search', auth, async (req, res) => {
     };
     if (req.user.role === 'clinic') {
       query.clinicId = req.user.id;
+    }
+    
+    // Filter for active doctors only if requested (for forms/dropdowns)
+    if (activeOnly === 'true') {
+      query.isActive = true;
     }
     
     const doctors = await Doctor.find(query)

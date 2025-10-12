@@ -163,7 +163,7 @@ router.post('/', auth, validateVitals, async (req, res) => {
       });
     }
 
-    const { patientId, uhid, visitDate, vitalSigns, clinicalNotes, isPreConsultation, status } = req.body;
+    const { patientId, uhid, visitDate, vitalSigns, clinicalNotes } = req.body;
 
     // Verify patient exists
     const patient = await Patient.findById(patientId);
@@ -211,9 +211,7 @@ router.post('/', auth, validateVitals, async (req, res) => {
       clinicId,
       visitDate: visitDate || new Date(),
       vitalSigns: vitalSigns || {},
-      clinicalNotes: clinicalNotes || {},
-      isPreConsultation: isPreConsultation !== undefined ? isPreConsultation : true,
-      status: status || 'Draft'
+      clinicalNotes: clinicalNotes || {}
     });
 
     await vitals.save();
@@ -271,14 +269,12 @@ router.put('/:id', auth, validateVitals, async (req, res) => {
       }
     }
 
-    const { visitDate, vitalSigns, clinicalNotes, isPreConsultation, status } = req.body;
+    const { visitDate, vitalSigns, clinicalNotes } = req.body;
 
     // Update fields
     if (visitDate) vitals.visitDate = visitDate;
     if (vitalSigns) vitals.vitalSigns = { ...vitals.vitalSigns, ...vitalSigns };
     if (clinicalNotes) vitals.clinicalNotes = { ...vitals.clinicalNotes, ...clinicalNotes };
-    if (isPreConsultation !== undefined) vitals.isPreConsultation = isPreConsultation;
-    if (status) vitals.status = status;
 
     await vitals.save();
     await vitals.populate('patientId', 'fullName uhid');

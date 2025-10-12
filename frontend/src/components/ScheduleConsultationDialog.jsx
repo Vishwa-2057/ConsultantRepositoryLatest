@@ -59,7 +59,6 @@ const ScheduleConsultationDialog = ({ open, onOpenChange, onSuccess }) => {
   ];
 
   const priorityOptions = [
-    { value: "Low", label: "Low Priority", color: "secondary" },
     { value: "Medium", label: "Medium Priority", color: "primary" },
     { value: "High", label: "High Priority", color: "warning" }
   ];

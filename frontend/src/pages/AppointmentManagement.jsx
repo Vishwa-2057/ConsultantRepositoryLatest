@@ -8,12 +8,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar, Clock, User, Phone, MapPin, AlertCircle, CheckCircle, XCircle, Plus, Search, Filter, Edit, CalendarDays, Users, TrendingUp, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FileText, Calendar as CalendarIcon, Info } from 'lucide-react';
+import { Calendar, Clock, User, Phone, MapPin, AlertCircle, CheckCircle, XCircle, Plus, Search, Filter, Edit, CalendarDays, Users, TrendingUp, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FileText, Calendar as CalendarIcon, Info, Video, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { appointmentAPI, patientAPI, doctorAPI } from '@/services/api';
 import { format, parseISO, isToday, isTomorrow, isYesterday, addMinutes } from 'date-fns';
 import RescheduleAppointmentModal from '@/components/RescheduleAppointmentModal';
 import AppointmentConflictDialog from '@/components/AppointmentConflictDialog';
+import ScheduleTeleconsultationModal from '@/components/ScheduleTeleconsultationModal';
 import { getCurrentUser } from '@/utils/roleUtils';
 
 const AppointmentManagement = () => {
@@ -29,6 +30,7 @@ const AppointmentManagement = () => {
   const [patients, setPatients] = useState([]);
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
@@ -47,18 +49,22 @@ const AppointmentManagement = () => {
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isRescheduleModalOpen, setIsRescheduleModalOpen] = useState(false);
   const [isConflictDialogOpen, setIsConflictDialogOpen] = useState(false);
+  const [isTeleconsultationDialogOpen, setIsTeleconsultationDialogOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [conflictData, setConflictData] = useState(null);
   const [formData, setFormData] = useState({
     patientId: '',
     doctorId: '',
     appointmentType: '',
+    appointmentMode: 'in-person',
+    consultationMode: '',
     date: '',
     time: '',
     duration: 30,
     priority: 'normal',
     reason: '',
     notes: '',
+    symptoms: '',
     instructions: ''
   });
 
@@ -84,7 +90,6 @@ const AppointmentManagement = () => {
   ];
 
   const priorityOptions = [
-    { value: 'low', label: 'Low', color: 'bg-gray-100 text-gray-800' },
     { value: 'normal', label: 'Normal', color: 'bg-blue-100 text-blue-800' },
     { value: 'high', label: 'High', color: 'bg-orange-100 text-orange-800' }
   ];
@@ -244,6 +249,7 @@ const AppointmentManagement = () => {
   }, [statusFilter, typeFilter, priorityFilter, dateFilter, searchTerm]);
 
   const handleCreateAppointment = async (forceCreate = false) => {
+    setSubmitting(true);
     try {
       // Check for conflicts first (unless forcing creation)
       if (!forceCreate) {
@@ -299,6 +305,8 @@ const AppointmentManagement = () => {
       } else {
         toast.error('Failed to create appointment');
       }
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -384,13 +392,15 @@ const AppointmentManagement = () => {
       patientId: '',
       doctorId: isDoctor && userId ? userId : '', // Preserve doctor selection for doctors
       appointmentType: '',
+      appointmentMode: 'in-person',
+      consultationMode: '',
       date: '',
       time: '',
       duration: 30,
       priority: 'normal',
       reason: '',
       notes: '',
-      instructions: ''
+      symptoms: ''
     });
   };
 
@@ -506,10 +516,43 @@ const AppointmentManagement = () => {
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
+              {/* Appointment Mode Selection */}
+              <div className="grid grid-cols-2 gap-4 mb-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Continue with in-person appointment form
+                    setFormData({...formData, appointmentMode: 'in-person', consultationMode: ''});
+                  }}
+                  className={`p-4 rounded-lg border-2 transition-all ${
+                    formData.appointmentMode === 'in-person'
+                      ? "border-blue-600 bg-blue-50 text-blue-900"
+                      : "border-gray-200 hover:border-gray-300"
+                  }`}
+                >
+                  <MapPin className="w-6 h-6 mx-auto mb-2" />
+                  <div className="font-semibold">In-Person</div>
+                  <div className="text-xs text-gray-600">Physical appointment</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Close this dialog and open teleconsultation dialog
+                    setIsCreateModalOpen(false);
+                    setIsTeleconsultationDialogOpen(true);
+                  }}
+                  className="p-4 rounded-lg border-2 border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-all"
+                >
+                  <Video className="w-6 h-6 mx-auto mb-2" />
+                  <div className="font-semibold">Virtual</div>
+                  <div className="text-xs text-gray-600">Teleconsultation</div>
+                </button>
+              </div>
+
               <div className={`grid gap-4 ${isDoctorUser ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
                 <div>
                   <Label htmlFor="patient">Patient</Label>
-                  <Select value={formData.patientId} onValueChange={(value) => setFormData({...formData, patientId: value})}>
+                  <Select value={formData.patientId} onValueChange={(value) => setFormData({...formData, patientId: value})} disabled={submitting}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select patient" />
                     </SelectTrigger>
@@ -527,7 +570,7 @@ const AppointmentManagement = () => {
                 {!isDoctorUser && (
                   <div>
                     <Label htmlFor="doctor">Doctor</Label>
-                    <Select value={formData.doctorId} onValueChange={(value) => setFormData({...formData, doctorId: value})}>
+                    <Select value={formData.doctorId} onValueChange={(value) => setFormData({...formData, doctorId: value})} disabled={submitting}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select doctor" />
                       </SelectTrigger>
@@ -567,7 +610,7 @@ const AppointmentManagement = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="type">Appointment Type</Label>
-                  <Select value={formData.appointmentType} onValueChange={(value) => setFormData({...formData, appointmentType: value})}>
+                  <Select value={formData.appointmentType} onValueChange={(value) => setFormData({...formData, appointmentType: value})} disabled={submitting}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select type" />
                     </SelectTrigger>
@@ -580,9 +623,10 @@ const AppointmentManagement = () => {
                     </SelectContent>
                   </Select>
                 </div>
+                
                 <div>
                   <Label htmlFor="priority">Priority</Label>
-                  <Select value={formData.priority} onValueChange={(value) => setFormData({...formData, priority: value})}>
+                  <Select value={formData.priority} onValueChange={(value) => setFormData({...formData, priority: value})} disabled={submitting}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select priority" />
                     </SelectTrigger>
@@ -601,8 +645,10 @@ const AppointmentManagement = () => {
                   <Label htmlFor="date">Date</Label>
                   <Input
                     type="date"
+                    min={new Date().toISOString().split('T')[0]}
                     value={formData.date}
                     onChange={(e) => setFormData({...formData, date: e.target.value})}
+                    disabled={submitting}
                   />
                 </div>
                 <div>
@@ -611,6 +657,7 @@ const AppointmentManagement = () => {
                     type="time"
                     value={formData.time}
                     onChange={(e) => setFormData({...formData, time: e.target.value})}
+                    disabled={submitting}
                   />
                 </div>
                 <div>
@@ -621,6 +668,7 @@ const AppointmentManagement = () => {
                     max="240"
                     value={formData.duration}
                     onChange={(e) => setFormData({...formData, duration: parseInt(e.target.value)})}
+                    disabled={submitting}
                   />
                 </div>
               </div>
@@ -630,6 +678,7 @@ const AppointmentManagement = () => {
                   placeholder="Enter reason for appointment"
                   value={formData.reason}
                   onChange={(e) => setFormData({...formData, reason: e.target.value})}
+                  disabled={submitting}
                 />
               </div>
               <div>
@@ -638,15 +687,16 @@ const AppointmentManagement = () => {
                   placeholder="Additional notes"
                   value={formData.notes}
                   onChange={(e) => setFormData({...formData, notes: e.target.value})}
+                  disabled={submitting}
                 />
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreateModalOpen(false)}>
+              <Button variant="outline" onClick={() => setIsCreateModalOpen(false)} disabled={submitting}>
                 Cancel
               </Button>
-              <Button className="gradient-button" onClick={handleCreateAppointment}>
-                Create Appointment
+              <Button className="gradient-button" onClick={handleCreateAppointment} disabled={submitting}>
+                {submitting ? 'Creating...' : 'Create Appointment'}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -832,6 +882,33 @@ const AppointmentManagement = () => {
             </div>
           ) : (
             <div className="space-y-3">
+              {/* Column Headers - Desktop Only */}
+              <div className="hidden lg:flex items-center justify-between gap-6 px-4 py-2 bg-gray-100 rounded-lg border border-gray-200">
+                <div className="w-32 flex-shrink-0">
+                  <span className="text-xs font-semibold text-gray-700 uppercase">Patient</span>
+                </div>
+                <div className="w-40 flex-shrink-0">
+                  <span className="text-xs font-semibold text-gray-700 uppercase">Doctor</span>
+                </div>
+                <div className="w-24 flex-shrink-0">
+                  <span className="text-xs font-semibold text-gray-700 uppercase">Date</span>
+                </div>
+                <div className="w-20 flex-shrink-0">
+                  <span className="text-xs font-semibold text-gray-700 uppercase">Time</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="text-xs font-semibold text-gray-700 uppercase">Type</span>
+                </div>
+                <div style={{paddingRight:"70px"}} className="w-48 flex-shrink-0 flex items-center justify-end">
+                  <span className="text-xs font-semibold text-gray-700 uppercase">Actions</span>
+                </div>
+                                <div style={{paddingRight: "50px"}}>
+                  <div className="w-24 flex-shrink-0">
+                    <span className="text-xs font-semibold text-gray-700 uppercase">Status</span>
+                  </div>
+                </div>
+              </div>
+              
               {paginatedAppointments.map((appointment) => (
                 <div key={appointment._id} className="bg-gray-50 hover:bg-gray-100 rounded-lg p-3 sm:p-4 transition-all duration-200">
                   {/* Mobile Layout */}
@@ -900,15 +977,6 @@ const AppointmentManagement = () => {
                       </div>
                     </div>
                     
-                    {/* Status & Priority - Fixed width */}
-                    <div style={{paddingRight: "50px"}}>
-                    <div className="w-24 flex-shrink-0">
-                      <div className="flex flex-col gap-1">
-                        {getStatusBadge(appointment.status)}
-                        {getPriorityBadge(appointment.priority)}
-                      </div>
-                    </div>
-                    </div>
                     
                     {/* Actions - Fixed width */}
                     <div className="w-48 flex-shrink-0 flex items-center justify-end gap-2">
@@ -944,6 +1012,16 @@ const AppointmentManagement = () => {
                           ))}
                         </SelectContent>
                       </Select>
+                    </div>
+
+                                        {/* Status & Priority - Fixed width */}
+                    <div style={{paddingRight: "50px"}}>
+                    <div className="w-24 flex-shrink-0">
+                      <div className="flex flex-col gap-1">
+                        {getStatusBadge(appointment.status)}
+                        {getPriorityBadge(appointment.priority)}
+                      </div>
+                    </div>
                     </div>
                   </div>
                 </div>
@@ -1150,6 +1228,17 @@ const AppointmentManagement = () => {
         formData={formData}
         onSelectTime={handleConflictSelectTime}
         onForceCreate={handleConflictForceCreate}
+      />
+
+      {/* Teleconsultation Modal */}
+      <ScheduleTeleconsultationModal
+        isOpen={isTeleconsultationDialogOpen}
+        onClose={() => setIsTeleconsultationDialogOpen(false)}
+        onSuccess={() => {
+          setIsTeleconsultationDialogOpen(false);
+          toast.success('Teleconsultation scheduled successfully!');
+          loadAppointments(); // Reload appointments to show the new teleconsultation
+        }}
       />
     </div>
   );

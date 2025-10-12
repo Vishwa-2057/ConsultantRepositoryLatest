@@ -34,9 +34,14 @@ const nurseSchema = new mongoose.Schema({
     required: [true, 'Password is required']
   },
   department: {
-    type: String,
-    default: 'General Nursing',
-    trim: true
+    type: [String],
+    default: ['General Nursing'],
+    validate: {
+      validator: function(v) {
+        return Array.isArray(v) && v.length > 0;
+      },
+      message: 'At least one department must be selected'
+    }
   },
   shift: {
     type: String,

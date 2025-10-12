@@ -232,21 +232,11 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
   };
 
   const handleInputChange = (field, value) => {
-    // Apply sanitization based on field type
-    let sanitizedValue = value;
-    switch (field) {
-      case 'diagnosis':
-      case 'notes':
-      case 'followUpInstructions':
-        sanitizedValue = sanitizers.text(value);
-        break;
-      default:
-        sanitizedValue = value;
-    }
-    
+    // Don't sanitize while typing - only on submit
+    // This allows users to type spaces at the end of sentences
     setFormData(prev => ({
       ...prev,
-      [field]: sanitizedValue
+      [field]: value
     }));
     
     // Clear error when user starts typing
@@ -259,8 +249,8 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
   };
 
   const handleMedicationChange = (index, field, value) => {
-    // Apply sanitization for medication fields
-    let sanitizedValue = sanitizers.text(value);
+    // Don't trim while typing - only apply length limits
+    let sanitizedValue = value;
     
     // Apply field-specific limits
     switch (field) {
@@ -333,8 +323,20 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
 
     setLoading(true);
     try {
+      // Trim all text fields before submitting
       const submitData = {
         ...formData,
+        diagnosis: formData.diagnosis?.trim(),
+        notes: formData.notes?.trim(),
+        followUpInstructions: formData.followUpInstructions?.trim(),
+        medications: formData.medications.map(med => ({
+          ...med,
+          name: med.name?.trim(),
+          dosage: med.dosage?.trim(),
+          frequency: med.frequency?.trim(),
+          duration: med.duration?.trim(),
+          instructions: med.instructions?.trim()
+        })),
         followUpDate: formData.followUpDate || undefined
       };
 
@@ -392,7 +394,7 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
               <Select
                 value={formData.patientId}
                 onValueChange={(value) => handleInputChange('patientId', value)}
-                disabled={loadingPatients || !!prescription}
+                disabled={loadingPatients || !!prescription || loading}
               >
                 <SelectTrigger className={errors.patientId ? "border-red-500" : ""}>
                   <SelectValue placeholder={loadingPatients ? "Loading patients..." : "Select a patient"} />
@@ -435,7 +437,7 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
                 <Select
                   value={formData.doctorId}
                   onValueChange={(value) => handleInputChange('doctorId', value)}
-                  disabled={loadingDoctors}
+                  disabled={loadingDoctors || loading}
                 >
                   <SelectTrigger className={errors.doctorId ? "border-red-500" : ""}>
                     <SelectValue placeholder={loadingDoctors ? "Loading doctors..." : "Select a doctor"} />
@@ -506,6 +508,7 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
               placeholder="Enter diagnosis..."
               className={errors.diagnosis ? "border-red-500" : ""}
               rows={3}
+              disabled={loading}
             />
             {errors.diagnosis && <p className="text-sm text-red-500">{errors.diagnosis}</p>}
           </div>
@@ -519,7 +522,8 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
                 variant="outline"
                 size="sm"
                 onClick={addMedication}
-                className="flex items-center gap-2"
+                className="flex items-center gap-1"
+                disabled={loading}
               >
                 <Plus className="w-4 h-4" />
                 Add Medication
@@ -537,7 +541,8 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
                         variant="ghost"
                         size="sm"
                         onClick={() => removeMedication(index)}
-                        className="text-red-500 hover:text-red-700"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        disabled={loading}
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>
@@ -553,6 +558,7 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
                         onChange={(e) => handleMedicationChange(index, 'name', e.target.value)}
                         placeholder="e.g., Paracetamol"
                         className={errors[`medication_${index}_name`] ? "border-red-500" : ""}
+                        disabled={loading}
                       />
                       {errors[`medication_${index}_name`] && (
                         <p className="text-sm text-red-500">{errors[`medication_${index}_name`]}</p>
@@ -566,6 +572,7 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
                         onChange={(e) => handleMedicationChange(index, 'dosage', e.target.value)}
                         placeholder="e.g., 500mg"
                         className={errors[`medication_${index}_dosage`] ? "border-red-500" : ""}
+                        disabled={loading}
                       />
                       {errors[`medication_${index}_dosage`] && (
                         <p className="text-sm text-red-500">{errors[`medication_${index}_dosage`]}</p>
@@ -579,6 +586,7 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
                         onChange={(e) => handleMedicationChange(index, 'frequency', e.target.value)}
                         placeholder="e.g., Twice daily"
                         className={errors[`medication_${index}_frequency`] ? "border-red-500" : ""}
+                        disabled={loading}
                       />
                       {errors[`medication_${index}_frequency`] && (
                         <p className="text-sm text-red-500">{errors[`medication_${index}_frequency`]}</p>
@@ -592,6 +600,7 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
                         onChange={(e) => handleMedicationChange(index, 'duration', e.target.value)}
                         placeholder="e.g., 7 days"
                         className={errors[`medication_${index}_duration`] ? "border-red-500" : ""}
+                        disabled={loading}
                       />
                       {errors[`medication_${index}_duration`] && (
                         <p className="text-sm text-red-500">{errors[`medication_${index}_duration`]}</p>
@@ -606,6 +615,7 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
                       onChange={(e) => handleMedicationChange(index, 'instructions', e.target.value)}
                       placeholder="e.g., Take after meals"
                       rows={2}
+                      disabled={loading}
                     />
                   </div>
                 </CardContent>
@@ -620,8 +630,10 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
               <Input
                 id="followUpDate"
                 type="date"
+                min={new Date().toISOString().split('T')[0]}
                 value={formData.followUpDate}
                 onChange={(e) => handleInputChange('followUpDate', e.target.value)}
+                disabled={loading}
               />
             </div>
 
@@ -633,6 +645,7 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
                 onChange={(e) => handleInputChange('notes', e.target.value)}
                 placeholder="Additional notes..."
                 rows={3}
+                disabled={loading}
               />
             </div>
           </div>
@@ -645,6 +658,7 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
               onChange={(e) => handleInputChange('followUpInstructions', e.target.value)}
               placeholder="Instructions for follow-up visit..."
               rows={2}
+              disabled={loading}
             />
           </div>
 

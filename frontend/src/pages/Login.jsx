@@ -224,7 +224,7 @@ const Login = () => {
                 <img src={Logo} alt="Smaart Healthcare Logo" className="w-28 h-28 mx-auto relative z-10 object-contain drop-shadow-2xl" />
               </div>
               <h1 className="text-5xl font-bold mb-6 bg-gradient-to-r from-white to-blue-100 bg-clip-text text-transparent">
-                Smaart Healthcare
+                SMAART HEALTHCARE
               </h1>
               <p className="text-xl text-white/90 leading-relaxed mb-8">
                 Streamline your healthcare operations with our comprehensive management platform

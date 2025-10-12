@@ -22,16 +22,15 @@ import {
   ChevronLeft,
   ChevronRight
 } from "lucide-react";
-import ScheduleConsultationDialog from "@/components/ScheduleConsultationDialog";
-import ScheduleTeleconsultationModal from "@/components/ScheduleTeleconsultationModal";
 import VideoCallModal from "@/components/VideoCallModal";
 import { consultationAPI, teleconsultationAPI } from "@/services/api";
 import { useToast } from "@/hooks/use-toast";
+import { getCurrentUser } from "@/utils/roleUtils";
 
 const Teleconsultation = () => {
   const { toast } = useToast();
-  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
-  const [scheduleTeleconsultationOpen, setScheduleTeleconsultationOpen] = useState(false);
+  const currentUser = getCurrentUser();
+  const isDoctor = currentUser?.role === 'doctor';
   const [upcomingConsultations, setUpcomingConsultations] = useState([]);
   const [consultationHistory, setConsultationHistory] = useState([]);
   const [upcomingTeleconsultations, setUpcomingTeleconsultations] = useState([]);
@@ -168,14 +167,13 @@ const Teleconsultation = () => {
         const historyResponse = await teleconsultationAPI.getHistory();
         setTeleconsultationHistory(historyResponse.teleconsultations || []);
         
-        // Set pagination info
-        if (response.pagination) {
-          setTotalPages(response.pagination.totalPages || 1);
-          setTotalCount(response.pagination.totalCount || 0);
-        } else {
-          setTotalPages(1);
-          setTotalCount((response.teleconsultations || []).length);
-        }
+        // Set pagination info - count both upcoming and history
+        const upcomingCount = (response.teleconsultations || []).length;
+        const historyCount = (historyResponse.teleconsultations || []).length;
+        const total = upcomingCount + historyCount;
+        
+        setTotalPages(1); // Since we're showing all items on one page
+        setTotalCount(total);
       } catch (error) {
         console.error('Failed to load teleconsultations:', error);
       } finally {
@@ -186,22 +184,6 @@ const Teleconsultation = () => {
     loadTeleconsultations();
   }, [currentPage, pageSize]);
 
-  const handleScheduleSuccess = () => {
-    toast({
-      title: "Teleconsultation Scheduled",
-      description: "Your teleconsultation has been scheduled successfully.",
-    });
-    // Reload teleconsultations
-    const loadTeleconsultations = async () => {
-      try {
-        const response = await teleconsultationAPI.getUpcoming();
-        setUpcomingTeleconsultations(response.teleconsultations || []);
-      } catch (error) {
-        console.error('Failed to reload teleconsultations:', error);
-      }
-    };
-    loadTeleconsultations();
-  };
 
   const handleJoinTeleconsultation = (teleconsultation) => {
     let meetingUrl;
@@ -231,24 +213,54 @@ const Teleconsultation = () => {
   const handleEndTeleconsultation = async (teleconsultationId) => {
     setCompletingConsultation(teleconsultationId);
     try {
-      await teleconsultationAPI.complete(teleconsultationId);
+      // First, try to start the teleconsultation if it's not active
+      try {
+        await teleconsultationAPI.start(teleconsultationId);
+      } catch (startError) {
+        // If it's already started or active, that's fine, continue to end it
+        console.log('Teleconsultation already started or active');
+      }
+      
+      // Now end the teleconsultation
+      await teleconsultationAPI.end(teleconsultationId);
       toast({
         title: "Consultation Completed",
         description: "The teleconsultation has been marked as completed.",
       });
       
       // Reload teleconsultations
-      const response = await teleconsultationAPI.getUpcoming();
-      setUpcomingTeleconsultations(response.teleconsultations || []);
-      
-      const historyResponse = await teleconsultationAPI.getHistory();
-      setTeleconsultationHistory(historyResponse.teleconsultations || []);
+      const loadTeleconsultations = async () => {
+        setTeleconsultationLoading(true);
+        try {
+          const response = await teleconsultationAPI.getUpcoming(currentPage, pageSize);
+          setUpcomingTeleconsultations(response.teleconsultations || []);
+          
+          const historyResponse = await teleconsultationAPI.getHistory();
+          setTeleconsultationHistory(historyResponse.teleconsultations || []);
+          
+          // Set pagination info
+          if (response.pagination) {
+            setTotalPages(response.pagination.totalPages || 1);
+            setTotalCount(response.pagination.totalCount || 0);
+          } else {
+            setTotalPages(1);
+            setTotalCount((response.teleconsultations || []).length);
+          }
+        } catch (error) {
+          console.error('Failed to load teleconsultations:', error);
+        } finally {
+          setTeleconsultationLoading(false);
+        }
+      };
+
+      loadTeleconsultations();
     } catch (error) {
       console.error('Failed to complete teleconsultation:', error);
+      const errorMessage = error.message || "Failed to complete the teleconsultation. Please try again.";
       toast({
         title: "Error",
-        description: "Failed to complete teleconsultation",
-        variant: "destructive"
+        description: errorMessage,
+        variant: "destructive",
       });
     } finally {
       setCompletingConsultation(null);
@@ -292,26 +304,8 @@ const Teleconsultation = () => {
               Completed: {teleconsultationHistory.length || 0}
             </span>
           </div>
-          <div className="flex items-center space-x-2">
-            <div className="p-1.5 bg-purple-100 rounded-full">
-              <MessageCircle className="w-4 h-4 text-purple-600" />
-            </div>
-            <span className="text-sm text-purple-600 font-medium">
-              Chat: {consultationHistory.length || 0}
-            </span>
-          </div>
         </div>
         
-        {/* Actions */}
-        <div className="flex items-center gap-3">
-          <Button 
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
-            onClick={() => setScheduleTeleconsultationOpen(true)}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Schedule Meeting
-          </Button>
-        </div>
       </div>
 
       {/* Consultations List */}
@@ -330,7 +324,7 @@ const Teleconsultation = () => {
               <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-lg border">
                 <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                 <span className="text-sm font-medium text-gray-700">
-                  {((currentPage - 1) * pageSize) + 1}-{Math.min(currentPage * pageSize, totalCount)} of {totalCount}
+                  {totalCount > 0 ? `${((currentPage - 1) * pageSize) + 1}-${Math.min(currentPage * pageSize, totalCount)} of ${totalCount}` : `${upcomingTeleconsultations.length + teleconsultationHistory.length} Total`}
                 </span>
               </div>
               <div className="flex items-center gap-2 px-2.5 py-1 bg-white rounded-md border border-gray-200">
@@ -410,47 +404,105 @@ const Teleconsultation = () => {
                         <Badge variant={getStatusColor(appointment.status)}>
                           {appointment.status}
                         </Badge>
-                        <div className="flex space-x-2">
-                          <Button 
-                            size="sm" 
-                            className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
-                            onClick={() => handleJoinTeleconsultation(teleconsultation)}
-                          >
-                            <Video className="w-4 h-4 mr-1" />
-                            Join Meeting
-                          </Button>
-                          {appointment.status !== 'Completed' && (
+                        {isDoctor && (
+                          <div className="flex space-x-2">
                             <Button 
                               size="sm" 
-                              variant="outline"
-                              className="bg-green-50 hover:bg-green-100 text-green-700 border-green-200 hover:border-green-300"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleEndTeleconsultation(teleconsultation._id);
-                              }}
-                              disabled={completingConsultation === teleconsultation._id}
+                              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
+                              onClick={() => handleJoinTeleconsultation(teleconsultation)}
                             >
-                              {completingConsultation === teleconsultation._id ? (
-                                <>
-                                  <Clock className="w-4 h-4 mr-1 animate-spin" />
-                                  Completing...
-                                </>
-                              ) : (
-                                <>
-                                  <CheckCircle className="w-4 h-4 mr-1" />
-                                  Complete
-                                </>
-                              )}
+                              <Video className="w-4 h-4 mr-1" />
+                              Join Meeting
                             </Button>
-                          )}
-                        </div>
+                            {appointment.status !== 'Completed' && (
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                className="bg-green-50 hover:bg-green-100 text-green-700 border-green-200 hover:border-green-300"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEndTeleconsultation(teleconsultation._id);
+                                }}
+                                disabled={completingConsultation === teleconsultation._id}
+                              >
+                                {completingConsultation === teleconsultation._id ? (
+                                  <>
+                                    <Clock className="w-4 h-4 mr-1 animate-spin" />
+                                    Completing...
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle className="w-4 h-4 mr-1" />
+                                    Complete
+                                  </>
+                                )}
+                              </Button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
                 );
               })}
               
-              {/* Add other consultation types here if needed */}
+              {/* Completed Teleconsultations */}
+              {teleconsultationHistory.length > 0 && (
+                <>
+                  <div className="pt-4 pb-2">
+                    <h3 className="text-lg font-semibold text-gray-700 flex items-center gap-2">
+                      <CheckCircle className="w-5 h-5 text-green-600" />
+                      Completed Teleconsultations
+                    </h3>
+                  </div>
+                  {teleconsultationHistory.map((teleconsultation) => {
+                    const appointment = formatTeleconsultationForDisplay(teleconsultation);
+                    return (
+                      <div key={`tele-history-${appointment.id}`} className="p-4 rounded-lg bg-gray-50 hover:bg-gray-100 transition-all duration-200 border-0">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-4">
+                            <div className="w-12 h-12 bg-gradient-to-r from-gray-400 to-gray-500 rounded-full flex items-center justify-center">
+                              <CheckCircle className="w-6 h-6 text-white" />
+                            </div>
+                            <div>
+                              <h3 className="font-semibold text-foreground">{appointment.patient}</h3>
+                              <div className="flex items-center space-x-3 text-sm text-muted-foreground">
+                                <span className="flex items-center">
+                                  <Clock className="w-4 h-4 mr-1" />
+                                  {appointment.time} • {appointment.date}
+                                </span>
+                                <span>•</span>
+                                <span>{appointment.duration}</span>
+                                <span>•</span>
+                                <span className="flex items-center">
+                                  <Video className="w-3 h-3 mr-1" />
+                                  Teleconsultation
+                                </span>
+                              </div>
+                              <div className="flex items-center space-x-2 mt-1">
+                                <Badge variant="default" className="bg-gray-100 text-gray-800">
+                                  {appointment.type}
+                                </Badge>
+                                {appointment.meetingId && (
+                                  <Badge variant="outline" className="text-xs">
+                                    ID: {appointment.meetingId}
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center space-x-3">
+                            <Badge variant="secondary" className="bg-green-100 text-green-800">
+                              Completed
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
               
             </div>
           )}
@@ -531,16 +583,6 @@ const Teleconsultation = () => {
       )}
       
       {/* Modals */}
-      <ScheduleConsultationDialog 
-        open={scheduleDialogOpen} 
-        onOpenChange={setScheduleDialogOpen}
-      />
-      
-      <ScheduleTeleconsultationModal
-        isOpen={scheduleTeleconsultationOpen}
-        onClose={() => setScheduleTeleconsultationOpen(false)}
-        onSuccess={handleScheduleSuccess}
-      />
       
       <VideoCallModal
         isOpen={videoCallModalOpen}

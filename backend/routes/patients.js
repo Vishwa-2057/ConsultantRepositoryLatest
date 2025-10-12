@@ -27,7 +27,7 @@ const router = express.Router();
 const validatePatient = [
   body('fullName').trim().isLength({ min: 1, max: 100 }).withMessage('Full name is required and must be less than 100 characters'),
   body('dateOfBirth').isISO8601().withMessage('Valid date of birth is required'),
-  body('gender').isIn(['Male', 'Female', 'Other', 'Prefer not to say']).withMessage('Valid gender selection is required'),
+  body('gender').isIn(['Male', 'Female', 'Other']).withMessage('Valid gender selection is required'),
   body('phone').trim().isLength({ min: 1 }).withMessage('Phone number is required'),
   body('email').optional().isEmail().withMessage('Valid email address is required'),
   body('uhid').trim().isLength({ min: 1, max: 50 }).withMessage('UHID is required and must be less than 50 characters'),
@@ -64,11 +64,10 @@ const validatePatient = [
 // GET /api/patients - Get all patients with pagination and filtering
 router.get('/', auth, async (req, res) => {
   try {
-    const {
+    let {
       page = 1,
       limit = 10,
       search = '',
-      status = '',
       sortBy = 'createdAt',
       sortOrder = 'desc'
     } = req.query;
@@ -93,9 +92,6 @@ router.get('/', auth, async (req, res) => {
       ];
     }
     
-    if (status && status !== 'all') {
-      query.status = status;
-    }
 
     // Build sort object
     const sort = {};
@@ -134,11 +130,10 @@ router.get('/', auth, async (req, res) => {
 // GET /api/patients/grouped-by-specialty - Get patients grouped by doctor specialties
 router.get('/grouped-by-specialty', auth, async (req, res) => {
   try {
-    const {
+    let {
       page = 1,
       limit = 10,
       search = '',
-      status = '',
       sortBy = 'createdAt',
       sortOrder = 'desc'
     } = req.query;
@@ -174,9 +169,6 @@ router.get('/grouped-by-specialty', auth, async (req, res) => {
       ];
     }
     
-    if (status && status !== 'all') {
-      matchConditions.status = status;
-    }
 
     // Build aggregation pipeline - simplified approach
     const pipeline = [
@@ -235,7 +227,6 @@ router.get('/grouped-by-specialty', auth, async (req, res) => {
               insurance: '$insurance',
               medicalHistory: '$medicalHistory',
               notes: '$notes',
-              status: '$status',
               lastVisit: '$lastVisit',
               nextAppointment: '$nextAppointment',
               createdAt: '$createdAt',
@@ -559,12 +550,19 @@ router.post('/', auth, (req, res, next) => {
         return res.status(400).json({ error: 'Invalid parent/guardian format' });
       }
     }
+    
+    // Parse vitals if it's a JSON string
+    if (typeof req.body.vitals === 'string') {
+      try {
+        parsedData.vitals = JSON.parse(req.body.vitals);
+      } catch (e) {
+        return res.status(400).json({ error: 'Invalid vitals format' });
+      }
+    }
 
     // Hash password
     const saltRounds = 12;
     const passwordHash = await bcrypt.hash(req.body.password, saltRounds);
-
-    // Create new patient with clinic reference and file paths
     const patientData = {
       ...parsedData,
       uhid: req.body.uhid ? req.body.uhid.toUpperCase() : undefined,
@@ -715,36 +713,6 @@ router.delete('/:id', auth, canEditPatients, async (req, res) => {
   }
 });
 
-// PATCH /api/patients/:id/status - Update patient status (clinic admin only)
-router.patch('/:id/status', auth, canEditPatients, async (req, res) => {
-  try {
-    const { status } = req.body;
-    
-    if (!status || !['Active', 'Inactive', 'Follow-up', 'Completed'].includes(status)) {
-      return res.status(400).json({ error: 'Valid status is required' });
-    }
-
-    const patient = await Patient.findById(req.params.id);
-    if (!patient) {
-      return res.status(404).json({ error: 'Patient not found' });
-    }
-
-    patient.status = status;
-    patient.updatedAt = new Date();
-    await patient.save();
-
-    res.json({
-      message: 'Patient status updated successfully',
-      patient: patient.toJSON()
-    });
-  } catch (error) {
-    console.error('Error updating patient status:', error);
-    if (error.kind === 'ObjectId') {
-      return res.status(400).json({ error: 'Invalid patient ID' });
-    }
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
 
 // PATCH /api/patients/:id/assigned-doctors - Update patient assigned doctors (clinic admin only)
 router.patch('/:id/assigned-doctors', auth, canEditPatients, async (req, res) => {

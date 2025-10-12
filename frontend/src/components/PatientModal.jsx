@@ -19,6 +19,41 @@ import { useToast } from "@/hooks/use-toast";
 import { validationSchemas, sanitizers, validators } from "@/utils/validation";
 import { useAuditLog } from "@/hooks/useAuditLog";
 
+// List of countries for nationality dropdown
+const COUNTRIES = [
+  "Afghanistan", "Albania", "Algeria", "Andorra", "Angola", "Argentina", "Armenia", "Australia", "Austria", "Azerbaijan",
+  "Bahamas", "Bahrain", "Bangladesh", "Barbados", "Belarus", "Belgium", "Belize", "Benin", "Bhutan", "Bolivia",
+  "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei", "Bulgaria", "Burkina Faso", "Burundi",
+  "Cambodia", "Cameroon", "Canada", "Cape Verde", "Central African Republic", "Chad", "Chile", "China", "Colombia",
+  "Comoros", "Congo", "Costa Rica", "Croatia", "Cuba", "Cyprus", "Czech Republic",
+  "Denmark", "Djibouti", "Dominica", "Dominican Republic",
+  "Ecuador", "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia", "Ethiopia",
+  "Fiji", "Finland", "France",
+  "Gabon", "Gambia", "Georgia", "Germany", "Ghana", "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau", "Guyana",
+  "Haiti", "Honduras", "Hungary",
+  "Iceland", "India", "Indonesia", "Iran", "Iraq", "Ireland", "Israel", "Italy",
+  "Jamaica", "Japan", "Jordan",
+  "Kazakhstan", "Kenya", "Kiribati", "North Korea", "South Korea", "Kuwait", "Kyrgyzstan",
+  "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia", "Libya", "Liechtenstein", "Lithuania", "Luxembourg",
+  "Macedonia", "Madagascar", "Malawi", "Malaysia", "Maldives", "Mali", "Malta", "Marshall Islands", "Mauritania",
+  "Mauritius", "Mexico", "Micronesia", "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco", "Mozambique", "Myanmar",
+  "Namibia", "Nauru", "Nepal", "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria", "Norway",
+  "Oman",
+  "Pakistan", "Palau", "Palestine", "Panama", "Papua New Guinea", "Paraguay", "Peru", "Philippines", "Poland", "Portugal",
+  "Qatar",
+  "Romania", "Russia", "Rwanda",
+  "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe",
+  "Saudi Arabia", "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore", "Slovakia", "Slovenia", "Solomon Islands",
+  "Somalia", "South Africa", "South Sudan", "Spain", "Sri Lanka", "Sudan", "Suriname", "Swaziland", "Sweden", "Switzerland",
+  "Syria",
+  "Taiwan", "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo", "Tonga", "Trinidad and Tobago", "Tunisia",
+  "Turkey", "Turkmenistan", "Tuvalu",
+  "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom", "United States", "Uruguay", "Uzbekistan",
+  "Vanuatu", "Vatican City", "Venezuela", "Vietnam",
+  "Yemen",
+  "Zambia", "Zimbabwe"
+];
+
 const PatientModal = ({ isOpen, onClose, onSubmit }) => {
   const { toast } = useToast();
   const { logComponentAccess, logFormSubmission, logPatientAccess } = useAuditLog();
@@ -63,6 +98,20 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
       policyNumber: "",
       groupNumber: ""
     },
+    vitals: {
+      height: "",
+      weight: "",
+      bmi: "",
+      bloodPressure: {
+        systolic: "",
+        diastolic: ""
+      },
+      heartRate: "",
+      temperature: "",
+      respiratoryRate: "",
+      oxygenSaturation: "",
+      bloodSugar: ""
+    },
     notes: ""
   });
 
@@ -70,6 +119,7 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
   const [doctors, setDoctors] = useState([]);
   const [doctorsLoading, setDoctorsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [calculatedAge, setCalculatedAge] = useState(null);
   
   // File upload states
   const [profileImage, setProfileImage] = useState(null);
@@ -134,15 +184,32 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
       }
     }
     
+    // Handle nested fields (including double-nested like bloodPressure.systolic)
     if (field.includes('.')) {
-      const [parent, child] = field.split('.');
-      setFormData(prev => ({
-        ...prev,
-        [parent]: {
-          ...prev[parent],
-          [child]: sanitizedValue
-        }
-      }));
+      const parts = field.split('.');
+      if (parts.length === 2) {
+        const [parent, child] = parts;
+        setFormData(prev => ({
+          ...prev,
+          [parent]: {
+            ...prev[parent],
+            [child]: sanitizedValue
+          }
+        }));
+      } else if (parts.length === 3) {
+        // Handle double-nested fields like vitals.bloodPressure.systolic
+        const [parent, child, grandchild] = parts;
+        setFormData(prev => ({
+          ...prev,
+          [parent]: {
+            ...prev[parent],
+            [child]: {
+              ...prev[parent][child],
+              [grandchild]: sanitizedValue
+            }
+          }
+        }));
+      }
     } else {
       setFormData(prev => ({
         ...prev,
@@ -150,10 +217,133 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
       }));
     }
     
+    // Special validation for dateOfBirth to prevent future dates and auto-calculate age
+    if (field === 'dateOfBirth' && sanitizedValue) {
+      const selectedDate = new Date(sanitizedValue);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Reset time to start of day for accurate comparison
+      
+      if (selectedDate > today) {
+        setErrors(prev => ({ ...prev, dateOfBirth: "Enter valid Date of birth" }));
+        setCalculatedAge(null);
+        return; // Don't clear the error
+      }
+      
+      // Calculate age and automatically set isUnder18 checkbox
+      const age = today.getFullYear() - selectedDate.getFullYear();
+      const monthDiff = today.getMonth() - selectedDate.getMonth();
+      const actualAge = monthDiff < 0 || (monthDiff === 0 && today.getDate() < selectedDate.getDate()) ? age - 1 : age;
+      
+      // Set calculated age for display
+      setCalculatedAge(actualAge);
+      
+      // Automatically check/uncheck the isUnder18 checkbox based on calculated age
+      setFormData(prev => ({
+        ...prev,
+        dateOfBirth: sanitizedValue,
+        isUnder18: actualAge < 18
+      }));
+    }
+    
     // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: "" }));
     }
+  };
+
+  // Real-time field validation on blur
+  const handleFieldBlur = (field, value) => {
+    const newErrors = { ...errors };
+    
+    // Get nested value for nested fields
+    const getNestedValue = (field) => {
+      if (field.includes('.')) {
+        const parts = field.split('.');
+        if (parts.length === 2) {
+          return formData[parts[0]]?.[parts[1]];
+        }
+      }
+      return formData[field];
+    };
+    
+    const fieldValue = value !== undefined ? value : getNestedValue(field);
+    
+    switch (field) {
+      case 'fullName':
+        const nameError = validators.minLength(fieldValue, 2, 'Full name') || 
+                         validators.maxLength(fieldValue, 100, 'Full name');
+        if (nameError) newErrors.fullName = nameError;
+        else delete newErrors.fullName;
+        break;
+        
+      case 'phone':
+        if (!formData.isUnder18 && fieldValue) {
+          const phoneError = validators.phone(fieldValue);
+          if (phoneError) newErrors.phone = phoneError;
+          else delete newErrors.phone;
+        }
+        break;
+        
+      case 'email':
+      case 'parentGuardian.email':
+        if (fieldValue) {
+          const emailError = validators.email(fieldValue);
+          if (emailError) newErrors[field] = emailError;
+          else delete newErrors[field];
+        }
+        break;
+        
+      case 'aadhaarNumber':
+        if (fieldValue) {
+          const aadhaarError = validators.aadhaar(fieldValue);
+          if (aadhaarError) newErrors.aadhaarNumber = aadhaarError;
+          else delete newErrors.aadhaarNumber;
+        }
+        break;
+        
+      case 'uhid':
+        if (fieldValue) {
+          const uhidError = validators.uhid(fieldValue);
+          if (uhidError) newErrors.uhid = uhidError;
+          else delete newErrors.uhid;
+        }
+        break;
+        
+      case 'parentGuardian.mobileNumber':
+      case 'emergencyContact.phone':
+        if (fieldValue) {
+          const phoneError = validators.phone(fieldValue);
+          if (phoneError) newErrors[field] = phoneError;
+          else delete newErrors[field];
+        }
+        break;
+        
+      case 'address.zipCode':
+        if (fieldValue) {
+          const zipError = validators.zipCode(fieldValue);
+          if (zipError) newErrors['address.zipCode'] = zipError;
+          else delete newErrors['address.zipCode'];
+        }
+        break;
+        
+      case 'occupation':
+        if (fieldValue) {
+          const occupationError = validators.maxLength(fieldValue, 100, 'Occupation');
+          if (occupationError) newErrors.occupation = occupationError;
+          else delete newErrors.occupation;
+        }
+        break;
+        
+      case 'password':
+        if (fieldValue) {
+          const passwordError = validators.password(fieldValue);
+          if (passwordError) newErrors.password = passwordError;
+          else delete newErrors.password;
+        }
+        break;
+    }
+    
+    setErrors(newErrors);
   };
 
 
@@ -347,6 +537,17 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
 
     setErrors(newErrors);
     console.log('Validation errors:', newErrors);
+    
+    // Show toast with validation errors if any
+    if (Object.keys(newErrors).length > 0) {
+      const firstError = Object.values(newErrors)[0];
+      toast({
+        title: "Validation Error",
+        description: firstError,
+        variant: "destructive",
+      });
+    }
+    
     return Object.keys(newErrors).length === 0;
   };
 
@@ -374,8 +575,15 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
         formDataToSend.append('fullName', formData.fullName.trim());
         formDataToSend.append('dateOfBirth', formData.dateOfBirth);
         formDataToSend.append('gender', formData.gender);
-        formDataToSend.append('phone', formData.phone.trim());
-        formDataToSend.append('email', formData.email.trim());
+        
+        // For under 18 patients, use parent's phone as patient phone
+        if (formData.isUnder18) {
+          formDataToSend.append('phone', formData.parentGuardian.mobileNumber.trim());
+          formDataToSend.append('email', formData.parentGuardian.email.trim());
+        } else {
+          formDataToSend.append('phone', formData.phone.trim());
+          formDataToSend.append('email', formData.email.trim());
+        }
         formDataToSend.append('password', formData.password);
         formDataToSend.append('uhid', formData.uhid.trim().toUpperCase());
         formDataToSend.append('bloodGroup', formData.bloodGroup);
@@ -424,9 +632,8 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
         // Add assigned doctors as JSON string
         formDataToSend.append('assignedDoctors', JSON.stringify(formData.assignedDoctors));
         
-        // Add notes and status
+        // Add notes
         formDataToSend.append('notes', formData.notes.trim());
-        formDataToSend.append('status', 'Active');
         
         // Add files
         formDataToSend.append('profileImage', profileImage);
@@ -511,6 +718,20 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
         policyNumber: "",
         groupNumber: ""
       },
+      vitals: {
+        height: "",
+        weight: "",
+        bmi: "",
+        bloodPressure: {
+          systolic: "",
+          diastolic: ""
+        },
+        heartRate: "",
+        temperature: "",
+        respiratoryRate: "",
+        oxygenSaturation: "",
+        bloodSugar: ""
+      },
       notes: ""
     });
     
@@ -523,6 +744,7 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
     // Reset other states
     setErrors({});
     setSubmitting(false);
+    setCalculatedAge(null);
     
     onClose();
   };
@@ -570,6 +792,7 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                   id="fullName"
                   value={formData.fullName}
                   onChange={(e) => handleInputChange("fullName", e.target.value)}
+                  onBlur={(e) => handleFieldBlur("fullName", e.target.value)}
                   placeholder="Enter full name"
                   className={errors.fullName ? "border-red-500" : ""}
                 />
@@ -583,9 +806,15 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                   type="date"
                   value={formData.dateOfBirth}
                   onChange={(e) => handleInputChange("dateOfBirth", e.target.value)}
+                  max={new Date().toISOString().split('T')[0]}
                   className={errors.dateOfBirth ? "border-red-500" : ""}
                 />
                 {errors.dateOfBirth && <p className="text-sm text-red-500 mt-1">{errors.dateOfBirth}</p>}
+                {calculatedAge !== null && (
+                  <p className="text-sm text-blue-600 mt-1 font-medium">
+                    Age: {calculatedAge} {calculatedAge === 1 ? 'year' : 'years'} old
+                  </p>
+                )}
               </div>
               
               <div>
@@ -598,7 +827,6 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                     <SelectItem value="Male">Male</SelectItem>
                     <SelectItem value="Female">Female</SelectItem>
                     <SelectItem value="Other">Other</SelectItem>
-                    <SelectItem value="Prefer not to say">Prefer not to say</SelectItem>
                   </SelectContent>
                 </Select>
                 {errors.gender && <p className="text-sm text-red-500 mt-1">{errors.gender}</p>}
@@ -610,6 +838,7 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                   id="uhid"
                   value={formData.uhid}
                   onChange={(e) => handleInputChange("uhid", e.target.value.toUpperCase())}
+                  onBlur={(e) => handleFieldBlur("uhid", e.target.value)}
                   placeholder="Enter UHID"
                   className={errors.uhid ? "border-red-500" : ""}
                 />
@@ -642,6 +871,7 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                   id="occupation"
                   value={formData.occupation}
                   onChange={(e) => handleInputChange("occupation", e.target.value)}
+                  onBlur={(e) => handleFieldBlur("occupation", e.target.value)}
                   placeholder="Enter occupation"
                   className={errors.occupation ? "border-red-500" : ""}
                 />
@@ -677,12 +907,18 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
               
               <div>
                 <Label htmlFor="nationality">Nationality</Label>
-                <Input
-                  id="nationality"
-                  value={formData.nationality}
-                  onChange={(e) => handleInputChange("nationality", e.target.value)}
-                  placeholder="Enter nationality"
-                />
+                <Select value={formData.nationality} onValueChange={(value) => handleInputChange("nationality", value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select nationality" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[300px]">
+                    {COUNTRIES.map((country) => (
+                      <SelectItem key={country} value={country}>
+                        {country}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               
               <div>
@@ -691,6 +927,7 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                   id="aadhaarNumber"
                   value={formData.aadhaarNumber}
                   onChange={(e) => handleInputChange("aadhaarNumber", e.target.value)}
+                  onBlur={(e) => handleFieldBlur("aadhaarNumber", e.target.value)}
                   placeholder="Enter 12-digit Aadhaar number"
                   className={errors.aadhaarNumber ? "border-red-500" : ""}
                   maxLength={12}
@@ -773,11 +1010,12 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
               {!formData.isUnder18 && (
                 <>
                   <div>
-                    <Label htmlFor="phone">Phone Number (If {'>'} 18) *</Label>
+                    <Label htmlFor="phone">Phone Number *</Label>
                     <Input
                       id="phone"
                       value={formData.phone}
                       onChange={(e) => handleInputChange("phone", e.target.value)}
+                      onBlur={(e) => handleFieldBlur("phone", e.target.value)}
                       placeholder="Enter 10-digit phone number"
                       className={errors.phone ? "border-red-500" : ""}
                       maxLength={10}
@@ -791,12 +1029,13 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                   </div>
                   
                   <div>
-                    <Label htmlFor="email">Email (If {'>'} 18)</Label>
+                    <Label htmlFor="email">Email</Label>
                     <Input
                       id="email"
                       type="email"
                       value={formData.email}
                       onChange={(e) => handleInputChange("email", e.target.value)}
+                      onBlur={(e) => handleFieldBlur("email", e.target.value)}
                       placeholder="Enter email address"
                       className={errors.email ? "border-red-500" : ""}
                     />
@@ -817,6 +1056,7 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                   type="password"
                   value={formData.password}
                   onChange={(e) => handleInputChange("password", e.target.value)}
+                  onBlur={(e) => handleFieldBlur("password", e.target.value)}
                   placeholder="Enter password (min. 8 chars, uppercase, lowercase, number)"
                   className={errors.password ? "border-red-500" : ""}
                   required
@@ -869,6 +1109,7 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                     type="email"
                     value={formData.parentGuardian.email}
                     onChange={(e) => handleInputChange("parentGuardian.email", e.target.value)}
+                    onBlur={(e) => handleFieldBlur("parentGuardian.email", e.target.value)}
                     placeholder="Enter parent/guardian email"
                     className={errors['parentGuardian.email'] ? "border-red-500" : ""}
                   />
@@ -881,6 +1122,7 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                     id="parentGuardianMobile"
                     value={formData.parentGuardian.mobileNumber}
                     onChange={(e) => handleInputChange("parentGuardian.mobileNumber", e.target.value)}
+                    onBlur={(e) => handleFieldBlur("parentGuardian.mobileNumber", e.target.value)}
                     placeholder="Enter 10-digit mobile number"
                     className={errors['parentGuardian.mobileNumber'] ? "border-red-500" : ""}
                     maxLength={10}
@@ -1034,6 +1276,7 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                     id="address.zipCode"
                     value={formData.address.zipCode}
                     onChange={(e) => handleInputChange("address.zipCode", e.target.value)}
+                    onBlur={(e) => handleFieldBlur("address.zipCode", e.target.value)}
                     placeholder="Enter ZIP code"
                     className={errors['address.zipCode'] ? "border-red-500" : ""}
                   />
@@ -1078,8 +1321,16 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                   id="emergencyPhone"
                   value={formData.emergencyContact.phone}
                   onChange={(e) => handleInputChange("emergencyContact.phone", e.target.value)}
+                  onBlur={(e) => handleFieldBlur("emergencyContact.phone", e.target.value)}
                   placeholder="Enter contact phone"
+                  className={errors['emergencyContact.phone'] ? "border-red-500" : ""}
                 />
+                {errors['emergencyContact.phone'] && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <AlertCircle className="w-4 h-4 text-red-500" />
+                    <p className="text-sm text-red-500">{errors['emergencyContact.phone']}</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -68,13 +68,13 @@ export function ConsultantSidebar({ mobile = false }) {
             <div className={`${mobile ? 'w-12 h-12' : 'w-10 h-10'} rounded-lg flex items-center justify-center shadow-sm border border-border overflow-hidden bg-card`}>
               <img 
                 src={LogoImage} 
-                alt="Smart Healthcare Logo" 
+                alt="Smaart Healthcare Logo" 
                 className="w-full h-full object-contain"
               />
             </div>
             {!collapsed && (
               <div className="overflow-hidden">
-                <h2 className={`font-semibold text-foreground ${mobile ? 'text-xl' : 'text-lg'} tracking-tight whitespace-nowrap`}>Smart Healthcare</h2>
+                <h2 className={`font-semibold text-foreground ${mobile ? 'text-xl' : 'text-lg'} tracking-tight whitespace-nowrap`}>SMAART Healthcare</h2>
               </div>
             )}
           </div>

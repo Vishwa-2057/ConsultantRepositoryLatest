@@ -106,6 +106,12 @@ router.post('/login-step1', loginValidation, async (req, res) => {
     if (user) {
       userType = 'doctor';
       console.log(`  - Found user in Doctor collection`);
+      
+      // Check if doctor is active
+      if (user.isActive === false) {
+        console.log(`  - Doctor is inactive, rejecting login`);
+        return res.status(403).json({ error: 'Your account has been deactivated. Please contact your clinic administrator.' });
+      }
     }
     
     // If not found in Doctor, try Nurse collection
@@ -114,6 +120,12 @@ router.post('/login-step1', loginValidation, async (req, res) => {
       if (user) {
         userType = 'nurse';
         console.log(`  - Found user in Nurse collection`);
+        
+        // Check if nurse is active
+        if (user.isActive === false) {
+          console.log(`  - Nurse is inactive, rejecting login`);
+          return res.status(403).json({ error: 'Your account has been deactivated. Please contact your clinic administrator.' });
+        }
       }
     }
     
@@ -222,9 +234,25 @@ router.post('/login-step2', otpLoginValidation, async (req, res) => {
     let user = await Doctor.findById(otpRecord.userId);
     let userType = 'doctor';
     
+    // Check if doctor is active
+    if (user && user.isActive === false) {
+      return res.status(403).json({
+        success: false,
+        error: 'Your account has been deactivated. Please contact your clinic administrator.'
+      });
+    }
+    
     if (!user) {
       user = await Nurse.findById(otpRecord.userId);
       userType = 'nurse';
+      
+      // Check if nurse is active
+      if (user && user.isActive === false) {
+        return res.status(403).json({
+          success: false,
+          error: 'Your account has been deactivated. Please contact your clinic administrator.'
+        });
+      }
     }
     
     if (!user) {
@@ -341,6 +369,12 @@ router.post('/developer-login', loginValidation, async (req, res) => {
     if (user) {
       userType = 'doctor';
       console.log(`  - Found user in Doctor collection`);
+      
+      // Check if doctor is active
+      if (user.isActive === false) {
+        console.log(`  - Doctor is inactive, rejecting login`);
+        return res.status(403).json({ error: 'Your account has been deactivated. Please contact your clinic administrator.' });
+      }
     }
     
     // If not found in Doctor, try Nurse collection
@@ -349,6 +383,12 @@ router.post('/developer-login', loginValidation, async (req, res) => {
       if (user) {
         userType = 'nurse';
         console.log(`  - Found user in Nurse collection`);
+        
+        // Check if nurse is active
+        if (user.isActive === false) {
+          console.log(`  - Nurse is inactive, rejecting login`);
+          return res.status(403).json({ error: 'Your account has been deactivated. Please contact your clinic administrator.' });
+        }
       }
     }
     
@@ -543,6 +583,14 @@ router.post('/request-otp', requestOTPValidation, async (req, res) => {
     user = await Doctor.findOne({ email });
     if (user) {
       userType = 'doctor';
+      
+      // Check if doctor is active
+      if (user.isActive === false) {
+        return res.status(403).json({ 
+          success: false,
+          error: 'Your account has been deactivated. Please contact your clinic administrator.' 
+        });
+      }
     }
     
     // If not found in Doctor, try Nurse collection
@@ -550,6 +598,14 @@ router.post('/request-otp', requestOTPValidation, async (req, res) => {
       user = await Nurse.findOne({ email });
       if (user) {
         userType = 'nurse';
+        
+        // Check if nurse is active
+        if (user.isActive === false) {
+          return res.status(403).json({ 
+            success: false,
+            error: 'Your account has been deactivated. Please contact your clinic administrator.' 
+          });
+        }
       }
     }
     
@@ -756,9 +812,25 @@ router.post('/login-otp', otpLoginValidation, async (req, res) => {
     let user = await Doctor.findById(otpRecord.userId);
     let userType = 'doctor';
     
+    // Check if doctor is active
+    if (user && user.isActive === false) {
+      return res.status(403).json({
+        success: false,
+        error: 'Your account has been deactivated. Please contact your clinic administrator.'
+      });
+    }
+    
     if (!user) {
       user = await Nurse.findById(otpRecord.userId);
       userType = 'nurse';
+      
+      // Check if nurse is active
+      if (user && user.isActive === false) {
+        return res.status(403).json({
+          success: false,
+          error: 'Your account has been deactivated. Please contact your clinic administrator.'
+        });
+      }
     }
     
     if (!user) {
@@ -1215,6 +1287,8 @@ router.post('/forgot-password', forgotPasswordValidation, async (req, res) => {
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
+    console.log(`🔐 Generated password reset OTP for ${email}:`, { otpCode, userName, userType });
+
     // Save OTP
     await OTP.findOneAndUpdate(
       { email, purpose: 'password_reset' },
@@ -1230,6 +1304,7 @@ router.post('/forgot-password', forgotPasswordValidation, async (req, res) => {
 
     // Send email
     try {
+      console.log(`📧 Calling sendPasswordResetOTP with:`, { email, userName, otpCode });
       await emailService.sendPasswordResetOTP(email, userName, otpCode);
     } catch (emailError) {
       console.error('Failed to send password reset email:', emailError);

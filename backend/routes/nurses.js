@@ -7,15 +7,20 @@ const { nurseUpload, deleteFromCloudinary, extractPublicId } = require('../confi
 const fs = require('fs');
 const router = express.Router();
 
-// GET /api/nurses - Get all nurses (both active and inactive)
+// GET /api/nurses - Get all nurses (with optional activeOnly filter)
 router.get('/', auth, async (req, res) => {
   try {
-    const { page = 1, limit = 100, search } = req.query;
+    const { page = 1, limit = 100, search, activeOnly } = req.query;
     
     // Filter nurses by clinic for clinic admins
     const query = {};
     if (req.user.role === 'clinic') {
       query.clinicId = req.user.id;
+    }
+    
+    // Filter for active nurses only if requested (for forms/dropdowns)
+    if (activeOnly === 'true') {
+      query.isActive = true;
     }
     
     // Add search functionality
@@ -25,7 +30,8 @@ router.get('/', auth, async (req, res) => {
         { fullName: searchRegex },
         { email: searchRegex },
         { department: searchRegex },
-        { uhid: searchRegex }
+        { uhid: searchRegex },
+        { phone: searchRegex }
       ];
     }
     
@@ -61,7 +67,7 @@ router.get('/', auth, async (req, res) => {
 // GET /api/nurses/search - Search nurses by name or department
 router.get('/search', auth, async (req, res) => {
   try {
-    const { q } = req.query;
+    const { q, activeOnly } = req.query;
     
     if (!q) {
       return res.status(400).json({
@@ -79,6 +85,11 @@ router.get('/search', auth, async (req, res) => {
     };
     if (req.user.role === 'clinic') {
       query.clinicId = req.user.id;
+    }
+    
+    // Filter for active nurses only if requested (for forms/dropdowns)
+    if (activeOnly === 'true') {
+      query.isActive = true;
     }
     
     const nurses = await Nurse.find(query)

@@ -782,15 +782,15 @@ export const complianceAlertAPI = {
 // Doctor API functions
 export const doctorAPI = {
   // Get all doctors
-  getAll: async (page = 1, limit = 100, filters = {}) => {
+  getAll: async (page = 1, limit = 100, filters = {}, activeOnly = false) => {
     console.log('doctorAPI.getAll called');
     const currentToken = await sessionManager.getToken();
     console.log('Auth token in API:', currentToken ? 'Present' : 'Missing');
     
-    // Build query parameters
     const queryParams = new URLSearchParams({
       page: page.toString(),
       limit: limit.toString(),
+      ...(activeOnly ? { activeOnly: 'true' } : {}),
       ...filters
     });
     
@@ -872,7 +872,8 @@ export const doctorAPI = {
     const formData = new FormData();
     formData.append('profileImage', imageFile);
     
-    const currentToken = localStorage.getItem('authToken');
+    // Get current token with automatic refresh if needed
+    const currentToken = await sessionManager.checkTokenRefresh();
     const url = `${API_BASE_URL}/doctors/upload-image`;
     
     const response = await fetch(url, {
@@ -938,11 +939,12 @@ export const doctorAPI = {
 // Nurse API functions
 export const nurseAPI = {
   // Get all nurses
-  getAll: async (page = 1, limit = 100, filters = {}) => {
+  getAll: async (page = 1, limit = 100, filters = {}, activeOnly = false) => {
     // Build query parameters
     const queryParams = new URLSearchParams({
       page: page.toString(),
       limit: limit.toString(),
+      ...(activeOnly ? { activeOnly: 'true' } : {}),
       ...filters
     });
     
@@ -959,7 +961,8 @@ export const nurseAPI = {
     const formData = new FormData();
     formData.append('profileImage', imageFile);
     
-    const currentToken = await sessionManager.getToken();
+    // Get current token with automatic refresh if needed
+    const currentToken = await sessionManager.checkTokenRefresh();
     const url = `${API_BASE_URL}/nurses/upload-image`;
     
     const response = await fetch(url, {

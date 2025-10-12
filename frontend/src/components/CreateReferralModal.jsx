@@ -24,6 +24,7 @@ import { referralAPI, patientAPI, doctorAPI, clinicAPI, authAPI } from "@/servic
 const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [patients, setPatients] = useState([]);
   const [doctors, setDoctors] = useState([]);
   const [currentClinicDoctors, setCurrentClinicDoctors] = useState([]);
@@ -316,6 +317,7 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
+    setSubmitting(true);
 
     try {
       console.log('Form data being submitted:', formData);
@@ -382,6 +384,7 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
       });
     } finally {
       setIsLoading(false);
+      setSubmitting(false);
     }
   };
 
@@ -594,6 +597,7 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
               <Label htmlFor="preferredDate" className="text-sm">Preferred Date</Label>
               <Input
                 type="date"
+                min={new Date().toISOString().split('T')[0]}
                 id="preferredDate"
                 name="preferredDate"
                 value={formData.preferredDate}
@@ -764,7 +768,7 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
               type="button" 
               variant="outline" 
               onClick={onClose}
-              disabled={isLoading}
+              disabled={submitting}
               className="h-9"
             >
               Cancel
@@ -773,11 +777,11 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
               type="submit" 
               className="h-9"
               style={{ backgroundColor: '#0059B3', color: 'white' }}
-              onMouseEnter={(e) => !isLoading && (e.target.style.backgroundColor = '#004494')}
-              onMouseLeave={(e) => !isLoading && (e.target.style.backgroundColor = '#0059B3')}
-              disabled={isLoading}
+              onMouseEnter={(e) => !submitting && (e.target.style.backgroundColor = '#004494')}
+              onMouseLeave={(e) => !submitting && (e.target.style.backgroundColor = '#0059B3')}
+              disabled={submitting}
             >
-              {isLoading ? "Creating..." : "Create Referral"}
+              {submitting ? "Creating..." : "Create Referral"}
             </Button>
           </DialogFooter>
         </form>

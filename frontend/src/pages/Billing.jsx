@@ -20,7 +20,9 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
-  Eye
+  Eye,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 
 const Billing = () => {

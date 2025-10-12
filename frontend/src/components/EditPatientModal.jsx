@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { User, Phone, Mail, MapPin, Calendar, Heart, FileText, Plus, X, UserCheck, Share2 } from "lucide-react";
+import { User, Phone, Mail, MapPin, Calendar, FileText, Plus, X, UserCheck, Share2, AlertCircle } from "lucide-react";
 import { patientAPI, doctorAPI } from "@/services/api";
 import { useToast } from "@/hooks/use-toast";
 
@@ -30,8 +30,16 @@ const EditPatientModal = ({ isOpen, onClose, patient, onSuccess }) => {
     occupation: "",
     referringDoctor: "",
     referredClinic: "",
-    governmentId: "",
-    idNumber: "",
+    maritalStatus: "",
+    handDominance: "",
+    nationality: "",
+    aadhaarNumber: "",
+    isUnder18: false,
+    parentGuardian: {
+      name: "",
+      email: "",
+      mobileNumber: ""
+    },
     address: {
       street: "",
       city: "",
@@ -50,12 +58,6 @@ const EditPatientModal = ({ isOpen, onClose, patient, onSuccess }) => {
       policyNumber: "",
       groupNumber: ""
     },
-    medicalHistory: {
-      conditions: [],
-      allergies: [],
-      medications: [],
-      surgeries: []
-    },
     notes: ""
   });
 
@@ -63,10 +65,6 @@ const EditPatientModal = ({ isOpen, onClose, patient, onSuccess }) => {
   const [doctors, setDoctors] = useState([]);
   const [doctorsLoading, setDoctorsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [newCondition, setNewCondition] = useState("");
-  const [newAllergy, setNewAllergy] = useState("");
-  const [newMedication, setNewMedication] = useState("");
-  const [newSurgery, setNewSurgery] = useState("");
 
   // Load patient data when modal opens or patient changes
   useEffect(() => {
@@ -90,8 +88,16 @@ const EditPatientModal = ({ isOpen, onClose, patient, onSuccess }) => {
       occupation: patient.occupation || "",
       referringDoctor: patient.referringDoctor || "",
       referredClinic: patient.referredClinic || "",
-      governmentId: patient.governmentId || "",
-      idNumber: patient.idNumber || "",
+      maritalStatus: patient.maritalStatus || "",
+      handDominance: patient.handDominance || "",
+      nationality: patient.nationality || "",
+      aadhaarNumber: patient.aadhaarNumber || "",
+      isUnder18: patient.isUnder18 || false,
+      parentGuardian: {
+        name: patient.parentGuardian?.name || "",
+        email: patient.parentGuardian?.email || "",
+        mobileNumber: patient.parentGuardian?.mobileNumber || ""
+      },
       address: {
         street: patient.address?.street || "",
         city: patient.address?.city || "",
@@ -109,12 +115,6 @@ const EditPatientModal = ({ isOpen, onClose, patient, onSuccess }) => {
         provider: patient.insurance?.provider || "",
         policyNumber: patient.insurance?.policyNumber || "",
         groupNumber: patient.insurance?.groupNumber || ""
-      },
-      medicalHistory: {
-        conditions: patient.medicalHistory?.conditions || [],
-        allergies: patient.medicalHistory?.allergies || [],
-        medications: patient.medicalHistory?.medications || [],
-        surgeries: patient.medicalHistory?.surgeries || []
       },
       notes: patient.notes || ""
     });
@@ -156,47 +156,32 @@ const EditPatientModal = ({ isOpen, onClose, patient, onSuccess }) => {
     }
   };
 
-  const addToArray = (arrayPath, newItem, setNewItem) => {
-    if (!newItem.trim()) return;
-    
-    const [parent, child] = arrayPath.split('.');
-    setFormData(prev => ({
-      ...prev,
-      [parent]: {
-        ...prev[parent],
-        [child]: [...prev[parent][child], newItem.trim()]
-      }
-    }));
-    setNewItem("");
-  };
-
-  const removeFromArray = (arrayPath, index) => {
-    const [parent, child] = arrayPath.split('.');
-    setFormData(prev => ({
-      ...prev,
-      [parent]: {
-        ...prev[parent],
-        [child]: prev[parent][child].filter((_, i) => i !== index)
-      }
-    }));
-  };
-
   const validateForm = () => {
     const newErrors = {};
 
     if (!formData.fullName.trim()) newErrors.fullName = "Full name is required";
     if (!formData.dateOfBirth) newErrors.dateOfBirth = "Date of birth is required";
     if (!formData.gender) newErrors.gender = "Gender is required";
-    if (!formData.phone.trim()) newErrors.phone = "Phone number is required";
+    
+    // Phone validation based on age
+    if (!formData.isUnder18 && !formData.phone.trim()) {
+      newErrors.phone = "Phone number is required";
+    }
+    
     if (!formData.uhid.trim()) newErrors.uhid = "UHID is required";
     if (!formData.bloodGroup) newErrors.bloodGroup = "Blood group is required";
     if (!formData.occupation.trim()) newErrors.occupation = "Occupation is required";
-    if (!formData.governmentId) newErrors.governmentId = "Government ID type is required";
-    if (!formData.idNumber.trim()) newErrors.idNumber = "ID number is required";
     if (!formData.address.street.trim()) newErrors['address.street'] = "Street address is required";
     if (!formData.address.city.trim()) newErrors['address.city'] = "City is required";
     if (!formData.address.state.trim()) newErrors['address.state'] = "State is required";
     if (!formData.address.zipCode.trim()) newErrors['address.zipCode'] = "ZIP code is required";
+
+    // Parent/Guardian validation for under 18 patients
+    if (formData.isUnder18) {
+      if (!formData.parentGuardian.name.trim()) newErrors['parentGuardian.name'] = "Parent/Guardian name is required";
+      if (!formData.parentGuardian.email.trim()) newErrors['parentGuardian.email'] = "Parent/Guardian email is required";
+      if (!formData.parentGuardian.mobileNumber.trim()) newErrors['parentGuardian.mobileNumber'] = "Parent/Guardian mobile number is required";
+    }
 
     if (formData.email && !/\S+@\S+\.\S+/.test(formData.email)) {
       newErrors.email = "Please enter a valid email address";
@@ -230,8 +215,11 @@ const EditPatientModal = ({ isOpen, onClose, patient, onSuccess }) => {
         age--;
       }
 
+      // For under 18 patients, use parent's phone/email as patient's phone/email
       const updateData = {
         ...formData,
+        phone: formData.isUnder18 ? formData.parentGuardian.mobileNumber : formData.phone,
+        email: formData.isUnder18 ? formData.parentGuardian.email : formData.email,
         age,
         assignedDoctors: formData.assignedDoctors.map(doctorId => 
           typeof doctorId === 'string' ? doctorId : doctorId._id || doctorId.id
@@ -267,10 +255,6 @@ const EditPatientModal = ({ isOpen, onClose, patient, onSuccess }) => {
 
   const handleClose = () => {
     setErrors({});
-    setNewCondition("");
-    setNewAllergy("");
-    setNewMedication("");
-    setNewSurgery("");
     onClose();
   };
 
@@ -378,6 +362,54 @@ const EditPatientModal = ({ isOpen, onClose, patient, onSuccess }) => {
                 />
                 {errors.occupation && <p className="text-red-500 text-sm">{errors.occupation}</p>}
               </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="maritalStatus">Marital Status</Label>
+                <Select value={formData.maritalStatus} onValueChange={(value) => handleInputChange('maritalStatus', value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select marital status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Single">Single</SelectItem>
+                    <SelectItem value="Married">Married</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="handDominance">Hand Dominance</Label>
+                <Select value={formData.handDominance} onValueChange={(value) => handleInputChange('handDominance', value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select hand dominance" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Right">Right</SelectItem>
+                    <SelectItem value="Left">Left</SelectItem>
+                    <SelectItem value="Ambidextrous">Ambidextrous</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="nationality">Nationality</Label>
+                <Input
+                  id="nationality"
+                  value={formData.nationality}
+                  onChange={(e) => handleInputChange('nationality', e.target.value)}
+                  placeholder="Enter nationality"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="aadhaarNumber">Aadhaar Number</Label>
+                <Input
+                  id="aadhaarNumber"
+                  value={formData.aadhaarNumber}
+                  onChange={(e) => handleInputChange('aadhaarNumber', e.target.value)}
+                  placeholder="Enter 12-digit Aadhaar number"
+                  maxLength={12}
+                />
+              </div>
             </div>
           </div>
 
@@ -388,30 +420,87 @@ const EditPatientModal = ({ isOpen, onClose, patient, onSuccess }) => {
               Contact Information
             </h3>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone Number *</Label>
-                <Input
-                  id="phone"
-                  value={formData.phone}
-                  onChange={(e) => handleInputChange('phone', e.target.value)}
-                  className={errors.phone ? "border-red-500" : ""}
-                />
-                {errors.phone && <p className="text-red-500 text-sm">{errors.phone}</p>}
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="email">Email Address</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => handleInputChange('email', e.target.value)}
-                  className={errors.email ? "border-red-500" : ""}
-                />
-                {errors.email && <p className="text-red-500 text-sm">{errors.email}</p>}
-              </div>
+            <div className="flex items-center space-x-3 mb-4 p-3 bg-gray-50 rounded-lg border">
+              <input
+                type="checkbox"
+                id="isUnder18"
+                checked={formData.isUnder18}
+                onChange={(e) => handleInputChange('isUnder18', e.target.checked)}
+                className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <Label htmlFor="isUnder18" className="text-sm font-medium">
+                Patient is under 18 years old
+              </Label>
             </div>
+            
+            {!formData.isUnder18 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone Number *</Label>
+                  <Input
+                    id="phone"
+                    value={formData.phone}
+                    onChange={(e) => handleInputChange('phone', e.target.value)}
+                    className={errors.phone ? "border-red-500" : ""}
+                  />
+                  {errors.phone && <p className="text-red-500 text-sm">{errors.phone}</p>}
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email Address</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => handleInputChange('email', e.target.value)}
+                    className={errors.email ? "border-red-500" : ""}
+                  />
+                  {errors.email && <p className="text-red-500 text-sm">{errors.email}</p>}
+                </div>
+              </div>
+            )}
+            
+            {formData.isUnder18 && (
+              <div className="space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <h4 className="font-medium text-sm text-gray-700">Parent/Guardian Information</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="parentGuardianName">Parent/Guardian Name *</Label>
+                    <Input
+                      id="parentGuardianName"
+                      value={formData.parentGuardian.name}
+                      onChange={(e) => handleInputChange('parentGuardian.name', e.target.value)}
+                      className={errors['parentGuardian.name'] ? "border-red-500" : ""}
+                    />
+                    {errors['parentGuardian.name'] && <p className="text-red-500 text-sm">{errors['parentGuardian.name']}</p>}
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="parentGuardianEmail">Parent/Guardian Email *</Label>
+                    <Input
+                      id="parentGuardianEmail"
+                      type="email"
+                      value={formData.parentGuardian.email}
+                      onChange={(e) => handleInputChange('parentGuardian.email', e.target.value)}
+                      className={errors['parentGuardian.email'] ? "border-red-500" : ""}
+                    />
+                    {errors['parentGuardian.email'] && <p className="text-red-500 text-sm">{errors['parentGuardian.email']}</p>}
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="parentGuardianMobile">Parent/Guardian Mobile *</Label>
+                    <Input
+                      id="parentGuardianMobile"
+                      value={formData.parentGuardian.mobileNumber}
+                      onChange={(e) => handleInputChange('parentGuardian.mobileNumber', e.target.value)}
+                      className={errors['parentGuardian.mobileNumber'] ? "border-red-500" : ""}
+                      maxLength={10}
+                    />
+                    {errors['parentGuardian.mobileNumber'] && <p className="text-red-500 text-sm">{errors['parentGuardian.mobileNumber']}</p>}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Address */}
@@ -477,41 +566,32 @@ const EditPatientModal = ({ isOpen, onClose, patient, onSuccess }) => {
             </div>
           </div>
 
-          {/* Government ID */}
+          {/* Referral Information */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold flex items-center gap-2">
-              <FileText className="w-5 h-5" />
-              Government Identification
+              <Share2 className="w-5 h-5" />
+              Referral Information
             </h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="governmentId">ID Type *</Label>
-                <Select value={formData.governmentId} onValueChange={(value) => handleInputChange('governmentId', value)}>
-                  <SelectTrigger className={errors.governmentId ? "border-red-500" : ""}>
-                    <SelectValue placeholder="Select ID type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Aadhaar Card">Aadhaar Card</SelectItem>
-                    <SelectItem value="PAN Card">PAN Card</SelectItem>
-                    <SelectItem value="Passport">Passport</SelectItem>
-                    <SelectItem value="Driving License">Driving License</SelectItem>
-                    <SelectItem value="Voter ID">Voter ID</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-                {errors.governmentId && <p className="text-red-500 text-sm">{errors.governmentId}</p>}
+                <Label htmlFor="referringDoctor">Referring Doctor</Label>
+                <Input
+                  id="referringDoctor"
+                  value={formData.referringDoctor}
+                  onChange={(e) => handleInputChange('referringDoctor', e.target.value)}
+                  placeholder="Enter referring doctor name"
+                />
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="idNumber">ID Number *</Label>
+                <Label htmlFor="referredClinic">Referred Clinic</Label>
                 <Input
-                  id="idNumber"
-                  value={formData.idNumber}
-                  onChange={(e) => handleInputChange('idNumber', e.target.value)}
-                  className={errors.idNumber ? "border-red-500" : ""}
+                  id="referredClinic"
+                  value={formData.referredClinic}
+                  onChange={(e) => handleInputChange('referredClinic', e.target.value)}
+                  placeholder="Enter referred clinic name"
                 />
-                {errors.idNumber && <p className="text-red-500 text-sm">{errors.idNumber}</p>}
               </div>
             </div>
           </div>
@@ -556,7 +636,7 @@ const EditPatientModal = ({ isOpen, onClose, patient, onSuccess }) => {
           {/* Insurance Information */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold flex items-center gap-2">
-              <Heart className="w-5 h-5" />
+              <FileText className="w-5 h-5" />
               Insurance Information
             </h3>
             

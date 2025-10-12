@@ -29,7 +29,8 @@ import {
   Briefcase,
   FileText,
   UserX,
-  UserPlus
+  UserPlus,
+  X
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { nurseAPI } from '../services/api';
@@ -63,7 +64,7 @@ const NursesManagement = () => {
     profileImage: "",
     email: "",
     password: "",
-    department: "General Nursing",
+    department: ["General Nursing"],
     shift: "Day",
     phone: "",
     licenseNumber: "",
@@ -257,7 +258,7 @@ const NursesManagement = () => {
           profileImage: "",
           email: "",
           password: "",
-          department: "General Nursing",
+          department: ["General Nursing"],
           shift: "Day",
           phone: "",
           licenseNumber: "",
@@ -521,8 +522,23 @@ const NursesManagement = () => {
                     </div>
                     
                     {/* Department - Fixed width */}
-                    <div className="w-32 flex-shrink-0">
-                      <p className="text-sm text-muted-foreground truncate">{nurse.department || 'General'}</p>
+                    <div className="w-40 flex-shrink-0">
+                      {Array.isArray(nurse.department) ? (
+                        <div className="flex flex-wrap gap-1">
+                          {nurse.department.slice(0, 2).map((dept, idx) => (
+                            <Badge key={idx} variant="outline" className="text-xs px-2 py-0">
+                              {dept}
+                            </Badge>
+                          ))}
+                          {nurse.department.length > 2 && (
+                            <Badge variant="outline" className="text-xs px-2 py-0">
+                              +{nurse.department.length - 2}
+                            </Badge>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground truncate">{nurse.department || 'General'}</p>
+                      )}
                     </div>
                     
                     {/* Email - Flexible width */}
@@ -725,20 +741,64 @@ const NursesManagement = () => {
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Professional Information</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="department">Department</Label>
-                  <Select value={nurseForm.department} onValueChange={(value) => setNurseForm({...nurseForm, department: value})}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select department" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {departments.map((dept) => (
-                        <SelectItem key={dept} value={dept}>
+                <div className="md:col-span-2">
+                  <Label htmlFor="department">Departments (Multiple Selection) *</Label>
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap gap-2 p-3 border rounded-lg bg-gray-50 min-h-[42px]">
+                      {nurseForm.department.map((dept) => (
+                        <Badge 
+                          key={dept} 
+                          variant="secondary" 
+                          className="px-3 py-1 bg-blue-100 text-blue-700 hover:bg-blue-200 flex items-center gap-1"
+                        >
                           {dept}
-                        </SelectItem>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newDepts = nurseForm.department.filter(d => d !== dept);
+                              if (newDepts.length > 0) {
+                                setNurseForm({...nurseForm, department: newDepts});
+                              } else {
+                                toast({
+                                  title: "Validation Error",
+                                  description: "At least one department must be selected",
+                                  variant: "destructive"
+                                });
+                              }
+                            }}
+                            className="ml-1 hover:text-red-600"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </Badge>
                       ))}
-                    </SelectContent>
-                  </Select>
+                      {nurseForm.department.length === 0 && (
+                        <span className="text-sm text-gray-400">No departments selected</span>
+                      )}
+                    </div>
+                    <Select 
+                      value="" 
+                      onValueChange={(value) => {
+                        if (!nurseForm.department.includes(value)) {
+                          setNurseForm({...nurseForm, department: [...nurseForm.department, value]});
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Add department..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {departments.filter(dept => !nurseForm.department.includes(dept)).map((dept) => (
+                          <SelectItem key={dept} value={dept}>
+                            {dept}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-gray-500">
+                      Select multiple departments where this nurse will work
+                    </p>
+                  </div>
                 </div>
                 <div>
                   <Label htmlFor="licenseNumber">License Number</Label>
@@ -852,7 +912,11 @@ const NursesManagement = () => {
               </div>
               <div>
                 <h2 className="text-xl font-semibold">{selectedNurse?.fullName}</h2>
-                <p className="text-sm text-muted-foreground">{selectedNurse?.department || 'General Nursing'}</p>
+                <p className="text-sm text-muted-foreground">
+                  {Array.isArray(selectedNurse?.department) 
+                    ? selectedNurse.department.join(', ') 
+                    : (selectedNurse?.department || 'General Nursing')}
+                </p>
               </div>
               <Badge variant={selectedNurse?.isActive ? 'default' : 'destructive'} className="ml-auto">
                 {selectedNurse?.isActive ? 'Active' : 'Inactive'}
@@ -926,9 +990,21 @@ const NursesManagement = () => {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <Label className="text-sm font-medium text-muted-foreground">Department</Label>
-                      <p className="text-sm">{selectedNurse.department || 'General Nursing'}</p>
+                    <div className="md:col-span-3">
+                      <Label className="text-sm font-medium text-muted-foreground">Departments</Label>
+                      <div className="flex flex-wrap gap-2 mt-1">
+                        {Array.isArray(selectedNurse.department) ? (
+                          selectedNurse.department.map((dept, idx) => (
+                            <Badge key={idx} variant="secondary" className="bg-blue-100 text-blue-700">
+                              {dept}
+                            </Badge>
+                          ))
+                        ) : (
+                          <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                            {selectedNurse.department || 'General Nursing'}
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                     <div>
                       <Label className="text-sm font-medium text-muted-foreground">Experience</Label>
@@ -954,12 +1030,21 @@ const NursesManagement = () => {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div>
-                    <Label className="text-sm font-medium text-muted-foreground">Department Assignment</Label>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Badge variant="secondary" className="flex items-center gap-1">
-                        <Building className="w-3 h-3" />
-                        {selectedNurse.department || 'General Nursing'}
-                      </Badge>
+                    <Label className="text-sm font-medium text-muted-foreground">Department Assignments</Label>
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {Array.isArray(selectedNurse.department) ? (
+                        selectedNurse.department.map((dept, idx) => (
+                          <Badge key={idx} variant="secondary" className="flex items-center gap-1">
+                            <Building className="w-3 h-3" />
+                            {dept}
+                          </Badge>
+                        ))
+                      ) : (
+                        <Badge variant="secondary" className="flex items-center gap-1">
+                          <Building className="w-3 h-3" />
+                          {selectedNurse.department || 'General Nursing'}
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 </CardContent>

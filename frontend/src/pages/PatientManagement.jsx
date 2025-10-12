@@ -39,7 +39,6 @@ const PatientManagement = () => {
   const navigate = useNavigate();
   const { logPageView, logPatientAccess, logSearch } = useAuditLog();
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [isPatientModalOpen, setIsPatientModalOpen] = useState(false);
   const [patients, setPatients] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -85,14 +84,14 @@ const PatientManagement = () => {
     if (searchTerm.trim()) {
       logSearch('PatientManagement', searchTerm.trim());
     }
-  }, [currentPage, pageSize, searchTerm, statusFilter, logPageView, logSearch]);
+  }, [currentPage, pageSize, searchTerm, logPageView, logSearch]);
 
-  // Reset to page 1 when search term or status filter changes
+  // Reset to page 1 when search term changes
   useEffect(() => {
     if (currentPage !== 1) {
       setCurrentPage(1);
     }
-  }, [searchTerm, statusFilter]);
+  }, [searchTerm]);
 
   const loadPatients = async () => {
     setLoading(true);
@@ -100,10 +99,6 @@ const PatientManagement = () => {
     try {
       const filters = {};
       if (searchTerm.trim()) filters.search = searchTerm.trim();
-      if (statusFilter !== "all") {
-        const statusMap = { 'active': 'Active', 'follow-up': 'Follow-up', 'completed': 'Completed' };
-        filters.status = statusMap[statusFilter] || statusFilter;
-      }
       const currentPageSize = pageSize;
       const response = await patientAPI.getAll(currentPage, currentPageSize, filters);
         const list = response.patients || response.data || [];
@@ -160,7 +155,6 @@ const PatientManagement = () => {
             condition: patient.medicalHistory?.conditions?.length > 0 
               ? patient.medicalHistory.conditions[0] 
               : "General Checkup",
-            status: patient.status || "Active",
             lastVisit: patient.lastVisit,
             nextAppointment: patient.nextAppointment,
             createdAt: patient.createdAt,
@@ -184,14 +178,6 @@ const PatientManagement = () => {
     };
 
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case "Active": return "success";
-      case "Follow-up": return "warning";
-      case "Completed": return "secondary";
-      default: return "muted";
-    }
-  };
 
 
 
@@ -266,17 +252,6 @@ const PatientManagement = () => {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-36 h-10 text-sm bg-white border-gray-200 rounded-lg shadow-sm">
-              <SelectValue placeholder="All Statuses" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="follow-up">Follow-up</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
-            </SelectContent>
-          </Select>
           {isClinic() && (
             <Button 
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg shadow-md hover:shadow-lg transition-all duration-200"

@@ -34,8 +34,6 @@ const VitalsModal = ({ isOpen, onClose, patient, vitalsData = null, onSuccess })
     patientId: patient?._id || "",
     uhid: patient?.uhid || patient?._id || patient?.id || "",
     visitDate: new Date().toISOString().split('T')[0],
-    status: "Draft",
-    isPreConsultation: true,
     
     // Vital Signs
     vitalSigns: {
@@ -242,42 +240,6 @@ const VitalsModal = ({ isOpen, onClose, patient, vitalsData = null, onSuccess })
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Basic Information */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="visitDate">Visit Date</Label>
-              <Input
-                id="visitDate"
-                type="date"
-                value={formData.visitDate}
-                onChange={(e) => setFormData(prev => ({ ...prev, visitDate: e.target.value }))}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="status">Status</Label>
-              <Select value={formData.status} onValueChange={(value) => setFormData(prev => ({ ...prev, status: value }))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Draft">Draft</SelectItem>
-                  <SelectItem value="Completed">Completed</SelectItem>
-                  <SelectItem value="Reviewed">Reviewed</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex items-center space-x-2 pt-6">
-              <input
-                type="checkbox"
-                id="isPreConsultation"
-                checked={formData.isPreConsultation}
-                onChange={(e) => setFormData(prev => ({ ...prev, isPreConsultation: e.target.checked }))}
-                className="rounded"
-              />
-              <Label htmlFor="isPreConsultation">Pre-consultation</Label>
-            </div>
-          </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-2">
@@ -324,7 +286,7 @@ const VitalsModal = ({ isOpen, onClose, patient, vitalsData = null, onSuccess })
                         <div className="text-sm font-medium">BMI</div>
                         <div className="flex items-center gap-2">
                           <span className="text-lg font-bold">{formData.vitalSigns.bmi.value}</span>
-                          <Badge className={getBMIColor(formData.vitalSigns.bmi.category)}>
+                          <Badge style={{backgroundColor: "beige"}} className={getBMIColor(formData.vitalSigns.bmi.category)}>
                             {formData.vitalSigns.bmi.category}
                           </Badge>
                         </div>

@@ -21,7 +21,7 @@ const patientSchema = new mongoose.Schema({
   gender: {
     type: String,
     required: [true, 'Gender is required'],
-    enum: ['Male', 'Female', 'Other', 'Prefer not to say']
+    enum: ['Male', 'Female', 'Other']
   },
   
   // Contact Information
@@ -248,12 +248,57 @@ const patientSchema = new mongoose.Schema({
     maxlength: [1000, 'Notes cannot exceed 1000 characters']
   },
   
-  // System Fields
-  status: {
-    type: String,
-    enum: ['Active', 'Inactive', 'Follow-up', 'Completed'],
-    default: 'Active'
+  // Vitals Information
+  vitals: {
+    height: {
+      type: Number,
+      min: [0, 'Height cannot be negative']
+    },
+    weight: {
+      type: Number,
+      min: [0, 'Weight cannot be negative']
+    },
+    bmi: {
+      type: Number,
+      min: [0, 'BMI cannot be negative']
+    },
+    bloodPressure: {
+      systolic: {
+        type: Number,
+        min: [0, 'Systolic pressure cannot be negative']
+      },
+      diastolic: {
+        type: Number,
+        min: [0, 'Diastolic pressure cannot be negative']
+      }
+    },
+    heartRate: {
+      type: Number,
+      min: [0, 'Heart rate cannot be negative']
+    },
+    temperature: {
+      type: Number,
+      min: [0, 'Temperature cannot be negative']
+    },
+    respiratoryRate: {
+      type: Number,
+      min: [0, 'Respiratory rate cannot be negative']
+    },
+    oxygenSaturation: {
+      type: Number,
+      min: [0, 'Oxygen saturation cannot be negative'],
+      max: [100, 'Oxygen saturation cannot exceed 100']
+    },
+    bloodSugar: {
+      type: Number,
+      min: [0, 'Blood sugar cannot be negative']
+    },
+    lastUpdated: {
+      type: Date
+    }
   },
+  
+  // System Fields
   lastVisit: {
     type: Date,
     default: Date.now
@@ -310,17 +355,11 @@ patientSchema.index({ fullName: 'text' });
 patientSchema.index({ phone: 1 });
 patientSchema.index({ email: 1 });
 patientSchema.index({ uhid: 1 });
-patientSchema.index({ status: 1 });
 patientSchema.index({ createdAt: -1 });
 
-// Static method to find active patients
-patientSchema.statics.findActive = function() {
-  return this.find({ status: 'Active' });
-};
-
-// Instance method to update status
-patientSchema.methods.updateStatus = function(newStatus) {
-  this.status = newStatus;
+// Instance method to update vitals
+patientSchema.methods.updateVitals = function(vitalsData) {
+  this.vitals = { ...this.vitals, ...vitalsData, lastUpdated: new Date() };
   this.updatedAt = new Date();
   return this.save();
 };

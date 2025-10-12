@@ -861,18 +861,26 @@ This is an automated message from Healthcare Management System. Please do not re
 
   async sendPasswordResetOTP(email, userName, otpCode) {
     try {
+      console.log(`📧 sendPasswordResetOTP called with:`, { email, userName, otpCode });
+      
       // Get the centralized transporter
       const transporter = await this.getTransporter();
 
+      const htmlContent = this.generatePasswordResetEmailHTML(otpCode, userName);
+      const textContent = this.generatePasswordResetEmailText(otpCode, userName);
+      
       const mailOptions = {
         from: `"Healthcare Management System" <${process.env.EMAIL_USER}>`,
         to: email,
         subject: 'Password Reset Verification Code',
-        html: this.generatePasswordResetEmailHTML(otpCode, userName),
-        text: this.generatePasswordResetEmailText(otpCode, userName)
+        html: htmlContent,
+        text: textContent
       };
 
-      console.log(`📧 Sending password reset OTP to ${email} (${userName})`);
+      console.log(`📧 Sending password reset OTP to ${email} (${userName}) with code: ${otpCode}`);
+      console.log(`📧 HTML content length: ${htmlContent.length} characters`);
+      console.log(`📧 Text content includes OTP: ${textContent.includes(otpCode)}`);
+      
       const result = await transporter.sendMail(mailOptions);
       
       console.log(`✅ Password reset email sent successfully to ${email} (${userName}):`, result.messageId);
@@ -884,6 +892,16 @@ This is an automated message from Healthcare Management System. Please do not re
   }
 
   generatePasswordResetEmailHTML(otpCode, userName = 'User') {
+    console.log(`📧 generatePasswordResetEmailHTML called with otpCode: "${otpCode}", userName: "${userName}"`);
+    
+    if (!otpCode) {
+      console.error('❌ OTP Code is missing or undefined!');
+    }
+    
+    // Log a snippet of the generated HTML to verify OTP is included
+    const htmlSnippet = `Your verification code is: <strong style="color: #e74c3c; font-size: 24px;">${otpCode}</strong>`;
+    console.log(`📧 HTML snippet with OTP: ${htmlSnippet}`);
+    
     return `
     <!DOCTYPE html>
     <html lang="en">
@@ -962,7 +980,19 @@ This is an automated message from Healthcare Management System. Please do not re
             
             <p>Use the following verification code to reset your password:</p>
             
-            <div class="otp-code">${otpCode}</div>
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin: 30px 0;">
+              <tr>
+                <td align="center">
+                  <div style="background: #e74c3c; color: white; font-size: 36px; font-weight: bold; padding: 25px 40px; text-align: center; border-radius: 10px; display: inline-block; letter-spacing: 5px;">
+                    ${otpCode}
+                  </div>
+                </td>
+              </tr>
+            </table>
+            
+            <p style="text-align: center; font-size: 18px; margin: 20px 0;">
+              Your verification code is: <strong style="color: #e74c3c; font-size: 24px;">${otpCode}</strong>
+            </p>
             
             <div class="warning">
                 <strong>⚠️ Security Notice:</strong>

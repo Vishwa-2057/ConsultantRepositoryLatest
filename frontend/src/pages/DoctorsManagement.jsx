@@ -827,8 +827,14 @@ const DoctorsManagement = () => {
                   <Input
                     id="phone"
                     value={doctorForm.phone}
-                    onChange={(e) => setDoctorForm({...doctorForm, phone: e.target.value})}
-                    placeholder="+91 98765 43210"
+                    onChange={(e) => {
+                      const value = e.target.value.replace(/\D/g, ''); // Remove non-digits
+                      if (value.length <= 15) {
+                        setDoctorForm({...doctorForm, phone: value});
+                      }
+                    }}
+                    placeholder="9876543210"
+                    maxLength={15}
                   />
                 </div>
                 <div>

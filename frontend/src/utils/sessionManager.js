@@ -30,14 +30,21 @@ class SessionManager {
     this.errorCount = 0;
     this.maxErrors = 3;
     
-    // Check for corrupted data before initializing (skip in development for now)
-    if (process.env.NODE_ENV !== 'development') {
-      this.checkAndCleanCorruptedData();
-    }
+    // Flag to track if monitoring is initialized
+    this.monitoringInitialized = false;
     
-    // Initialize session monitoring
-    this.initializeSessionMonitoring();
-    this.setupActivityTracking();
+    // Only initialize if not on login page
+    if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+      // Check for corrupted data before initializing (skip in development for now)
+      if (process.env.NODE_ENV !== 'development') {
+        this.checkAndCleanCorruptedData();
+      }
+      
+      // Initialize session monitoring
+      this.initializeSessionMonitoring();
+      this.setupActivityTracking();
+      this.monitoringInitialized = true;
+    }
   }
 
   /**
@@ -102,6 +109,11 @@ class SessionManager {
    * Initialize session monitoring and cleanup
    */
   initializeSessionMonitoring() {
+    // Skip validation if on login page
+    if (window.location.pathname === '/login') {
+      return;
+    }
+    
     // Check for expired sessions on load (with error recovery)
     // In development, be more lenient with initial validation
     if (process.env.NODE_ENV === 'development') {
@@ -116,9 +128,14 @@ class SessionManager {
       });
     }
     
-    // Set up periodic session validation (much less frequent in development)
-    const checkInterval = process.env.NODE_ENV === 'development' ? 600000 : 60000; // 10 min in dev, 1 min in prod
+    // Set up periodic session validation (much less frequent to avoid rate limiting)
+    const checkInterval = process.env.NODE_ENV === 'development' ? 600000 : 300000; // 10 min in dev, 5 min in prod
     this.sessionCheckInterval = setInterval(() => {
+      // Skip if on login page
+      if (window.location.pathname === '/login') {
+        return;
+      }
+      
       this.validateSession().catch(error => {
         console.warn('Periodic session validation failed:', error);
         // Don't perform cleanup on periodic checks in development
@@ -128,15 +145,23 @@ class SessionManager {
       });
     }, checkInterval);
     
-    // Set up token refresh monitoring
+    // Set up token refresh monitoring (less frequent)
     this.tokenRefreshInterval = setInterval(() => {
+      // Skip if on login page
+      if (window.location.pathname === '/login') {
+        return;
+      }
       this.checkTokenRefresh();
-    }, 30000); // Check every 30 seconds
+    }, 60000); // Check every 60 seconds instead of 30
     
-    // Handle page visibility changes
+    // Handle page visibility changes (with debounce)
+    let visibilityTimeout;
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) {
-        this.validateSession();
+      if (!document.hidden && window.location.pathname !== '/login') {
+        clearTimeout(visibilityTimeout);
+        visibilityTimeout = setTimeout(() => {
+          this.validateSession();
+        }, 1000); // Debounce by 1 second
       }
     });
     
@@ -159,6 +184,18 @@ class SessionManager {
     activityEvents.forEach(event => {
       document.addEventListener(event, updateActivity, { passive: true });
     });
+  }
+
+  /**
+   * Manually start session monitoring (call after successful login)
+   */
+  startMonitoring() {
+    if (!this.monitoringInitialized && typeof window !== 'undefined') {
+      this.initializeSessionMonitoring();
+      this.setupActivityTracking();
+      this.monitoringInitialized = true;
+      console.log('🔐 Session monitoring started');
+    }
   }
 
   /**
@@ -194,6 +231,11 @@ class SessionManager {
         deviceFingerprint: await this.generateDeviceFingerprint()
       });
       
+      // Start monitoring if not already started (e.g., after login)
+      if (!this.monitoringInitialized) {
+        this.startMonitoring();
+      }
+      
       console.log('🔐 Secure token storage completed');
       return true;
     } catch (error) {
@@ -204,9 +246,15 @@ class SessionManager {
 
   /**
    * Retrieve and decrypt token
+   * @param {boolean} skipLoginCheck - If true, bypass the login page check (for auth-changed events)
    */
-  async getToken() {
+  async getToken(skipLoginCheck = false) {
     try {
+      // Skip if on login page to prevent loops (unless explicitly bypassed)
+      if (!skipLoginCheck && typeof window !== 'undefined' && window.location.pathname === '/login') {
+        return null;
+      }
+      
       const encryptedToken = localStorage.getItem(this.tokenKey);
       if (!encryptedToken) {
         return null;
@@ -223,7 +271,7 @@ class SessionManager {
       return token;
     } catch (error) {
       console.error('Failed to retrieve token:', error);
-      await this.clearSession();
+      // Don't clear session on decryption errors to prevent loops
       return null;
     }
   }
@@ -324,6 +372,11 @@ class SessionManager {
    */
   async validateSession() {
     try {
+      // Skip if on login page to prevent redirect loops
+      if (typeof window !== 'undefined' && window.location.pathname === '/login') {
+        return false;
+      }
+      
       // Circuit breaker: if cleanup is in progress, skip validation
       if (window.sessionCleanupInProgress) {
         return false;
@@ -625,13 +678,16 @@ class SessionManager {
    * Redirect to login with message
    */
   redirectToLogin(message = 'Please log in') {
+    // Prevent redirect loop - if already on login page, don't redirect
+    if (window.location.pathname === '/login') {
+      return;
+    }
+    
     // Store message for display on login page
     sessionStorage.setItem('loginMessage', message);
     
     // Redirect to login
-    if (window.location.pathname !== '/login') {
-      window.location.href = '/login';
-    }
+    window.location.href = '/login';
   }
 
   /**

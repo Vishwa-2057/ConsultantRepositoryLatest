@@ -126,17 +126,6 @@ const vitalsSchema = new mongoose.Schema({
             specialRemarks: String,
             additionalNotes: String
         }
-    },
-
-    // Metadata
-    isPreConsultation: {
-        type: Boolean,
-        default: true
-    },
-    status: {
-        type: String,
-        enum: ['Draft', 'Completed', 'Reviewed'],
-        default: 'Draft'
     }
 }, {
     timestamps: true

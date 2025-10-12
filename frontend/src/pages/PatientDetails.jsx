@@ -128,6 +128,19 @@ const PatientDetails = () => {
       setLoading(true);
       const response = await patientAPI.getById(patientId);
       const patientData = response.patient || response;
+      
+      // Calculate age from dateOfBirth if not available
+      if (patientData.dateOfBirth && (!patientData.age || patientData.age === 0)) {
+        const today = new Date();
+        const birthDate = new Date(patientData.dateOfBirth);
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const monthDiff = today.getMonth() - birthDate.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+          age--;
+        }
+        patientData.calculatedAge = age;
+      }
+      
       console.log('Patient API response:', response);
       console.log('Patient data:', patientData);
       console.log('Patient ID from URL:', patientId);
@@ -577,9 +590,6 @@ const PatientDetails = () => {
             <div className="flex-1">
               <div className="flex items-center gap-4 mb-4">
                 <h2 className="text-2xl font-bold text-gray-900">{patient.fullName || patient.name}</h2>
-                <Badge variant={patient.status === 'Active' ? 'default' : 'secondary'}>
-                  {patient.status || 'Active'}
-                </Badge>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                 <div className="flex items-center gap-2">

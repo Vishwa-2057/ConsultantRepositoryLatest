@@ -365,7 +365,7 @@ const Prescriptions = () => {
               <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-lg border">
                 <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                 <span className="text-sm font-medium text-gray-700">
-                  {((currentPage - 1) * pageSize) + 1}-{Math.min(currentPage * pageSize, totalCount)} of {totalCount}
+                  {totalCount > 0 ? `${((currentPage - 1) * pageSize) + 1}-${Math.min(currentPage * pageSize, totalCount)} of ${totalCount}` : prescriptions.length > 0 ? `${prescriptions.length} Total` : '0 Total'}
                 </span>
               </div>
               <div className="flex items-center gap-2 px-2.5 py-1 bg-white rounded-md border border-gray-200">

@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Clock, User, Phone, Mail, MapPin, Stethoscope, X, AlertCircle } from "lucide-react";
+import { Calendar, Clock, User, Phone, Mail, MapPin, Stethoscope, X, AlertCircle, Video, MessageCircle } from "lucide-react";
 import { appointmentAPI, patientAPI, doctorAPI } from "@/services/api";
 import { getCurrentUser, isDoctor } from "@/utils/roleUtils";
 import { validators, sanitizers } from "@/utils/validation";
@@ -25,11 +25,15 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
     patientId: "",
     doctorId: "",
     appointmentType: "",
+    appointmentMode: "in-person", // 'in-person' or 'virtual'
+    consultationMode: "", // For virtual: 'Video', 'Phone', 'Chat'
     date: "",
     time: "",
     duration: "30",
     notes: "",
-    priority: "normal"
+    priority: "normal",
+    reason: "",
+    symptoms: ""
   });
 
   const [errors, setErrors] = useState({});
@@ -37,6 +41,9 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
   const [doctors, setDoctors] = useState([]);
   const [loadingPatients, setLoadingPatients] = useState(false);
   const [loadingDoctors, setLoadingDoctors] = useState(false);
+  const [patientSearchTerm, setPatientSearchTerm] = useState("");
+  const [isVirtualAppointment, setIsVirtualAppointment] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   
   // Get current user info
   const currentUser = getCurrentUser();
@@ -145,9 +152,14 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
   ];
 
   const priorityOptions = [
-    { value: "low", label: "Low", color: "bg-green-100 text-green-800" },
     { value: "normal", label: "Normal", color: "bg-blue-100 text-blue-800" },
     { value: "high", label: "High", color: "bg-orange-100 text-orange-800" }
+  ];
+
+  const consultationModes = [
+    { value: "Video", label: "Video Call", icon: Video, color: "bg-blue-500" },
+    { value: "Phone", label: "Phone Call", icon: Phone, color: "bg-green-500" },
+    { value: "Chat", label: "Chat Session", icon: MessageCircle, color: "bg-purple-500" }
   ];
 
   const handleInputChange = (field, value) => {
@@ -191,6 +203,16 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
     // Appointment type validation
     if (!formData.appointmentType) {
       newErrors.appointmentType = "Appointment type is required";
+    }
+    
+    // Virtual appointment specific validations
+    if (isVirtualAppointment) {
+      if (!formData.consultationMode) {
+        newErrors.consultationMode = "Consultation mode is required for virtual appointments";
+      }
+      if (!formData.reason || !formData.reason.trim()) {
+        newErrors.reason = "Reason is required for virtual appointments";
+      }
     }
     
     // Date validation
@@ -256,6 +278,7 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
     e.preventDefault();
     
     if (validateForm()) {
+      setSubmitting(true);
       try {
         // Prepare appointment data
         const appointmentData = {
@@ -303,12 +326,18 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
       patientId: "",
       doctorId: isDoctor && userId ? userId : "", // Preserve doctor selection for doctors
       appointmentType: "",
+      appointmentMode: "in-person",
+      consultationMode: "",
       date: "",
       time: "",
       duration: "30",
       notes: "",
-      priority: "normal"
+      priority: "normal",
+      reason: "",
+      symptoms: ""
     });
+    setIsVirtualAppointment(false);
+    setPatientSearchTerm("");
     setErrors({});
     onClose();
   };
@@ -330,6 +359,49 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Appointment Mode Selection */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-teal-600" />
+              Appointment Type
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsVirtualAppointment(false);
+                  handleInputChange("appointmentMode", "in-person");
+                  handleInputChange("consultationMode", "");
+                }}
+                className={`p-4 rounded-lg border-2 transition-all ${
+                  !isVirtualAppointment
+                    ? "border-teal-600 bg-teal-50 text-teal-900"
+                    : "border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <MapPin className="w-6 h-6 mx-auto mb-2" />
+                <div className="font-semibold">In-Person</div>
+                <div className="text-xs text-gray-600">Physical appointment at clinic</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsVirtualAppointment(true);
+                  handleInputChange("appointmentMode", "virtual");
+                }}
+                className={`p-4 rounded-lg border-2 transition-all ${
+                  isVirtualAppointment
+                    ? "border-teal-600 bg-teal-50 text-teal-900"
+                    : "border-gray-200 hover:border-gray-300"
+                }`}
+              >
+                <Video className="w-6 h-6 mx-auto mb-2" />
+                <div className="font-semibold">Virtual</div>
+                <div className="text-xs text-gray-600">Teleconsultation online</div>
+              </button>
+            </div>
+          </div>
+
           {/* Patient Selection */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
@@ -342,21 +414,65 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
               {console.log('Rendering form. isDoctorUser:', isDoctorUser, 'currentUser:', currentUser)}
               <div className="space-y-2">
                 <Label htmlFor="patientId">Select Patient *</Label>
-                <Select value={formData.patientId} onValueChange={(value) => handleInputChange("patientId", value)}>
+                <Select 
+                  value={formData.patientId} 
+                  onValueChange={(value) => {
+                    handleInputChange("patientId", value);
+                    setPatientSearchTerm(""); // Clear search when patient is selected
+                  }}
+                >
                   <SelectTrigger className={errors.patientId ? "border-red-500" : ""}>
                     <SelectValue placeholder={loadingPatients ? "Loading patients..." : "Choose a patient"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {patients.map((patient) => (
-                      <SelectItem key={patient._id} value={patient._id}>
-                        <div className="flex flex-col">
-                          <span className="font-medium">{patient.fullName}</span>
-                          <span className="text-sm text-muted-foreground">
-                            {patient.phone} • {patient.email}
-                          </span>
+                    {/* Search Input */}
+                    <div className="flex items-center px-3 pb-2 pt-2 sticky top-0 bg-white z-10 border-b">
+                      <Input
+                        placeholder="Search patients..."
+                        value={patientSearchTerm}
+                        onChange={(e) => setPatientSearchTerm(e.target.value)}
+                        className="h-9 text-sm border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                        autoFocus
+                      />
+                    </div>
+                    {/* Filtered Patient List */}
+                    <div className="max-h-[300px] overflow-y-auto">
+                      {patients
+                        .filter((patient) => {
+                          const searchLower = patientSearchTerm.toLowerCase();
+                          return (
+                            patient.fullName?.toLowerCase().includes(searchLower) ||
+                            patient.phone?.toLowerCase().includes(searchLower) ||
+                            patient.email?.toLowerCase().includes(searchLower) ||
+                            patient.uhid?.toLowerCase().includes(searchLower)
+                          );
+                        })
+                        .map((patient) => (
+                          <SelectItem key={patient._id} value={patient._id}>
+                            <div className="flex flex-col">
+                              <span className="font-medium">{patient.fullName}</span>
+                              <span className="text-sm text-muted-foreground">
+                                {patient.uhid && `${patient.uhid} • `}{patient.phone} • {patient.email}
+                              </span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      {patients.filter((patient) => {
+                        const searchLower = patientSearchTerm.toLowerCase();
+                        return (
+                          patient.fullName?.toLowerCase().includes(searchLower) ||
+                          patient.phone?.toLowerCase().includes(searchLower) ||
+                          patient.email?.toLowerCase().includes(searchLower) ||
+                          patient.uhid?.toLowerCase().includes(searchLower)
+                        );
+                      }).length === 0 && patientSearchTerm && (
+                        <div className="px-3 py-2 text-sm text-muted-foreground text-center">
+                          No patients found
                         </div>
-                      </SelectItem>
-                    ))}
+                      )}
+                    </div>
                   </SelectContent>
                 </Select>
                 {errors.patientId && (
@@ -462,6 +578,34 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
                 )}
               </div>
 
+              {/* Consultation Mode - Only for Virtual Appointments */}
+              {isVirtualAppointment && (
+                <div className="space-y-2">
+                  <Label htmlFor="consultationMode">Consultation Mode *</Label>
+                  <Select value={formData.consultationMode} onValueChange={(value) => handleInputChange("consultationMode", value)}>
+                    <SelectTrigger className={errors.consultationMode ? "border-red-500" : ""}>
+                      <SelectValue placeholder="Select consultation mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {consultationModes.map((mode) => {
+                        const Icon = mode.icon;
+                        return (
+                          <SelectItem key={mode.value} value={mode.value}>
+                            <div className="flex items-center gap-2">
+                              <Icon className="w-4 h-4" />
+                              <span>{mode.label}</span>
+                            </div>
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                  {errors.consultationMode && (
+                    <p className="text-sm text-red-600">{errors.consultationMode}</p>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Label htmlFor="duration">Duration</Label>
                 <Select value={formData.duration} onValueChange={(value) => handleInputChange("duration", value)}>
@@ -507,6 +651,35 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
                 )}
               </div>
             </div>
+
+            {/* Reason and Symptoms - For Virtual Appointments */}
+            {isVirtualAppointment && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="reason">Reason for Consultation *</Label>
+                  <Input
+                    id="reason"
+                    placeholder="Brief reason for the consultation"
+                    value={formData.reason}
+                    onChange={(e) => handleInputChange("reason", e.target.value)}
+                    className={errors.reason ? "border-red-500" : ""}
+                  />
+                  {errors.reason && (
+                    <p className="text-sm text-red-600">{errors.reason}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="symptoms">Symptoms</Label>
+                  <Textarea
+                    id="symptoms"
+                    placeholder="Describe the symptoms..."
+                    value={formData.symptoms}
+                    onChange={(e) => handleInputChange("symptoms", e.target.value)}
+                    rows={3}
+                  />
+                </div>
+              </>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="notes">Notes</Label>
