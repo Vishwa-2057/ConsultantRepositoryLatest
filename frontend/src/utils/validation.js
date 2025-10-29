@@ -499,7 +499,7 @@ export const sanitizers = {
   numeric: (value) => value.replace(/\D/g, ''),
   alphanumeric: (value) => value.replace(/[^a-zA-Z0-9\s]/g, ''),
   email: (value) => value.toLowerCase().trim(),
-  text: (value) => value.trim()
+  text: (value) => value // Don't trim during input, only on submit
 };
 
 export default {

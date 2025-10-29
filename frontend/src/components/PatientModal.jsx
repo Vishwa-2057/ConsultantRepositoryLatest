@@ -13,7 +13,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { User, Phone, Mail, MapPin, Calendar, FileText, Plus, X, Share2, AlertCircle } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { User, Phone, Mail, MapPin, Calendar, FileText, Plus, X, Share2, AlertCircle, Check, ChevronsUpDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { appointmentAPI, patientAPI, doctorAPI } from "@/services/api";
 import { useToast } from "@/hooks/use-toast";
 import { validationSchemas, sanitizers, validators } from "@/utils/validation";
@@ -126,6 +129,7 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
   const [profileImagePreview, setProfileImagePreview] = useState(null);
   const [governmentDocument, setGovernmentDocument] = useState(null);
   const [governmentDocumentName, setGovernmentDocumentName] = useState("");
+  const [doctorComboboxOpen, setDoctorComboboxOpen] = useState(false);
 
   // Load doctors when modal opens and log component access
   useEffect(() => {
@@ -943,32 +947,64 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
               <div>
                 <Label htmlFor="assignedDoctors">Assigned Doctors</Label>
                 <div className="space-y-2">
-                  <Select onValueChange={(value) => {
-                    if (value !== "none" && value !== "unavailable" && !formData.assignedDoctors.includes(value)) {
-                      handleInputChange("assignedDoctors", [...formData.assignedDoctors, value]);
-                    }
-                  }}>
-                    <SelectTrigger>
-                      <User className="w-4 h-4 mr-2" />
-                      <SelectValue placeholder={doctorsLoading ? "Loading doctors..." : "Select doctors (optional)"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">No doctor assigned</SelectItem>
-                      {doctors && doctors.length > 0 ? (
-                        doctors.map((doctor) => (
-                          <SelectItem 
-                            key={doctor._id} 
-                            value={doctor._id}
-                            disabled={formData.assignedDoctors.includes(doctor._id)}
-                          >
-                            Dr. {doctor.fullName} - {doctor.specialty}
-                          </SelectItem>
-                        ))
-                      ) : (
-                        <SelectItem value="unavailable" disabled>No doctors available</SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
+                  <Popover open={doctorComboboxOpen} onOpenChange={setDoctorComboboxOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={doctorComboboxOpen}
+                        className="w-full justify-between"
+                        disabled={doctorsLoading}
+                      >
+                        <div className="flex items-center">
+                          <User className="w-4 h-4 mr-2" />
+                          {doctorsLoading ? "Loading doctors..." : "Select doctors (optional)"}
+                        </div>
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-full p-0" align="start" onWheel={(e) => e.stopPropagation()}>
+                      <Command>
+                        <CommandInput placeholder="Search doctors..." />
+                        <CommandList className="max-h-[300px] overflow-y-auto">
+                          <CommandEmpty>No doctor found.</CommandEmpty>
+                          <CommandGroup>
+                            {doctors && doctors.length > 0 ? (
+                              doctors.map((doctor) => {
+                                const isSelected = formData.assignedDoctors.includes(doctor._id);
+                                return (
+                                  <CommandItem
+                                    key={doctor._id}
+                                    value={`${doctor.fullName} ${doctor.specialty} ${doctor.email}`}
+                                    onSelect={() => {
+                                      if (!isSelected) {
+                                        handleInputChange("assignedDoctors", [...formData.assignedDoctors, doctor._id]);
+                                      }
+                                      setDoctorComboboxOpen(false);
+                                    }}
+                                    disabled={isSelected}
+                                  >
+                                    <Check
+                                      className={cn(
+                                        "mr-2 h-4 w-4",
+                                        isSelected ? "opacity-100" : "opacity-0"
+                                      )}
+                                    />
+                                    <div className="flex flex-col">
+                                      <span className="font-medium">Dr. {doctor.fullName}</span>
+                                      <span className="text-sm text-muted-foreground">{doctor.specialty}</span>
+                                    </div>
+                                  </CommandItem>
+                                );
+                              })
+                            ) : (
+                              <CommandItem disabled>No doctors available</CommandItem>
+                            )}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                   
                   {/* Selected Doctors Display */}
                   {formData.assignedDoctors.length > 0 && (

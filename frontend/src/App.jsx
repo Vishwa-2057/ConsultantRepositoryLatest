@@ -21,6 +21,7 @@ import Teleconsultation from "./pages/Teleconsultation.jsx";
 import Prescriptions from "./pages/Prescriptions.jsx";
 import ReferralSystem from "./pages/ReferralSystem.jsx";
 import SharedReferral from "./pages/SharedReferral.jsx";
+import SlotManagement from "./pages/SlotManagement.jsx";
 import Billing from "./pages/Billing.jsx";
 import CommunityHub from "./pages/CommunityHub.jsx";
 import NotFound from "./pages/NotFound.jsx";
@@ -102,6 +103,7 @@ const App = () => {
               <Route path="/patients" element={isAuthed ? <ProtectedRoute routeName="patient-management"><PatientManagement /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/patients/:patientId" element={isAuthed ? <ProtectedRoute routeName="patient-management"><PatientDetails /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/appointments" element={isAuthed ? <ProtectedRoute routeName="appointment-management"><AppointmentManagement /></ProtectedRoute> : <Navigate to="/login" replace />} />
+              <Route path="/slot-management" element={isAuthed ? <ProtectedRoute routeName="slot-management"><SlotManagement /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/doctors" element={isAuthed ? <ProtectedRoute routeName="doctors-management"><DoctorsManagement /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/nurses" element={isAuthed ? <ProtectedRoute routeName="nurses-management"><NursesManagement /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/teleconsultation" element={isAuthed ? <ProtectedRoute routeName="teleconsultation"><Teleconsultation /></ProtectedRoute> : <Navigate to="/login" replace />} />

@@ -18,7 +18,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FileText, User, DollarSign, Plus, Minus, MapPin } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { FileText, User, DollarSign, Plus, Minus, MapPin, Check, ChevronsUpDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { invoiceAPI, patientAPI } from "@/services/api";
 
 const InvoiceModal = ({ isOpen, onClose, onSubmit }) => {
@@ -44,6 +47,7 @@ const InvoiceModal = ({ isOpen, onClose, onSubmit }) => {
   const [errors, setErrors] = useState({});
   const [patients, setPatients] = useState([]);
   const [loadingPatients, setLoadingPatients] = useState(false);
+  const [patientComboboxOpen, setPatientComboboxOpen] = useState(false);
 
   // Load patients when modal opens
   useEffect(() => {
@@ -272,23 +276,55 @@ const InvoiceModal = ({ isOpen, onClose, onSubmit }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="patientId">Select Patient *</Label>
-                <Select value={formData.patientId} onValueChange={(value) => handleInputChange("patientId", value)}>
-                  <SelectTrigger className={errors.patientId ? "border-red-500" : ""}>
-                    <SelectValue placeholder={loadingPatients ? "Loading patients..." : "Choose a patient"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {patients.map((patient) => (
-                      <SelectItem key={patient._id} value={patient._id}>
-                        <div className="flex flex-col">
-                          <span className="font-medium">{patient.fullName}</span>
-                          <span className="text-sm text-muted-foreground">
-                            {patient.phone} • {patient.email}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={patientComboboxOpen} onOpenChange={setPatientComboboxOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={patientComboboxOpen}
+                      className={`w-full justify-between ${errors.patientId ? "border-red-500" : ""}`}
+                      disabled={loadingPatients}
+                    >
+                      {formData.patientId
+                        ? patients.find(p => p._id === formData.patientId)?.fullName || "Select patient..."
+                        : loadingPatients ? "Loading patients..." : "Select patient..."}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full p-0" align="start" onWheel={(e) => e.stopPropagation()}>
+                    <Command>
+                      <CommandInput placeholder="Search patients..." />
+                      <CommandList className="max-h-[300px] overflow-y-auto">
+                        <CommandEmpty>No patient found.</CommandEmpty>
+                        <CommandGroup>
+                          {patients.map((patient) => (
+                            <CommandItem
+                              key={patient._id}
+                              value={`${patient.fullName} ${patient.phone} ${patient.email || ''}`}
+                              onSelect={() => {
+                                handleInputChange("patientId", patient._id);
+                                setPatientComboboxOpen(false);
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  formData.patientId === patient._id ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              <div className="flex flex-col">
+                                <span className="font-medium">{patient.fullName}</span>
+                                <span className="text-sm text-muted-foreground">
+                                  {patient.phone} • {patient.email}
+                                </span>
+                              </div>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
                 {errors.patientId && (
                   <p className="text-sm text-red-600">{errors.patientId}</p>
                 )}

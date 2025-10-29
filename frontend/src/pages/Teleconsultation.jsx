@@ -164,16 +164,17 @@ const Teleconsultation = () => {
         const response = await teleconsultationAPI.getUpcoming(currentPage, pageSize);
         setUpcomingTeleconsultations(response.teleconsultations || []);
         
-        const historyResponse = await teleconsultationAPI.getHistory();
+        const historyResponse = await teleconsultationAPI.getHistory(currentPage, pageSize);
         setTeleconsultationHistory(historyResponse.teleconsultations || []);
         
-        // Set pagination info - count both upcoming and history
-        const upcomingCount = (response.teleconsultations || []).length;
-        const historyCount = (historyResponse.teleconsultations || []).length;
-        const total = upcomingCount + historyCount;
-        
-        setTotalPages(1); // Since we're showing all items on one page
-        setTotalCount(total);
+        // Set pagination info from API response
+        if (response.pagination) {
+          setTotalPages(response.pagination.totalPages || 1);
+          setTotalCount(response.pagination.totalTeleconsultations || 0);
+        } else {
+          setTotalPages(1);
+          setTotalCount((response.teleconsultations || []).length);
+        }
       } catch (error) {
         console.error('Failed to load teleconsultations:', error);
       } finally {

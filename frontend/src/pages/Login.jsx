@@ -22,10 +22,21 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [showLoader, setShowLoader] = useState(true);
+  const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
-    setMounted(true);
+    // Show loading screen for 2 seconds
+    const loaderTimer = setTimeout(() => {
+      setShowLoader(false);
+      // Start mounting animation after loader disappears
+      setTimeout(() => {
+        setMounted(true);
+      }, 100);
+    }, 2000);
+
+    return () => clearTimeout(loaderTimer);
   }, []);
 
   // Validate step 1 form
@@ -105,11 +116,18 @@ const Login = () => {
       const res = await authAPI.loginStep2({ email: sanitizers.email(email), otp });
       
       if (res.success) {
+        // Show success animation
+        setShowSuccessAnimation(true);
+        
         // Use new session management with secure token storage
         await authAPI.setToken(res.token, res.refreshToken, res.expiresIn);
         localStorage.setItem('authUser', JSON.stringify(res.user || {}));
         window.dispatchEvent(new Event('auth-changed'));
-        navigate('/');
+        
+        // Wait for animation to complete before navigating
+        setTimeout(() => {
+          navigate('/');
+        }, 2000);
       }
     } catch (err) {
       setError(err.message || 'OTP verification failed');
@@ -134,11 +152,18 @@ const Login = () => {
       const res = await authAPI.developerLogin({ email: sanitizers.email(email), password });
       
       if (res.success) {
+        // Show success animation
+        setShowSuccessAnimation(true);
+        
         // Use new session management with secure token storage
         await authAPI.setToken(res.token, res.refreshToken, res.expiresIn);
         localStorage.setItem('authUser', JSON.stringify(res.user || {}));
         window.dispatchEvent(new Event('auth-changed'));
-        navigate('/');
+        
+        // Wait for animation to complete before navigating
+        setTimeout(() => {
+          navigate('/');
+        }, 2000);
       }
     } catch (err) {
       setError(err.message || 'Developer login failed');
@@ -188,13 +213,69 @@ const Login = () => {
     }, 300);
   };
 
+  // Loading screen component
+  if (showLoader) {
+    return (
+      <div className="min-h-screen w-full bg-gradient-to-br from-blue-600 via-blue-700 to-cyan-700 flex items-center justify-center relative overflow-hidden">
+        {/* Animated background particles */}
+        <div className="absolute inset-0">
+          {[...Array(30)].map((_, i) => (
+            <div
+              key={i}
+              className="absolute w-2 h-2 bg-white/30 rounded-full animate-pulse"
+              style={{
+                left: `${Math.random() * 100}%`,
+                top: `${Math.random() * 100}%`,
+                animationDelay: `${Math.random() * 2}s`,
+                animationDuration: `${1 + Math.random() * 2}s`
+              }}
+            />
+          ))}
+        </div>
+        
+        {/* Loading content */}
+        <div className="relative z-10 text-center">
+          {/* Logo with pulse animation */}
+          <div className="mb-8 relative">
+            <div className="absolute inset-0 bg-white/30 rounded-full blur-3xl animate-pulse" style={{ width: '200px', height: '200px', left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}></div>
+            <div className="relative animate-in zoom-in duration-1000">
+              <img 
+                src={Logo} 
+                alt="Smaart Healthcare Logo" 
+                className="w-32 h-32 mx-auto object-contain drop-shadow-2xl animate-pulse"
+              />
+            </div>
+          </div>
+          
+          {/* Title */}
+          <h1 className="text-4xl font-bold text-white mb-4 animate-in slide-in-from-bottom-4 duration-1000 delay-300">
+            SMAART HEALTHCARE
+          </h1>
+          
+          {/* Loading spinner */}
+          <div className="flex items-center justify-center gap-3 animate-in fade-in duration-1000 delay-500">
+            <div className="flex gap-2">
+              <div className="w-3 h-3 bg-white rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+              <div className="w-3 h-3 bg-white rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+              <div className="w-3 h-3 bg-white rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+            </div>
+          </div>
+          
+          <p className="text-white/80 text-sm mt-4 animate-in fade-in duration-1000 delay-700">
+            Loading your healthcare dashboard...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-cyan-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 relative overflow-hidden">
+    <div className={`min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-cyan-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 relative overflow-hidden transition-opacity duration-1000 ${mounted ? 'opacity-100' : 'opacity-0'}`}>
       {/* Animated Background Elements */}
       <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-blue-400/20 to-cyan-600/20 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-br from-sky-400/20 to-blue-600/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-br from-blue-400/10 to-cyan-600/10 rounded-full blur-3xl animate-pulse delay-500"></div>
+        <div className={`absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-blue-400/20 to-cyan-600/20 rounded-full blur-3xl animate-pulse transition-all duration-1000 ${mounted ? 'scale-100 opacity-100' : 'scale-50 opacity-0'}`}></div>
+        <div className={`absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-br from-sky-400/20 to-blue-600/20 rounded-full blur-3xl animate-pulse transition-all duration-1000 delay-200 ${mounted ? 'scale-100 opacity-100' : 'scale-50 opacity-0'}`}></div>
+        <div className={`absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-br from-blue-400/10 to-cyan-600/10 rounded-full blur-3xl animate-pulse transition-all duration-1000 delay-100 ${mounted ? 'scale-100 opacity-100' : 'scale-50 opacity-0'}`}></div>
       </div>
 
       <div className="grid lg:grid-cols-2 min-h-screen relative z-10">
@@ -217,19 +298,19 @@ const Login = () => {
           </div>
           
           <div className="absolute inset-0 bg-gradient-to-br from-black/20 via-transparent to-black/20"></div>
-          <div className={`relative z-10 text-center max-w-lg transition-all duration-1000 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
+          <div className={`relative z-10 text-center max-w-lg transition-all duration-1000 delay-300 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
             <div className="mb-8">
               <div className="relative mb-6">
-                <div className="absolute inset-0 bg-white/20 rounded-full blur-xl animate-pulse"></div>
-                <img src={Logo} alt="Smaart Healthcare Logo" className="w-28 h-28 mx-auto relative z-10 object-contain drop-shadow-2xl" />
+                <div className={`absolute inset-0 bg-white/20 rounded-full blur-xl animate-pulse transition-all duration-1000 ${mounted ? 'scale-100' : 'scale-0'}`}></div>
+                <img src={Logo} alt="Smaart Healthcare Logo" className={`w-28 h-28 mx-auto relative z-10 object-contain drop-shadow-2xl transition-all duration-1000 delay-400 ${mounted ? 'opacity-100 scale-100 rotate-0' : 'opacity-0 scale-50 -rotate-180'}`} />
               </div>
-              <h1 className="text-5xl font-bold mb-6 bg-gradient-to-r from-white to-blue-100 bg-clip-text text-transparent">
+              <h1 className={`text-5xl font-bold mb-6 bg-gradient-to-r from-white to-blue-100 bg-clip-text text-transparent transition-all duration-1000 delay-500 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
                 SMAART HEALTHCARE
               </h1>
-              <p className="text-xl text-white/90 leading-relaxed mb-8">
+              <p className={`text-xl text-white/90 leading-relaxed mb-8 transition-all duration-1000 delay-600 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
                 Streamline your healthcare operations with our comprehensive management platform
               </p>
-              <div className="flex items-center justify-center space-x-6 text-white/80">
+              <div className={`flex items-center justify-center space-x-6 text-white/80 transition-all duration-1000 delay-700 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
                 <div className="flex items-center space-x-2">
                   <Shield className="w-5 h-5" />
                   <span className="text-sm">Secure</span>
@@ -249,22 +330,22 @@ const Login = () => {
 
         {/* Right Side - Enhanced Login Form */}
         <div className="flex items-center justify-center p-4 sm:p-6 lg:p-8">
-          <div className={`w-full max-w-sm sm:max-w-md lg:max-w-lg transition-all duration-700 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
-            <Card className="border-0 shadow-2xl bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl relative overflow-hidden">
+          <div className={`w-full max-w-sm sm:max-w-md lg:max-w-lg transition-all duration-1000 delay-200 ${mounted ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-12 scale-95'}`}>
+            <Card className={`border-0 shadow-2xl bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl relative overflow-hidden transition-all duration-700 ${mounted ? 'shadow-2xl' : 'shadow-none'}`}>
               {/* Card glow effect */}
               <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 via-sky-500/10 to-cyan-500/10 opacity-50"></div>
               
               <CardHeader className="text-center pb-2 relative z-10">
                 <div className="lg:hidden mb-3">
                   <div className="relative">
-                    <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 rounded-full blur-lg animate-pulse"></div>
-                    <img src={Logo} alt="Smaart Healthcare Logo" className="w-16 h-16 mx-auto object-contain relative z-10 drop-shadow-lg" />
+                    <div className={`absolute inset-0 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 rounded-full blur-lg animate-pulse transition-all duration-700 ${mounted ? 'scale-100' : 'scale-0'}`}></div>
+                    <img src={Logo} alt="Smaart Healthcare Logo" className={`w-16 h-16 mx-auto object-contain relative z-10 drop-shadow-lg transition-all duration-1000 delay-300 ${mounted ? 'opacity-100 scale-100 rotate-0' : 'opacity-0 scale-50 rotate-180'}`} />
                   </div>
                 </div>
-                <CardTitle className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-gray-900 via-blue-800 to-cyan-800 dark:from-white dark:via-blue-200 dark:to-cyan-200 bg-clip-text text-transparent mb-2">
+                <CardTitle className={`text-2xl sm:text-3xl font-bold bg-gradient-to-r from-gray-900 via-blue-800 to-cyan-800 dark:from-white dark:via-blue-200 dark:to-cyan-200 bg-clip-text text-transparent mb-2 transition-all duration-1000 delay-400 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}>
                   Welcome Back
                 </CardTitle>
-                <CardDescription className="text-gray-600 dark:text-gray-300 text-sm sm:text-base">
+                <CardDescription className={`text-gray-600 dark:text-gray-300 text-sm sm:text-base transition-all duration-1000 delay-500 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}>
                   Sign in to access your healthcare dashboard
                 </CardDescription>
               </CardHeader>
@@ -520,6 +601,49 @@ const Login = () => {
         isOpen={forgotPasswordOpen}
         onClose={() => setForgotPasswordOpen(false)}
       />
+      
+      {/* Success Animation Overlay */}
+      {showSuccessAnimation && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-blue-600 via-cyan-600 to-blue-700 animate-in fade-in duration-500">
+          <div className="text-center">
+            {/* Success Icon with Animation */}
+            <div className="relative mb-8">
+              {/* Expanding circles */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-32 h-32 bg-white/20 rounded-full animate-ping"></div>
+              </div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-24 h-24 bg-white/30 rounded-full animate-pulse"></div>
+              </div>
+              
+              {/* Checkmark circle */}
+              <div className="relative w-32 h-32 mx-auto bg-white rounded-full flex items-center justify-center shadow-2xl animate-in zoom-in duration-500">
+                <CheckCircle className="w-20 h-20 text-green-500 animate-in zoom-in duration-700 delay-300" strokeWidth={2.5} />
+              </div>
+              
+              {/* Sparkles */}
+              <Sparkles className="absolute top-0 right-0 w-8 h-8 text-yellow-300 animate-ping" />
+              <Sparkles className="absolute bottom-0 left-0 w-6 h-6 text-yellow-200 animate-ping" style={{ animationDelay: '0.2s' }} />
+              <Sparkles className="absolute top-1/2 -right-4 w-5 h-5 text-yellow-400 animate-ping" style={{ animationDelay: '0.4s' }} />
+            </div>
+            
+            {/* Success Text */}
+            <h2 className="text-4xl font-bold text-white mb-3 animate-in slide-in-from-bottom-4 duration-700 delay-500">
+              Welcome Back!
+            </h2>
+            <p className="text-xl text-white/90 animate-in slide-in-from-bottom-4 duration-700 delay-700">
+              Login successful
+            </p>
+            
+            {/* Loading dots */}
+            <div className="flex justify-center gap-2 mt-8 animate-in fade-in duration-700 delay-1000">
+              <div className="w-3 h-3 bg-white rounded-full animate-bounce"></div>
+              <div className="w-3 h-3 bg-white rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+              <div className="w-3 h-3 bg-white rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

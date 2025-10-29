@@ -4,13 +4,25 @@ import { ConsultantSidebar } from "./ConsultantSidebar.jsx";
 import { LogOut, Moon, Sun, User, PanelLeft, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button.jsx";
 import { Input } from "@/components/ui/input.jsx";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet.jsx";
 
 // Header component that can use useSidebar hook
 function LayoutHeader({ getPageTitle, currentUser, currentTime, hideActions, toggleDarkMode, isDarkMode, mobileMenuOpen, setMobileMenuOpen }) {
   const { toggleSidebar } = useSidebar();
+  const navigate = useNavigate();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  
+  const handleLogoutClick = (e) => {
+    e.preventDefault();
+    setIsLoggingOut(true);
+    
+    // Add a brief delay for the animation to be visible
+    setTimeout(() => {
+      navigate('/logout');
+    }, 600);
+  };
   
   return (
     <header className="h-14 sm:h-16 bg-background border-b border-border flex items-center justify-between px-3 sm:px-6 flex-shrink-0">
@@ -97,18 +109,44 @@ function LayoutHeader({ getPageTitle, currentUser, currentTime, hideActions, tog
                 <Moon className="w-4 h-4 sm:w-5 sm:h-5" />
               )}
             </Button>
-            <Button variant="outline" asChild className="hidden sm:flex">
-              <Link to="/logout" className="flex items-center gap-2">
-                <LogOut className="w-4 h-4" />
-                <span className="hidden md:inline">Logout</span>
-              </Link>
+            <Button 
+              variant="outline" 
+              onClick={handleLogoutClick}
+              disabled={isLoggingOut}
+              className={`hidden sm:flex relative overflow-hidden group transition-all duration-300 ${
+                isLoggingOut 
+                  ? 'bg-red-500 text-white border-red-500 scale-95 opacity-70' 
+                  : 'hover:bg-red-50 hover:border-red-300 hover:text-red-600 dark:hover:bg-red-950/20'
+              }`}
+            >
+              {isLoggingOut && (
+                <span className="absolute inset-0 bg-gradient-to-r from-red-500 via-red-600 to-red-500 animate-pulse"></span>
+              )}
+              <span className="relative flex items-center gap-2">
+                <LogOut className={`w-4 h-4 transition-all duration-500 ${
+                  isLoggingOut ? 'rotate-180 scale-110' : 'group-hover:translate-x-0.5'
+                }`} />
+                <span className="hidden md:inline">
+                  {isLoggingOut ? 'Logging out...' : 'Logout'}
+                </span>
+              </span>
             </Button>
             {/* Mobile logout button */}
-            <Button variant="ghost" size="icon" asChild className="sm:hidden h-8 w-8">
-              <Link to="/logout">
-                <LogOut className="w-4 h-4" />
-                <span className="sr-only">Logout</span>
-              </Link>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={handleLogoutClick}
+              disabled={isLoggingOut}
+              className={`sm:hidden h-8 w-8 transition-all duration-300 ${
+                isLoggingOut 
+                  ? 'bg-red-500 text-white scale-95 opacity-70' 
+                  : 'hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/20'
+              }`}
+            >
+              <LogOut className={`w-4 h-4 transition-all duration-500 ${
+                isLoggingOut ? 'rotate-180 scale-110' : ''
+              }`} />
+              <span className="sr-only">Logout</span>
             </Button>
           </>
         )}

@@ -77,7 +77,11 @@ router.get('/', auth, async (req, res) => {
       const matchConditions = {};
       
       if (status && status !== 'all') {
-        matchConditions.status = status;
+        if (status === 'not-completed') {
+          matchConditions.status = { $ne: 'Completed' };
+        } else {
+          matchConditions.status = status;
+        }
       }
       
       if (urgency && urgency !== 'all') {
@@ -187,7 +191,11 @@ router.get('/', auth, async (req, res) => {
       }
       
       if (status && status !== 'all') {
-        query.status = status;
+        if (status === 'not-completed') {
+          query.status = { $ne: 'Completed' };
+        } else {
+          query.status = status;
+        }
       }
       
       if (urgency && urgency !== 'all') {

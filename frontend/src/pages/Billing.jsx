@@ -101,14 +101,16 @@ const Billing = () => {
         totalRevenue: 0,
         pendingApprovalCount: 0,
         outstandingAmount: 0,
-        paidThisMonth: 0
+        paidThisMonth: 0,
+        approvedCount: 0
       };
     }
     return {
       totalRevenue: 0,
       pendingApprovalCount: 0,
       outstandingAmount: 0,
-      paidThisMonth: 0
+      paidThisMonth: 0,
+      approvedCount: 0
     };
   });
   const [statsLoading, setStatsLoading] = useState(true);
@@ -126,27 +128,31 @@ const Billing = () => {
       const allInvoicesResponse = await invoiceAPI.getAll(1, 1000, {});
       const allInvoices = allInvoicesResponse.invoices || [];
       
-      // Calculate total revenue (only from approved and paid invoices)
+      // Calculate total revenue (only from approved invoices)
       const totalRevenue = allInvoices
-        .filter(inv => ['Approved', 'Paid'].includes(inv.status))
+        .filter(inv => inv.status === 'Approved')
         .reduce((sum, inv) => sum + (Number(inv.total) || 0), 0);
       
-      // Count invoices pending approval (status = 'Sent')
+      // Count invoices not approved (status = 'Rejected')
       const pendingApprovalCount = allInvoices
-        .filter(inv => inv.status === 'Sent').length;
+        .filter(inv => inv.status === 'Rejected').length;
       
-      // Calculate outstanding amount (overdue invoices)
+      // Count approved invoices (status = 'Approved')
+      const approvedCount = allInvoices
+        .filter(inv => inv.status === 'Approved').length;
+      
+      // Calculate outstanding amount (not approved invoices)
       const outstandingAmount = allInvoices
-        .filter(inv => inv.status === 'Overdue')
+        .filter(inv => inv.status === 'Rejected')
         .reduce((sum, inv) => sum + (Number(inv.total) || 0), 0);
       
-      // Calculate paid this month (invoices with status 'Paid' created this month)
+      // Calculate approved this month
       const currentMonth = new Date().getMonth();
       const currentYear = new Date().getFullYear();
       const paidThisMonth = allInvoices
         .filter(inv => {
           const invoiceDate = new Date(inv.date);
-          return inv.status === 'Paid' && 
+          return inv.status === 'Approved' && 
                  invoiceDate.getMonth() === currentMonth && 
                  invoiceDate.getFullYear() === currentYear;
         })
@@ -155,6 +161,7 @@ const Billing = () => {
       setRevenueStats({
         totalRevenue,
         pendingApprovalCount,
+        approvedCount,
         outstandingAmount,
         paidThisMonth
       });
@@ -170,7 +177,7 @@ const Billing = () => {
         const monthRevenue = allInvoices
           .filter(inv => {
             const invoiceDate = new Date(inv.date);
-            return ['Approved', 'Paid'].includes(inv.status) && 
+            return inv.status === 'Approved' && 
                    invoiceDate >= monthDate && invoiceDate < nextMonthDate;
           })
           .reduce((sum, inv) => sum + (Number(inv.total) || 0), 0);
@@ -182,9 +189,9 @@ const Billing = () => {
       }
       setMonthlyRevenue(monthlyData);
 
-      // Calculate payment methods breakdown (only from approved and paid invoices)
+      // Calculate payment methods breakdown (only from approved invoices)
       const totalPaidRevenue = allInvoices
-        .filter(inv => ['Approved', 'Paid'].includes(inv.status))
+        .filter(inv => inv.status === 'Approved')
         .reduce((sum, inv) => sum + (Number(inv.total) || 0), 0);
       
       const paymentMethodsData = {
@@ -319,8 +326,8 @@ const Billing = () => {
     setApprovalsLoading(true);
     setApprovalsError(null);
     try {
-      // Map "pending approvals" to backend status 'Sent' (awaiting processing)
-      const response = await invoiceAPI.getAll(1, 10, { status: 'Sent' });
+      // Map "pending approvals" to backend status 'Rejected' (not approved)
+      const response = await invoiceAPI.getAll(1, 10, { status: 'Rejected' });
       const list = response.invoices || [];
       const transformed = list.map(inv => ({
         _id: inv._id,
@@ -391,53 +398,25 @@ const Billing = () => {
     }
   };
 
-  // Get invoice status from database or fallback to date-based calculation
+  // Get invoice status from database
   const getInvoiceStatus = (invoice) => {
-    // Use actual status from database if available
-    if (invoice.status) {
-      return invoice.status;
-    }
-    
-    // Fallback to date-based calculation for existing invoices without status
-    const invoiceDate = new Date(invoice.date);
-    const daysDiff = Math.floor((new Date() - invoiceDate) / (1000 * 60 * 60 * 24));
-    
-    if (daysDiff <= 7) return 'Sent';
-    if (daysDiff <= 30) return 'Approved';
-    return 'Overdue';
+    // Use actual status from database, default to 'Rejected' if not set
+    return invoice.status || 'Rejected';
   };
 
   const getStatusColor = (status) => {
     switch (status) {
-      case "Draft": return "secondary";
-      case "Sent": return "warning";
       case "Approved": return "success";
       case "Rejected": return "destructive";
-      case "Paid": return "success";
-      case "Overdue": return "destructive";
-      case "Cancelled": return "secondary";
-      // Fallback for old status values
-      case "Recent": return "warning";
-      case "Current": return "success";
-      case "Older": return "destructive";
       default: return "secondary";
     }
   };
 
   const getStatusIcon = (status) => {
     switch (status) {
-      case "Draft": return FileText;
-      case "Sent": return Clock;
       case "Approved": return CheckCircle;
       case "Rejected": return AlertCircle;
-      case "Paid": return CheckCircle;
-      case "Overdue": return AlertCircle;
-      case "Cancelled": return AlertCircle;
-      // Fallback for old status values
-      case "Recent": return Clock;
-      case "Current": return CheckCircle;
-      case "Older": return AlertCircle;
-      default: return Clock;
+      default: return FileText;
     }
   };
 
@@ -510,106 +489,183 @@ const Billing = () => {
       // Fetch full invoice details to ensure completeness
       const fullInvoice = await invoiceAPI.getById(invoice._id);
 
-      let y = 15;
-      const pageHeight = doc.internal.pageSize.getHeight();
-      const lineHeight = 8;
+      const pageWidth = doc.internal.pageSize.width;
+      const margin = 15;
+      let y = 20;
       const money = (val) => `₹${Number(val || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
-      const ensureSpace = (needed = lineHeight) => {
-        if (y + needed > pageHeight - 15) { doc.addPage(); y = 15; }
-      };
-      const line = (text, inc = lineHeight) => { ensureSpace(inc); doc.text(String(text), 14, y); y += inc; };
-      const lineAt = (x, text, inc = lineHeight) => { ensureSpace(inc); doc.text(String(text), x, y); y += inc; };
 
       // Helper function to get status label
       const getStatusLabel = (status) => {
         switch (status) {
-          case "Draft": return "Draft";
-          case "Sent": return "Pending Approval";
           case "Approved": return "Approved";
-          case "Rejected": return "Rejected";
-          case "Paid": return "Paid";
-          case "Overdue": return "Overdue";
-          case "Cancelled": return "Cancelled";
+          case "Rejected": return "Not Approved";
           default: return status || "Unknown";
         }
       };
 
-      // Header
-      doc.setFontSize(18);
-      line('INVOICE', 10);
-      doc.setFontSize(12);
-      line(`Invoice Number: ${fullInvoice.invoiceNo}`);
-      line(`Date: ${fullInvoice.date}`);
-      line(`Status: ${getStatusLabel(fullInvoice.status)}`);
-      line(`Created: ${new Date(fullInvoice.createdAt).toLocaleDateString()}`, 12);
-
-      // Bill To
+      // Header - Invoice Details Title
+      doc.setFontSize(16);
       doc.setFont(undefined, 'bold');
-      line('Bill To:', 8);
+      doc.text('Invoice Details', margin, y);
+      y += 8;
+      doc.setFontSize(9);
       doc.setFont(undefined, 'normal');
-      const patientName = fullInvoice.patientName || '';
-      const patientPhone = fullInvoice.phone || '';
-      const patientEmail = fullInvoice.email || '';
+      doc.setTextColor(100, 100, 100);
+      doc.text('View and manage invoice information', margin, y);
+      doc.setTextColor(0, 0, 0);
+      y += 12;
+
+      // Invoice Number and Total
+      doc.setFontSize(14);
+      doc.setFont(undefined, 'bold');
+      doc.text(`Invoice #${fullInvoice.invoiceNo}`, margin, y);
+      doc.text(money(fullInvoice.total), pageWidth - margin, y, { align: 'right' });
+      y += 6;
+      doc.setFontSize(9);
+      doc.setFont(undefined, 'normal');
+      doc.setTextColor(100, 100, 100);
+      doc.text(`Date: ${fullInvoice.date}`, margin, y);
+      y += 5;
+      doc.text(getStatusLabel(fullInvoice.status), margin, y);
+      doc.setTextColor(0, 0, 0);
+      y += 12;
+
+      // Divider line
+      doc.setDrawColor(220, 220, 220);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 10;
+
+      // Patient Information Section
+      doc.setFontSize(11);
+      doc.setFont(undefined, 'bold');
+      doc.text('Patient Information', margin, y);
+      y += 8;
+
+      // Draw box for patient info
+      const boxHeight = 35;
+      doc.setDrawColor(220, 220, 220);
+      doc.rect(margin, y - 3, pageWidth - 2 * margin, boxHeight);
+      
+      // Left column - Patient details
+      doc.setFontSize(10);
+      doc.setFont(undefined, 'bold');
+      doc.text(fullInvoice.patientName || 'N/A', margin + 5, y + 3);
+      doc.setFont(undefined, 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(80, 80, 80);
+      if (fullInvoice.phone) {
+        doc.text(fullInvoice.phone, margin + 5, y + 9);
+      }
+      if (fullInvoice.email) {
+        doc.text(fullInvoice.email, margin + 5, y + 14);
+      }
       const addr = fullInvoice.address;
       const addressText = addr && typeof addr === 'object'
         ? [addr.line1, addr.line2, addr.city, addr.state, addr.zipCode].filter(Boolean).join(', ')
         : '';
-      line(patientName);
-      if (patientPhone) line(patientPhone);
-      if (patientEmail) line(patientEmail);
-      if (addressText) line(addressText, 12);
-
-      // Line Items table header
-      doc.setFont(undefined, 'bold');
-      line('Line Items:', 8);
-      doc.text('Description', 14, y);
-      doc.text('Qty', 130, y);
-      doc.text('Unit Price', 150, y);
-      doc.text('Amount', 175, y);
-      y += 6;
-      doc.setFont(undefined, 'normal');
-
-      const items = fullInvoice.lineItems || [];
-      if (items.length === 0) {
-        line('No items listed');
-      } else {
-        items.forEach((item) => {
-          const descLines = doc.splitTextToSize(item.description || '', 110);
-          descLines.forEach((t, idx) => {
-            ensureSpace();
-            doc.text(t, 14, y);
-            if (idx === 0) {
-              doc.text(String(item.qty || 0), 130, y);
-              doc.text(money(item.unitPrice), 150, y);
-              doc.text(money(item.qty * item.unitPrice), 175, y);
-            }
-            y += lineHeight - 2;
-          });
-          y += 2;
+      if (addressText) {
+        const addrLines = doc.splitTextToSize(addressText, 70);
+        addrLines.forEach((line, idx) => {
+          doc.text(line, margin + 5, y + 19 + (idx * 4));
         });
       }
 
-      y += 4;
-      const subtotal = fullInvoice.lineItems?.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0) || 0;
-      line(`Subtotal: ${money(subtotal)}`);
-      if (fullInvoice.discount > 0) line(`Discount: ${money(fullInvoice.discount)}`);
-      if (fullInvoice.tax > 0) line(`Tax: ${money(fullInvoice.tax)}`);
-      if (fullInvoice.shipping > 0) line(`Shipping: ${money(fullInvoice.shipping)}`);
-      doc.setFont(undefined, 'bold');
-      line(`Total: ${money(fullInvoice.total)}`, 12);
+      // Right column - Invoice metadata
+      const rightX = pageWidth / 2 + 10;
+      doc.setTextColor(100, 100, 100);
+      doc.text('Invoice Date:', rightX, y + 3);
+      doc.text('Invoice Number:', rightX, y + 8);
+      doc.text('Created:', rightX, y + 13);
+      doc.text('Status:', rightX, y + 18);
+      
+      doc.setTextColor(0, 0, 0);
       doc.setFont(undefined, 'normal');
+      doc.text(String(fullInvoice.date || ''), pageWidth - margin - 5, y + 3, { align: 'right' });
+      doc.text(String(fullInvoice.invoiceNo || ''), pageWidth - margin - 5, y + 8, { align: 'right' });
+      doc.text(new Date(fullInvoice.createdAt).toLocaleDateString(), pageWidth - margin - 5, y + 13, { align: 'right' });
+      doc.text(String(getStatusLabel(fullInvoice.status)), pageWidth - margin - 5, y + 18, { align: 'right' });
 
-      y += 4;
-      line(`Invoice Date: ${fullInvoice.date}`);
-      line(`Created: ${new Date(fullInvoice.createdAt).toLocaleDateString()}`, 12);
+      y += boxHeight + 10;
 
-      if (fullInvoice.remarks) {
-        doc.setFont(undefined, 'bold');
-        line('Remarks:', 8);
-        doc.setFont(undefined, 'normal');
-        const splitRemarks = doc.splitTextToSize(fullInvoice.remarks, 180);
-        splitRemarks.forEach((t) => line(t));
+      // Line Items Section
+      doc.setFontSize(11);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(0, 0, 0);
+      doc.text('Line Items', margin, y);
+      y += 8;
+
+      // Table header
+      doc.setFontSize(9);
+      doc.setTextColor(100, 100, 100);
+      doc.text('Description', margin + 5, y);
+      doc.text('Qty', pageWidth - 95, y, { align: 'right' });
+      doc.text('Unit Price', pageWidth - 55, y, { align: 'right' });
+      doc.text('Amount', pageWidth - margin - 5, y, { align: 'right' });
+      y += 5;
+
+      // Divider
+      doc.setDrawColor(220, 220, 220);
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 6;
+
+      // Line items
+      doc.setTextColor(0, 0, 0);
+      doc.setFont(undefined, 'normal');
+      const items = fullInvoice.lineItems || [];
+      items.forEach((item) => {
+        doc.text(item.description || 'N/A', margin + 5, y);
+        doc.text(String(item.qty || 0), pageWidth - 95, y, { align: 'right' });
+        doc.text(money(item.unitPrice), pageWidth - 55, y, { align: 'right' });
+        doc.text(money(item.qty * item.unitPrice), pageWidth - margin - 5, y, { align: 'right' });
+        y += 6;
+      });
+
+      y += 5;
+      doc.line(margin, y, pageWidth - margin, y);
+      y += 8;
+
+      // Totals section
+      const totalsX = pageWidth - 80;
+      doc.setFontSize(9);
+      doc.setTextColor(100, 100, 100);
+      
+      const subtotal = fullInvoice.lineItems?.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0) || 0;
+      doc.text('Subtotal:', totalsX, y);
+      doc.setTextColor(0, 0, 0);
+      doc.text(money(subtotal), pageWidth - margin - 5, y, { align: 'right' });
+      y += 5;
+
+      if (fullInvoice.discount > 0) {
+        doc.setTextColor(100, 100, 100);
+        doc.text('Discount:', totalsX, y);
+        doc.setTextColor(220, 38, 38);
+        doc.text(`-${money(fullInvoice.discount)}`, pageWidth - margin - 5, y, { align: 'right' });
+        y += 5;
       }
+
+      if (fullInvoice.tax > 0) {
+        doc.setTextColor(100, 100, 100);
+        doc.text('Tax:', totalsX, y);
+        doc.setTextColor(0, 0, 0);
+        doc.text(money(fullInvoice.tax), pageWidth - margin - 5, y, { align: 'right' });
+        y += 5;
+      }
+
+      if (fullInvoice.shipping > 0) {
+        doc.setTextColor(100, 100, 100);
+        doc.text('Shipping:', totalsX, y);
+        doc.setTextColor(0, 0, 0);
+        doc.text(money(fullInvoice.shipping), pageWidth - margin - 5, y, { align: 'right' });
+        y += 5;
+      }
+
+      // Total
+      y += 2;
+      doc.setFontSize(11);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(0, 0, 0);
+      doc.text('Total:', totalsX, y);
+      doc.text(money(fullInvoice.total), pageWidth - margin - 5, y, { align: 'right' });
 
       doc.save(`invoice-${fullInvoice.invoiceNo}.pdf`);
 
@@ -653,7 +709,7 @@ const Billing = () => {
               <CheckCircle className="w-4 h-4 text-green-600" />
             </div>
             <span className="text-sm text-green-600 font-medium">
-              Approved: {filteredInvoices.filter(inv => getInvoiceStatus(inv) === 'Approved').length || 0}
+              Approved: {revenueStats.approvedCount || 0}
             </span>
           </div>
           <div className="flex items-center space-x-2">
@@ -661,7 +717,7 @@ const Billing = () => {
               <Clock className="w-4 h-4 text-yellow-600" />
             </div>
             <span className="text-sm text-yellow-600 font-medium">
-              Pending: {filteredInvoices.filter(inv => getInvoiceStatus(inv) === 'Sent').length || 0}
+              Not Approved: {filteredInvoices.filter(inv => getInvoiceStatus(inv) === 'Rejected').length || 0}
             </span>
           </div>
         </div>
@@ -674,11 +730,8 @@ const Billing = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="draft">Draft</SelectItem>
-              <SelectItem value="sent">Sent</SelectItem>
               <SelectItem value="approved">Approved</SelectItem>
-              <SelectItem value="paid">Paid</SelectItem>
-              <SelectItem value="overdue">Overdue</SelectItem>
+              <SelectItem value="rejected">Not Approved</SelectItem>
             </SelectContent>
           </Select>
           
@@ -801,7 +854,7 @@ const Billing = () => {
                           
                           {/* Right section - Actions */}
                           <div className="col-span-3 flex justify-end items-center space-x-2">
-                              {getInvoiceStatus(invoice) === 'Sent' && (
+                              {getInvoiceStatus(invoice) === 'Rejected' && (
                                 <Button 
                                   variant="outline" 
                                   size="sm"

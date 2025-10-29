@@ -17,12 +17,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { patientAPI, doctorAPI } from "@/services/api";
 import { isClinic, isDoctor, isNurse, getCurrentUser } from "@/utils/roleUtils";
-import { Plus, Trash2, User, Calendar, UserCheck, AlertCircle } from "lucide-react";
+import { Plus, Trash2, User, Calendar, UserCheck, AlertCircle, Check, ChevronsUpDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { validators, sanitizers } from "@/utils/validation";
 import { useAuditLog } from "@/hooks/useAuditLog";
 
@@ -35,6 +38,8 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
   const [doctors, setDoctors] = useState([]);
   const [loadingDoctors, setLoadingDoctors] = useState(false);
   const currentUser = getCurrentUser();
+  const [patientComboboxOpen, setPatientComboboxOpen] = useState(false);
+  const [doctorComboboxOpen, setDoctorComboboxOpen] = useState(false);
   
   const [formData, setFormData] = useState({
     patientId: "",
@@ -391,27 +396,55 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="patientId">Patient *</Label>
-              <Select
-                value={formData.patientId}
-                onValueChange={(value) => handleInputChange('patientId', value)}
-                disabled={loadingPatients || !!prescription || loading}
-              >
-                <SelectTrigger className={errors.patientId ? "border-red-500" : ""}>
-                  <SelectValue placeholder={loadingPatients ? "Loading patients..." : "Select a patient"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {patients.map((patient) => (
-                    <SelectItem key={patient._id} value={patient._id}>
-                      <div className="flex items-center justify-between w-full">
-                        <span>{patient.fullName}</span>
-                        <Badge variant="outline" className="ml-2">
-                          {patient.age || 0}y • {patient.gender || 'Unknown'}
-                        </Badge>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={patientComboboxOpen} onOpenChange={setPatientComboboxOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={patientComboboxOpen}
+                    className={`w-full justify-between ${errors.patientId ? "border-red-500" : ""}`}
+                    disabled={loadingPatients || !!prescription || loading}
+                  >
+                    {formData.patientId
+                      ? patients.find(p => p._id === formData.patientId)?.fullName || "Select patient..."
+                      : loadingPatients ? "Loading patients..." : "Select patient..."}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-full p-0" align="start" onWheel={(e) => e.stopPropagation()}>
+                  <Command>
+                    <CommandInput placeholder="Search patients..." />
+                    <CommandList className="max-h-[300px] overflow-y-auto">
+                      <CommandEmpty>No patient found.</CommandEmpty>
+                      <CommandGroup>
+                        {patients.map((patient) => (
+                          <CommandItem
+                            key={patient._id}
+                            value={`${patient.fullName} ${patient.phone} ${patient.email || ''}`}
+                            onSelect={() => {
+                              handleInputChange('patientId', patient._id);
+                              setPatientComboboxOpen(false);
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                formData.patientId === patient._id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            <div className="flex flex-col">
+                              <span className="font-medium">{patient.fullName}</span>
+                              <span className="text-sm text-muted-foreground">
+                                {patient.age || 0}y • {patient.gender || 'Unknown'} • {patient.phone}
+                              </span>
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
               {errors.patientId && <p className="text-sm text-red-500">{errors.patientId}</p>}
             </div>
 
@@ -434,27 +467,53 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="doctorId">Doctor *</Label>
-                <Select
-                  value={formData.doctorId}
-                  onValueChange={(value) => handleInputChange('doctorId', value)}
-                  disabled={loadingDoctors || loading}
-                >
-                  <SelectTrigger className={errors.doctorId ? "border-red-500" : ""}>
-                    <SelectValue placeholder={loadingDoctors ? "Loading doctors..." : "Select a doctor"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {doctors.map((doctor) => (
-                      <SelectItem key={doctor._id} value={doctor._id}>
-                        <div className="flex items-center justify-between w-full">
-                          <span>Dr. {doctor.fullName}</span>
-                          <Badge variant="outline" className="ml-2">
-                            {doctor.specialty || 'General'}
-                          </Badge>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={doctorComboboxOpen} onOpenChange={setDoctorComboboxOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={doctorComboboxOpen}
+                      className={`w-full justify-between ${errors.doctorId ? "border-red-500" : ""}`}
+                      disabled={loadingDoctors || loading}
+                    >
+                      {formData.doctorId
+                        ? `Dr. ${doctors.find(d => d._id === formData.doctorId)?.fullName || 'Select doctor...'}`
+                        : loadingDoctors ? "Loading doctors..." : "Select doctor..."}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full p-0" align="start" onWheel={(e) => e.stopPropagation()}>
+                    <Command>
+                      <CommandInput placeholder="Search doctors..." />
+                      <CommandList className="max-h-[300px] overflow-y-auto">
+                        <CommandEmpty>No doctor found.</CommandEmpty>
+                        <CommandGroup>
+                          {doctors.map((doctor) => (
+                            <CommandItem
+                              key={doctor._id}
+                              value={`${doctor.fullName} ${doctor.specialty}`}
+                              onSelect={() => {
+                                handleInputChange('doctorId', doctor._id);
+                                setDoctorComboboxOpen(false);
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  formData.doctorId === doctor._id ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              <div className="flex flex-col">
+                                <span className="font-medium">Dr. {doctor.fullName}</span>
+                                <span className="text-sm text-muted-foreground">{doctor.specialty || 'General'}</span>
+                              </div>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
                 {errors.doctorId && <p className="text-sm text-red-500">{errors.doctorId}</p>}
               </div>
 

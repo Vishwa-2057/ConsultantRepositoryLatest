@@ -494,9 +494,7 @@ const PatientDetails = () => {
     try {
       setSavingMedicalHistory(true);
       
-      const response = await patientAPI.update(patient._id, {
-        medicalHistory: medicalHistoryForm
-      });
+      const response = await patientAPI.updateMedicalHistory(patient._id, medicalHistoryForm);
       
       // Update local patient state
       setPatient(prev => ({
@@ -508,7 +506,7 @@ const PatientDetails = () => {
       handleCloseMedicalHistory();
     } catch (error) {
       console.error('Error updating medical history:', error);
-      toast.error('Failed to update medical history');
+      toast.error(error.message || 'Failed to update medical history');
     } finally {
       setSavingMedicalHistory(false);
     }

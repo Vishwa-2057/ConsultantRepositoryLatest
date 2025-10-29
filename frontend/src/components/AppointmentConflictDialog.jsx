@@ -207,7 +207,7 @@ const AppointmentConflictDialog = ({
           {/* Actions */}
           <div className="flex flex-col gap-4 pt-2">
             <div className="text-sm text-muted-foreground font-medium">Choose an action:</div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="flex gap-4 justify-end">
               <Button
                 variant="outline"
                 onClick={onClose}
@@ -225,15 +225,6 @@ const AppointmentConflictDialog = ({
                   Use {selectedSuggestion.display}
                 </Button>
               )}
-
-              <Button
-                variant="destructive"
-                onClick={onForceCreate}
-                className="flex items-center gap-2 h-11"
-              >
-                <AlertTriangle className="w-4 h-4" />
-                Force Create Anyway
-              </Button>
             </div>
           </div>
         </div>

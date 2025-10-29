@@ -7,101 +7,102 @@ export const generateReferralPDF = (referral, type = 'outbound') => {
   let yPosition = 30;
 
   // Helper function to add text with word wrapping
-  const addText = (text, x, y, maxWidth = pageWidth - 2 * margin, fontSize = 12) => {
+  const addText = (text, x, y, maxWidth = pageWidth - 2 * margin, fontSize = 10) => {
     doc.setFontSize(fontSize);
     const lines = doc.splitTextToSize(text, maxWidth);
     doc.text(lines, x, y);
-    return y + (lines.length * fontSize * 0.4);
+    return y + (lines.length * fontSize * 0.35);
   };
 
   // Helper function to add a section header
   const addSectionHeader = (title, y) => {
-    doc.setFontSize(14);
+    doc.setFontSize(12);
     doc.setFont(undefined, 'bold');
     doc.text(title, margin, y);
     doc.setFont(undefined, 'normal');
-    return y + 10;
+    return y + 8;
   };
 
   // Header
-  doc.setFontSize(20);
+  doc.setFontSize(18);
   doc.setFont(undefined, 'bold');
   doc.text('Medical Referral Document', pageWidth / 2, yPosition, { align: 'center' });
-  yPosition += 15;
+  yPosition += 12;
 
   // Referral Type Badge
-  doc.setFontSize(12);
+  doc.setFontSize(11);
   doc.setFont(undefined, 'normal');
   const referralTypeText = type === 'outbound' ? 'OUTBOUND REFERRAL' : 'INBOUND REFERRAL';
   doc.text(referralTypeText, pageWidth / 2, yPosition, { align: 'center' });
-  yPosition += 20;
+  yPosition += 15;
 
   // Referral ID and Date
   yPosition = addSectionHeader('Referral Information', yPosition);
-  yPosition = addText(`Referral ID: ${referral.id || referral._id || 'N/A'}`, margin, yPosition) + 5;
-  yPosition = addText(`Date Created: ${new Date().toLocaleDateString()}`, margin, yPosition) + 5;
-  yPosition = addText(`Status: ${referral.status || 'N/A'}`, margin, yPosition) + 5;
-  yPosition = addText(`Priority: ${referral.urgency || 'N/A'}`, margin, yPosition) + 15;
+  yPosition = addText(`Referral ID: ${referral.id || referral._id || 'N/A'}`, margin, yPosition) + 3;
+  yPosition = addText(`Date Created: ${new Date().toLocaleDateString()}`, margin, yPosition) + 3;
+  yPosition = addText(`Status: ${referral.status || 'N/A'}`, margin, yPosition) + 3;
+  yPosition = addText(`Priority: ${referral.urgency || 'N/A'}`, margin, yPosition) + 10;
 
   // Patient Information
   yPosition = addSectionHeader('Patient Information', yPosition);
-  yPosition = addText(`Patient Name: ${referral.patientName || 'N/A'}`, margin, yPosition) + 5;
-  yPosition = addText(`Preferred Date: ${referral.preferredDate || 'N/A'}`, margin, yPosition) + 15;
+  yPosition = addText(`Patient Name: ${referral.patientName || 'N/A'}`, margin, yPosition) + 3;
+  yPosition = addText(`Preferred Date: ${referral.preferredDate || 'N/A'}`, margin, yPosition) + 10;
 
   // Referral Details
   if (type === 'outbound') {
     yPosition = addSectionHeader('Referral To (Outbound)', yPosition);
-    yPosition = addText(`Specialist: ${referral.specialistName || 'N/A'}`, margin, yPosition) + 5;
-    yPosition = addText(`Specialty: ${referral.specialty || 'N/A'}`, margin, yPosition) + 5;
-    yPosition = addText(`External Clinic: ${referral.externalClinic || 'N/A'}`, margin, yPosition) + 15;
+    yPosition = addText(`Specialist: ${referral.specialistName || 'N/A'}`, margin, yPosition) + 3;
+    yPosition = addText(`Specialty: ${referral.specialty || 'N/A'}`, margin, yPosition) + 3;
+    yPosition = addText(`External Clinic: ${referral.externalClinic || 'N/A'}`, margin, yPosition) + 10;
   } else {
     yPosition = addSectionHeader('Referral From (Inbound)', yPosition);
-    yPosition = addText(`Referring Doctor: ${referral.specialistName || 'N/A'}`, margin, yPosition) + 5;
-    yPosition = addText(`Specialty: ${referral.specialty || 'N/A'}`, margin, yPosition) + 5;
-    yPosition = addText(`Hospital/Clinic: ${referral.hospital || 'N/A'}`, margin, yPosition) + 15;
+    yPosition = addText(`Referring Doctor: ${referral.specialistName || 'N/A'}`, margin, yPosition) + 3;
+    yPosition = addText(`Specialty: ${referral.specialty || 'N/A'}`, margin, yPosition) + 3;
+    yPosition = addText(`Hospital/Clinic: ${referral.hospital || 'N/A'}`, margin, yPosition) + 10;
   }
 
   // Clinical Information
   yPosition = addSectionHeader('Clinical Information', yPosition);
-  yPosition = addText(`Reason for Referral: ${referral.reason || 'N/A'}`, margin, yPosition) + 10;
+  yPosition = addText(`Reason for Referral: ${referral.reason || 'N/A'}`, margin, yPosition) + 8;
   
   if (referral.notes) {
-    yPosition = addText('Additional Notes:', margin, yPosition, pageWidth - 2 * margin, 12) + 5;
-    yPosition = addText(referral.notes, margin, yPosition, pageWidth - 2 * margin, 10) + 15;
+    yPosition = addText('Additional Notes:', margin, yPosition, pageWidth - 2 * margin, 10) + 3;
+    yPosition = addText(referral.notes, margin, yPosition, pageWidth - 2 * margin, 9) + 10;
   }
 
   // Medical History (if available)
   if (referral.medicalHistory) {
     yPosition = addSectionHeader('Medical History', yPosition);
-    yPosition = addText(referral.medicalHistory, margin, yPosition, pageWidth - 2 * margin, 10) + 15;
+    yPosition = addText(referral.medicalHistory, margin, yPosition, pageWidth - 2 * margin, 9) + 10;
   }
 
   // Current Medications (if available)
   if (referral.medications && referral.medications.length > 0) {
     yPosition = addSectionHeader('Current Medications', yPosition);
     referral.medications.forEach((med, index) => {
-      yPosition = addText(`${index + 1}. ${med.name || med} - ${med.dosage || 'N/A'}`, margin, yPosition) + 3;
+      yPosition = addText(`${index + 1}. ${med.name || med} - ${med.dosage || 'N/A'}`, margin, yPosition) + 2;
     });
-    yPosition += 10;
+    yPosition += 8;
   }
 
   // Attachments (if available)
   if (referral.attachments && referral.attachments.length > 0) {
     yPosition = addSectionHeader('Attachments', yPosition);
     referral.attachments.forEach((attachment, index) => {
-      yPosition = addText(`${index + 1}. ${attachment.name || attachment}`, margin, yPosition) + 3;
+      yPosition = addText(`${index + 1}. ${attachment.name || attachment}`, margin, yPosition) + 2;
     });
-    yPosition += 10;
+    yPosition += 8;
   }
 
   // Contact Information
   yPosition = addSectionHeader('Contact Information', yPosition);
-  yPosition = addText('Referring Physician: Dr. Johnson', margin, yPosition) + 5;
-  yPosition = addText('Phone: (555) 123-4567', margin, yPosition) + 5;
-  yPosition = addText('Email: dr.johnson@healthcare.com', margin, yPosition) + 15;
+  yPosition = addText('Referring Physician: Dr. Johnson', margin, yPosition) + 3;
+  yPosition = addText('Phone: (555) 123-4567', margin, yPosition) + 3;
+  yPosition = addText('Email: dr.johnson@healthcare.com', margin, yPosition) + 8;
 
-  // Footer
+  // Footer - always at bottom with proper spacing
   const footerY = doc.internal.pageSize.height - 30;
+  
   doc.setFontSize(8);
   doc.setFont(undefined, 'italic');
   doc.text('This document contains confidential medical information.', pageWidth / 2, footerY, { align: 'center' });
@@ -189,17 +190,18 @@ export const generateDetailedReferralPDF = (referral, type = 'outbound', additio
   }
 
   // Add signature section
-  yPosition += 20;
+  yPosition += 15;
   yPosition = addSectionHeader('Physician Signature', yPosition);
-  yPosition += 20;
+  yPosition += 15;
   doc.text('_________________________', margin, yPosition);
   yPosition += 8;
   doc.text('Dr. Johnson, MD', margin, yPosition);
   yPosition += 5;
   doc.text('Date: _______________', margin, yPosition);
 
-  // Footer (same as basic version)
+  // Footer - always at bottom
   const footerY = doc.internal.pageSize.height - 30;
+  
   doc.setFontSize(8);
   doc.setFont(undefined, 'italic');
   doc.text('This document contains confidential medical information.', pageWidth / 2, footerY, { align: 'center' });

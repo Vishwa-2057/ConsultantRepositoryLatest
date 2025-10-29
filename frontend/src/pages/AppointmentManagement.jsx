@@ -5,17 +5,22 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar, Clock, User, Phone, MapPin, AlertCircle, CheckCircle, XCircle, Plus, Search, Filter, Edit, CalendarDays, Users, TrendingUp, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FileText, Calendar as CalendarIcon, Info, Video, MessageCircle } from 'lucide-react';
+import { Calendar, Clock, User, Phone, MapPin, AlertCircle, CheckCircle, XCircle, Plus, Search, Filter, Edit, CalendarDays, Users, TrendingUp, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FileText, Calendar as CalendarIcon, Info, Video, MessageCircle, Check, ChevronsUpDown } from 'lucide-react';
+import { cn } from "@/lib/utils";
 import { toast } from 'sonner';
-import { appointmentAPI, patientAPI, doctorAPI } from '@/services/api';
+import { appointmentAPI, patientAPI, doctorAPI, doctorAvailabilityAPI } from '@/services/api';
+import { getAvailableTimeSlots } from '@/utils/availabilityUtils';
 import { format, parseISO, isToday, isTomorrow, isYesterday, addMinutes } from 'date-fns';
 import RescheduleAppointmentModal from '@/components/RescheduleAppointmentModal';
 import AppointmentConflictDialog from '@/components/AppointmentConflictDialog';
 import ScheduleTeleconsultationModal from '@/components/ScheduleTeleconsultationModal';
 import { getCurrentUser } from '@/utils/roleUtils';
+// import TimeSlotPicker from '@/components/TimeSlotPicker'; // Removed - using manual date/time selection
 
 const AppointmentManagement = () => {
   // Set page title immediately
@@ -52,6 +57,15 @@ const AppointmentManagement = () => {
   const [isTeleconsultationDialogOpen, setIsTeleconsultationDialogOpen] = useState(false);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [conflictData, setConflictData] = useState(null);
+  // const [selectedSlot, setSelectedSlot] = useState(null); // Removed - using manual selection
+  // const [showSlotPicker, setShowSlotPicker] = useState(false); // Removed - using manual selection
+  const [patientComboboxOpen, setPatientComboboxOpen] = useState(false);
+  const [doctorComboboxOpen, setDoctorComboboxOpen] = useState(false);
+  const [appointmentTypeComboboxOpen, setAppointmentTypeComboboxOpen] = useState(false);
+  const [selectedSpecialty, setSelectedSpecialty] = useState('');
+  const [availableSlots, setAvailableSlots] = useState([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [slotDuration, setSlotDuration] = useState(30);
   const [formData, setFormData] = useState({
     patientId: '',
     doctorId: '',
@@ -248,6 +262,49 @@ const AppointmentManagement = () => {
     setCurrentPage(1);
   }, [statusFilter, typeFilter, priorityFilter, dateFilter, searchTerm]);
 
+  // Load available slots when doctor or date changes
+  const doctorId = formData.doctorId;
+  const date = formData.date;
+  
+  useEffect(() => {
+    if (doctorId && date) {
+      loadAvailableSlots();
+    } else {
+      setAvailableSlots([]);
+    }
+  }, [doctorId, date]);
+
+  const loadAvailableSlots = async () => {
+    try {
+      setLoadingSlots(true);
+      const response = await doctorAvailabilityAPI.getAvailableSlots(formData.doctorId, formData.date);
+      
+      if (response.success) {
+        const { availability, exceptions, appointments } = response;
+        const selectedDate = new Date(formData.date);
+        
+        // Get slot duration from availability
+        const duration = availability.length > 0 && availability[0].slotDuration 
+          ? availability[0].slotDuration 
+          : 30;
+        setSlotDuration(duration);
+        setFormData(prev => ({ ...prev, duration }));
+        
+        const slots = getAvailableTimeSlots(availability, exceptions, appointments, selectedDate, duration);
+        setAvailableSlots(slots);
+        
+        // Don't clear the time - let the user change duration and keep their selection if still valid
+        // Only clear if the slot is truly unavailable (booked by another appointment)
+      }
+    } catch (error) {
+      console.error('Error loading available slots:', error);
+      setAvailableSlots([]);
+      toast.error('Failed to load available time slots');
+    } finally {
+      setLoadingSlots(false);
+    }
+  };
+
   const handleCreateAppointment = async (forceCreate = false) => {
     setSubmitting(true);
     try {
@@ -275,7 +332,10 @@ const AppointmentManagement = () => {
 
       // No conflicts or force create - proceed with creation
       const appointmentData = forceCreate ? { ...formData, forceCreate: true } : formData;
-      await appointmentAPI.create(appointmentData);
+      const response = await appointmentAPI.create(appointmentData);
+      
+      // Slot booking removed - using manual date/time selection
+      
       toast.success('Appointment created successfully');
       setIsCreateModalOpen(false);
       setIsConflictDialogOpen(false);
@@ -293,7 +353,10 @@ const AppointmentManagement = () => {
         includesConflict: error.message?.includes('conflict')
       });
 
-      if (error.response?.status === 400 || error.response?.status === 409 || 
+      // Check if it's a validation error (400 with validation message)
+      if (error.message?.includes('Validation') || error.message?.includes('required')) {
+        toast.error(error.message || 'Please fill in all required fields');
+      } else if (error.response?.status === 409 || 
           error.message?.includes('booked') || error.message?.includes('conflict')) {
         
         console.log('Detected conflict error, parsing details...');
@@ -303,7 +366,7 @@ const AppointmentManagement = () => {
         setConflictData(conflictDetails);
         setIsConflictDialogOpen(true);
       } else {
-        toast.error('Failed to create appointment');
+        toast.error(error.message || 'Failed to create appointment');
       }
     } finally {
       setSubmitting(false);
@@ -400,8 +463,12 @@ const AppointmentManagement = () => {
       priority: 'normal',
       reason: '',
       notes: '',
-      symptoms: ''
+      symptoms: '',
+      instructions: ''
     });
+    setSelectedSpecialty(''); // Reset specialty filter
+    // setSelectedSlot(null); // Removed
+    // setShowSlotPicker(false); // Removed
   };
 
   console.log('All appointments:', appointments);
@@ -552,39 +619,142 @@ const AppointmentManagement = () => {
               <div className={`grid gap-4 ${isDoctorUser ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
                 <div>
                   <Label htmlFor="patient">Patient</Label>
-                  <Select value={formData.patientId} onValueChange={(value) => setFormData({...formData, patientId: value})} disabled={submitting}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select patient" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {patients.map((patient) => (
-                        <SelectItem key={patient._id} value={patient._id}>
-                          {patient.fullName} - {patient.phone}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Popover open={patientComboboxOpen} onOpenChange={setPatientComboboxOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={patientComboboxOpen}
+                        className="w-full justify-between"
+                        disabled={submitting}
+                      >
+                        {formData.patientId
+                          ? patients.find(p => p._id === formData.patientId)?.fullName || "Select patient..."
+                          : "Select patient..."}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-full p-0" align="start" onWheel={(e) => e.stopPropagation()}>
+                      <Command>
+                        <CommandInput placeholder="Search patients..." />
+                        <CommandList className="max-h-[300px] overflow-y-auto">
+                          <CommandEmpty>No patient found.</CommandEmpty>
+                          <CommandGroup>
+                            {patients.map((patient) => (
+                              <CommandItem
+                                key={patient._id}
+                                value={`${patient.fullName} ${patient.phone} ${patient.email || ''}`}
+                                onSelect={() => {
+                                  setFormData({...formData, patientId: patient._id});
+                                  setPatientComboboxOpen(false);
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    formData.patientId === patient._id ? "opacity-100" : "opacity-0"
+                                  )}
+                                />
+                                <div className="flex flex-col">
+                                  <span className="font-medium">{patient.fullName}</span>
+                                  <span className="text-sm text-muted-foreground">{patient.phone}</span>
+                                </div>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 
-                {/* Only show doctor selection for non-doctor users */}
+                {/* Only show specialty and doctor selection for non-doctor users */}
                 {!isDoctorUser && (
-                  <div>
-                    <Label htmlFor="doctor">Doctor</Label>
-                    <Select value={formData.doctorId} onValueChange={(value) => setFormData({...formData, doctorId: value})} disabled={submitting}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select doctor" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {doctors
-                          .filter((doctor) => doctor.isActive !== false)
-                          .map((doctor) => (
-                            <SelectItem key={doctor._id} value={doctor._id}>
-                              Dr. {doctor.fullName} - {doctor.specialty}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  <>
+                    {/* Specialty Filter */}
+                    <div>
+                      <Label htmlFor="specialty">Specialty</Label>
+                      <Select
+                        value={selectedSpecialty}
+                        onValueChange={(value) => {
+                          setSelectedSpecialty(value);
+                          // Reset doctor selection when specialty changes
+                          setFormData({...formData, doctorId: ''});
+                        }}
+                        disabled={submitting}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select specialty..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Specialties</SelectItem>
+                          {[...new Set(doctors.map(d => d.specialty))]
+                            .filter(Boolean)
+                            .sort()
+                            .map((specialty) => (
+                              <SelectItem key={specialty} value={specialty}>
+                                {specialty}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Doctor Selection */}
+                    <div>
+                      <Label htmlFor="doctor">Doctor</Label>
+                      <Popover open={doctorComboboxOpen} onOpenChange={setDoctorComboboxOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={doctorComboboxOpen}
+                            className="w-full justify-between"
+                            disabled={submitting}
+                          >
+                            {formData.doctorId
+                              ? `Dr. ${doctors.find(d => d._id === formData.doctorId)?.fullName || 'Select doctor...'}`
+                              : "Select doctor..."}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-full p-0" align="start" onWheel={(e) => e.stopPropagation()}>
+                          <Command>
+                            <CommandInput placeholder="Search doctors..." />
+                            <CommandList className="max-h-[300px] overflow-y-auto">
+                              <CommandEmpty>No doctor found.</CommandEmpty>
+                              <CommandGroup>
+                                {doctors
+                                  .filter((doctor) => doctor.isActive !== false)
+                                  .filter((doctor) => !selectedSpecialty || selectedSpecialty === 'all' || doctor.specialty === selectedSpecialty)
+                                  .map((doctor) => (
+                                    <CommandItem
+                                      key={doctor._id}
+                                      value={`${doctor.fullName} ${doctor.specialty}`}
+                                      onSelect={() => {
+                                        setFormData({...formData, doctorId: doctor._id});
+                                        setDoctorComboboxOpen(false);
+                                      }}
+                                    >
+                                      <Check
+                                        className={cn(
+                                          "mr-2 h-4 w-4",
+                                          formData.doctorId === doctor._id ? "opacity-100" : "opacity-0"
+                                        )}
+                                      />
+                                      <div className="flex flex-col">
+                                        <span className="font-medium">Dr. {doctor.fullName}</span>
+                                        <span className="text-sm text-muted-foreground">{doctor.specialty}</span>
+                                      </div>
+                                    </CommandItem>
+                                  ))}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  </>
                 )}
                 
                 {/* Show selected doctor info for doctors */}
@@ -610,18 +780,48 @@ const AppointmentManagement = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="type">Appointment Type</Label>
-                  <Select value={formData.appointmentType} onValueChange={(value) => setFormData({...formData, appointmentType: value})} disabled={submitting}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {appointmentTypes.map((type) => (
-                        <SelectItem key={type} value={type}>
-                          {type}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Popover open={appointmentTypeComboboxOpen} onOpenChange={setAppointmentTypeComboboxOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={appointmentTypeComboboxOpen}
+                        className="w-full justify-between"
+                        disabled={submitting}
+                      >
+                        {formData.appointmentType || "Select type..."}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-full p-0" align="start" onWheel={(e) => e.stopPropagation()}>
+                      <Command>
+                        <CommandInput placeholder="Search appointment types..." />
+                        <CommandList className="max-h-[300px] overflow-y-auto">
+                          <CommandEmpty>No appointment type found.</CommandEmpty>
+                          <CommandGroup>
+                            {appointmentTypes.map((type) => (
+                              <CommandItem
+                                key={type}
+                                value={type}
+                                onSelect={() => {
+                                  setFormData({...formData, appointmentType: type});
+                                  setAppointmentTypeComboboxOpen(false);
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    formData.appointmentType === type ? "opacity-100" : "opacity-0"
+                                  )}
+                                />
+                                {type}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 
                 <div>
@@ -640,38 +840,72 @@ const AppointmentManagement = () => {
                   </Select>
                 </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                <div>
-                  <Label htmlFor="date">Date</Label>
-                  <Input
-                    type="date"
-                    min={new Date().toISOString().split('T')[0]}
-                    value={formData.date}
-                    onChange={(e) => setFormData({...formData, date: e.target.value})}
-                    disabled={submitting}
-                  />
+              {/* Date, Time and Duration Selection */}
+              {formData.doctorId && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div>
+                    <Label htmlFor="date">Date</Label>
+                    <Input
+                      type="date"
+                      min={new Date().toISOString().split('T')[0]}
+                      value={formData.date}
+                      onChange={(e) => setFormData({...formData, date: e.target.value})}
+                      disabled={submitting}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="time">Time</Label>
+                    {loadingSlots ? (
+                      <div className="flex items-center justify-center h-10 border rounded-md bg-gray-50">
+                        <Clock className="w-4 h-4 animate-spin text-muted-foreground mr-2" />
+                        <span className="text-sm text-muted-foreground">Loading slots...</span>
+                      </div>
+                    ) : availableSlots.length > 0 ? (
+                      <div className="space-y-2">
+                        <Select 
+                          value={formData.time} 
+                          onValueChange={(value) => setFormData({...formData, time: value})}
+                          disabled={submitting}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select available time" />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-[300px]">
+                            {availableSlots.map((slot) => (
+                              <SelectItem key={slot.time} value={slot.time}>
+                                {slot.display}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {formData.time && (
+                          <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            Slot will be occupied for {formData.duration} minutes
+                          </p>
+                        )}
+                      </div>
+                    ) : formData.date ? (
+                      <div className="flex items-center justify-center h-10 border rounded-md bg-amber-50 border-amber-200">
+                        <AlertCircle className="w-4 h-4 text-amber-600 mr-2" />
+                        <span className="text-sm text-amber-700">No slots available</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center h-10 border rounded-md bg-gray-50">
+                        <span className="text-sm text-muted-foreground">Select a date first</span>
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <Label htmlFor="duration">Slot Duration</Label>
+                    <div className="flex items-center gap-2 h-10 px-3 border rounded-md bg-gray-50">
+                      <Clock className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">{slotDuration} minutes</span>
+                      <span className="text-xs text-muted-foreground">(configured)</span>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor="time">Time</Label>
-                  <Input
-                    type="time"
-                    value={formData.time}
-                    onChange={(e) => setFormData({...formData, time: e.target.value})}
-                    disabled={submitting}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="duration">Duration (minutes)</Label>
-                  <Input
-                    type="number"
-                    min="15"
-                    max="240"
-                    value={formData.duration}
-                    onChange={(e) => setFormData({...formData, duration: parseInt(e.target.value)})}
-                    disabled={submitting}
-                  />
-                </div>
-              </div>
+              )}
               <div>
                 <Label htmlFor="reason">Reason for Visit</Label>
                 <Textarea

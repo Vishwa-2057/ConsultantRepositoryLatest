@@ -637,6 +637,44 @@ router.post('/', auth, (req, res, next) => {
   }
 });
 
+// PATCH /api/patients/:id/medical-history - Update patient medical history only
+router.patch('/:id/medical-history', auth, canEditPatients, async (req, res) => {
+  try {
+    const { medicalHistory } = req.body;
+    
+    if (!medicalHistory) {
+      return res.status(400).json({ error: 'Medical history data is required' });
+    }
+
+    // Check if patient exists
+    const patient = await Patient.findById(req.params.id);
+    if (!patient) {
+      return res.status(404).json({ error: 'Patient not found' });
+    }
+
+    // Update only medical history
+    const updatedPatient = await Patient.findByIdAndUpdate(
+      req.params.id,
+      { 
+        medicalHistory,
+        updatedAt: new Date() 
+      },
+      { new: true, runValidators: false } // Don't run validators for partial update
+    ).select('-__v');
+
+    res.json({
+      message: 'Medical history updated successfully',
+      patient: updatedPatient
+    });
+  } catch (error) {
+    console.error('Error updating medical history:', error);
+    if (error.kind === 'ObjectId') {
+      return res.status(400).json({ error: 'Invalid patient ID' });
+    }
+    res.status(500).json({ error: 'Failed to update medical history' });
+  }
+});
+
 // PUT /api/patients/:id - Update patient (clinic admin only)
 router.put('/:id', auth, canEditPatients, validatePatient, async (req, res) => {
   try {

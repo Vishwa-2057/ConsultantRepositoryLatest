@@ -168,6 +168,14 @@ export const patientAPI = {
     });
   },
 
+  // Update patient medical history only
+  updateMedicalHistory: async (id, medicalHistory) => {
+    return apiRequest(`/patients/${id}/medical-history`, {
+      method: 'PATCH',
+      body: JSON.stringify({ medicalHistory }),
+    });
+  },
+
   // Delete patient
   delete: async (id) => {
     return apiRequest(`/patients/${id}`, {
@@ -253,6 +261,14 @@ export const appointmentAPI = {
   // Get appointment statistics
   getStats: async () => {
     return apiRequest('/appointments/stats/summary');
+  },
+
+  // Get appointment trend data
+  getTrend: async (days = 7) => {
+    const queryParams = new URLSearchParams({
+      days: days.toString()
+    });
+    return apiRequest(`/appointments/stats/trend?${queryParams}`);
   },
 
   // Update appointment status
@@ -595,6 +611,14 @@ export const activityLogAPI = {
     return { success: true };
   },
 
+  // Create a new activity log
+  create: async (logData) => {
+    return apiRequest('/activity-logs', {
+      method: 'POST',
+      body: JSON.stringify(logData),
+    });
+  },
+
   // Clean up old logs (admin only)
   cleanup: async (days = 90) => {
     return apiRequest(`/activity-logs/cleanup?days=${days}`, {
@@ -797,13 +821,14 @@ export const doctorAPI = {
     const result = await apiRequest(`/doctors?${queryParams}`);
     console.log('doctorAPI.getAll result:', result);
     
-    // Normalize response format - backend returns { success: true, data: [...] }
+    // Normalize response format - backend returns { success: true, data: [...], pagination: {...} }
     // but frontend expects { doctors: [...] } for consistency with other APIs
     if (result.success && result.data) {
       return {
         success: result.success,
         doctors: result.data,
-        data: result.data // Keep both for backward compatibility
+        data: result.data, // Keep both for backward compatibility
+        pagination: result.pagination // Include pagination data
       };
     }
     
@@ -1557,8 +1582,8 @@ export const teleconsultationAPI = {
   },
 
   // Get upcoming teleconsultations
-  getUpcoming: async () => {
-    return apiRequest('/teleconsultations?status=Scheduled&sortBy=scheduledDate&sortOrder=asc');
+  getUpcoming: async (page = 1, limit = 10) => {
+    return apiRequest(`/teleconsultations?status=Scheduled&sortBy=scheduledDate&sortOrder=asc&page=${page}&limit=${limit}`);
   },
 
   // Get today's teleconsultations
@@ -1581,6 +1606,93 @@ export const teleconsultationAPI = {
   }
 };
 
+// Doctor Availability API
+export const doctorAvailabilityAPI = {
+  // Get doctor's availability
+  getAvailability: async (doctorId) => {
+    return apiRequest(`/doctor-availability/${doctorId}`);
+  },
+
+  // Get available time slots for a specific date
+  getAvailableSlots: async (doctorId, date) => {
+    return apiRequest(`/doctor-availability/${doctorId}/slots/${date}`);
+  },
+
+  // Bulk create/update availability
+  bulkUpdate: async (doctorId, clinicId, schedule, slotDuration = 30) => {
+    return apiRequest('/doctor-availability/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ doctorId, clinicId, schedule, slotDuration })
+    });
+  },
+
+  // Create single availability entry
+  create: async (availabilityData) => {
+    return apiRequest('/doctor-availability', {
+      method: 'POST',
+      body: JSON.stringify(availabilityData)
+    });
+  },
+
+  // Update availability
+  update: async (id, availabilityData) => {
+    return apiRequest(`/doctor-availability/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(availabilityData)
+    });
+  },
+
+  // Delete availability
+  delete: async (id) => {
+    return apiRequest(`/doctor-availability/${id}`, {
+      method: 'DELETE'
+    });
+  }
+};
+
+// Schedule Exception API
+export const scheduleExceptionAPI = {
+  // Get exceptions for a doctor
+  getExceptions: async (doctorId, startDate = null, endDate = null) => {
+    const params = new URLSearchParams();
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
+    const queryString = params.toString();
+    return apiRequest(`/schedule-exceptions/${doctorId}${queryString ? '?' + queryString : ''}`);
+  },
+
+  // Create exception
+  create: async (exceptionData) => {
+    return apiRequest('/schedule-exceptions', {
+      method: 'POST',
+      body: JSON.stringify(exceptionData)
+    });
+  },
+
+  // Bulk create exceptions (for vacation periods)
+  bulkCreate: async (doctorId, clinicId, startDate, endDate, type, reason) => {
+    return apiRequest('/schedule-exceptions/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ doctorId, clinicId, startDate, endDate, type, reason })
+    });
+  },
+
+  // Update exception
+  update: async (id, exceptionData) => {
+    return apiRequest(`/schedule-exceptions/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(exceptionData)
+    });
+  },
+
+  // Delete exception
+  delete: async (id) => {
+    return apiRequest(`/schedule-exceptions/${id}`, {
+      method: 'DELETE'
+    });
+  }
+};
+
 // Note: consultationAPI and teleconsultationAPI are separate APIs
 
 export default {
@@ -1600,5 +1712,7 @@ export default {
   vitalsAPI,
   medicalImageAPI,
   revenueAPI,
-  teleconsultationAPI
+  teleconsultationAPI,
+  doctorAvailabilityAPI,
+  scheduleExceptionAPI
 };

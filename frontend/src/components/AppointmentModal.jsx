@@ -13,11 +13,15 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Clock, User, Phone, Mail, MapPin, Stethoscope, X, AlertCircle, Video, MessageCircle } from "lucide-react";
-import { appointmentAPI, patientAPI, doctorAPI } from "@/services/api";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Calendar, Clock, User, Phone, Mail, MapPin, Stethoscope, X, AlertCircle, Video, MessageCircle, Check, ChevronsUpDown } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { appointmentAPI, patientAPI, doctorAPI, doctorAvailabilityAPI } from "@/services/api";
 import { getCurrentUser, isDoctor } from "@/utils/roleUtils";
 import { validators, sanitizers } from "@/utils/validation";
 import { useAuditLog } from "@/hooks/useAuditLog";
+import { getAvailableTimeSlots } from "@/utils/availabilityUtils";
 
 const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
   const { logComponentAccess, logFormSubmission, logAppointmentAccess } = useAuditLog();
@@ -44,6 +48,11 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
   const [patientSearchTerm, setPatientSearchTerm] = useState("");
   const [isVirtualAppointment, setIsVirtualAppointment] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [patientComboboxOpen, setPatientComboboxOpen] = useState(false);
+  const [doctorComboboxOpen, setDoctorComboboxOpen] = useState(false);
+  const [appointmentTypeComboboxOpen, setAppointmentTypeComboboxOpen] = useState(false);
+  const [availableSlots, setAvailableSlots] = useState([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
   
   // Get current user info
   const currentUser = getCurrentUser();
@@ -69,6 +78,7 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
       logComponentAccess('AppointmentModal', 'OPEN');
     }
   }, [isOpen, logComponentAccess]);
+
 
   const loadPatients = async () => {
     setLoadingPatients(true);
@@ -162,7 +172,36 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
     { value: "Chat", label: "Chat Session", icon: MessageCircle, color: "bg-purple-500" }
   ];
 
+  // Load available slots when doctor and date are selected
+  useEffect(() => {
+    if (formData.doctorId && formData.date) {
+      loadAvailableSlots();
+    } else {
+      setAvailableSlots([]);
+    }
+  }, [formData.doctorId, formData.date]);
+
+  const loadAvailableSlots = async () => {
+    try {
+      setLoadingSlots(true);
+      const response = await doctorAvailabilityAPI.getAvailableSlots(formData.doctorId, formData.date);
+      
+      if (response.success) {
+        const { availability, exceptions, appointments } = response;
+        const selectedDate = new Date(formData.date);
+        const slots = getAvailableTimeSlots(availability, exceptions, appointments, selectedDate);
+        setAvailableSlots(slots);
+      }
+    } catch (error) {
+      console.error('Error loading available slots:', error);
+      setAvailableSlots([]);
+    } finally {
+      setLoadingSlots(false);
+    }
+  };
+
   const handleInputChange = (field, value) => {
+    
     // Apply sanitization based on field type
     let sanitizedValue = value;
     switch (field) {
@@ -339,6 +378,7 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
     setIsVirtualAppointment(false);
     setPatientSearchTerm("");
     setErrors({});
+    setSubmitting(false);
     onClose();
   };
 
@@ -414,67 +454,55 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
               {console.log('Rendering form. isDoctorUser:', isDoctorUser, 'currentUser:', currentUser)}
               <div className="space-y-2">
                 <Label htmlFor="patientId">Select Patient *</Label>
-                <Select 
-                  value={formData.patientId} 
-                  onValueChange={(value) => {
-                    handleInputChange("patientId", value);
-                    setPatientSearchTerm(""); // Clear search when patient is selected
-                  }}
-                >
-                  <SelectTrigger className={errors.patientId ? "border-red-500" : ""}>
-                    <SelectValue placeholder={loadingPatients ? "Loading patients..." : "Choose a patient"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {/* Search Input */}
-                    <div className="flex items-center px-3 pb-2 pt-2 sticky top-0 bg-white z-10 border-b">
-                      <Input
-                        placeholder="Search patients..."
-                        value={patientSearchTerm}
-                        onChange={(e) => setPatientSearchTerm(e.target.value)}
-                        className="h-9 text-sm border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                        onClick={(e) => e.stopPropagation()}
-                        onKeyDown={(e) => e.stopPropagation()}
-                        autoFocus
-                      />
-                    </div>
-                    {/* Filtered Patient List */}
-                    <div className="max-h-[300px] overflow-y-auto">
-                      {patients
-                        .filter((patient) => {
-                          const searchLower = patientSearchTerm.toLowerCase();
-                          return (
-                            patient.fullName?.toLowerCase().includes(searchLower) ||
-                            patient.phone?.toLowerCase().includes(searchLower) ||
-                            patient.email?.toLowerCase().includes(searchLower) ||
-                            patient.uhid?.toLowerCase().includes(searchLower)
-                          );
-                        })
-                        .map((patient) => (
-                          <SelectItem key={patient._id} value={patient._id}>
-                            <div className="flex flex-col">
-                              <span className="font-medium">{patient.fullName}</span>
-                              <span className="text-sm text-muted-foreground">
-                                {patient.uhid && `${patient.uhid} • `}{patient.phone} • {patient.email}
-                              </span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      {patients.filter((patient) => {
-                        const searchLower = patientSearchTerm.toLowerCase();
-                        return (
-                          patient.fullName?.toLowerCase().includes(searchLower) ||
-                          patient.phone?.toLowerCase().includes(searchLower) ||
-                          patient.email?.toLowerCase().includes(searchLower) ||
-                          patient.uhid?.toLowerCase().includes(searchLower)
-                        );
-                      }).length === 0 && patientSearchTerm && (
-                        <div className="px-3 py-2 text-sm text-muted-foreground text-center">
-                          No patients found
-                        </div>
-                      )}
-                    </div>
-                  </SelectContent>
-                </Select>
+                <Popover open={patientComboboxOpen} onOpenChange={setPatientComboboxOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={patientComboboxOpen}
+                      className={`w-full justify-between ${errors.patientId ? "border-red-500" : ""}`}
+                      disabled={loadingPatients}
+                    >
+                      {formData.patientId
+                        ? patients.find(p => p._id === formData.patientId)?.fullName || "Select patient..."
+                        : loadingPatients ? "Loading patients..." : "Select patient..."}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full p-0" align="start" onWheel={(e) => e.stopPropagation()}>
+                    <Command>
+                      <CommandInput placeholder="Search patients..." />
+                      <CommandList className="max-h-[300px] overflow-y-auto">
+                        <CommandEmpty>No patient found.</CommandEmpty>
+                        <CommandGroup>
+                          {patients.map((patient) => (
+                            <CommandItem
+                              key={patient._id}
+                              value={`${patient.fullName} ${patient.phone} ${patient.email} ${patient.uhid || ''}`}
+                              onSelect={() => {
+                                handleInputChange("patientId", patient._id);
+                                setPatientComboboxOpen(false);
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  formData.patientId === patient._id ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              <div className="flex flex-col">
+                                <span className="font-medium">{patient.fullName}</span>
+                                <span className="text-sm text-muted-foreground">
+                                  {patient.uhid && `${patient.uhid} • `}{patient.phone} • {patient.email}
+                                </span>
+                              </div>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
                 {errors.patientId && (
                   <p className="text-sm text-red-600">{errors.patientId}</p>
                 )}
@@ -486,23 +514,55 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
               {false && (  /* Temporarily force hide for testing */
                 <div className="space-y-2">
                   <Label htmlFor="doctorId">Select Doctor *</Label>
-                  <Select value={formData.doctorId} onValueChange={(value) => handleInputChange("doctorId", value)}>
-                    <SelectTrigger className={errors.doctorId ? "border-red-500" : ""}>
-                      <SelectValue placeholder={loadingDoctors ? "Loading doctors..." : "Choose a doctor"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {doctors.map((doctor) => (
-                        <SelectItem key={doctor._id} value={doctor._id}>
-                          <div className="flex flex-col">
-                            <span className="font-medium">Dr. {doctor.fullName}</span>
-                            <span className="text-sm text-muted-foreground">
-                              {doctor.specialty} • {doctor.phone}
-                            </span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Popover open={doctorComboboxOpen} onOpenChange={setDoctorComboboxOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={doctorComboboxOpen}
+                        className={`w-full justify-between ${errors.doctorId ? "border-red-500" : ""}`}
+                        disabled={loadingDoctors}
+                      >
+                        {formData.doctorId
+                          ? `Dr. ${doctors.find(d => d._id === formData.doctorId)?.fullName || 'Select doctor...'}` 
+                          : loadingDoctors ? "Loading doctors..." : "Select doctor..."}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-full p-0" align="start" onWheel={(e) => e.stopPropagation()}>
+                      <Command>
+                        <CommandInput placeholder="Search doctors..." />
+                        <CommandList className="max-h-[300px] overflow-y-auto">
+                          <CommandEmpty>No doctor found.</CommandEmpty>
+                          <CommandGroup>
+                            {doctors.map((doctor) => (
+                              <CommandItem
+                                key={doctor._id}
+                                value={`${doctor.fullName} ${doctor.specialty} ${doctor.phone}`}
+                                onSelect={() => {
+                                  handleInputChange("doctorId", doctor._id);
+                                  setDoctorComboboxOpen(false);
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    formData.doctorId === doctor._id ? "opacity-100" : "opacity-0"
+                                  )}
+                                />
+                                <div className="flex flex-col">
+                                  <span className="font-medium">Dr. {doctor.fullName}</span>
+                                  <span className="text-sm text-muted-foreground">
+                                    {doctor.specialty} • {doctor.phone}
+                                  </span>
+                                </div>
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                   {errors.doctorId && (
                     <p className="text-sm text-red-600">{errors.doctorId}</p>
                   )}
@@ -561,18 +621,47 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="appointmentType">Appointment Type *</Label>
-                <Select value={formData.appointmentType} onValueChange={(value) => handleInputChange("appointmentType", value)}>
-                  <SelectTrigger className={errors.appointmentType ? "border-red-500" : ""}>
-                    <SelectValue placeholder="Select appointment type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {appointmentTypes.map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {type}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={appointmentTypeComboboxOpen} onOpenChange={setAppointmentTypeComboboxOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={appointmentTypeComboboxOpen}
+                      className={`w-full justify-between ${errors.appointmentType ? "border-red-500" : ""}`}
+                    >
+                      {formData.appointmentType || "Select appointment type..."}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full p-0" align="start" onWheel={(e) => e.stopPropagation()}>
+                    <Command>
+                      <CommandInput placeholder="Search appointment types..." />
+                      <CommandList className="max-h-[300px] overflow-y-auto">
+                        <CommandEmpty>No appointment type found.</CommandEmpty>
+                        <CommandGroup>
+                          {appointmentTypes.map((type) => (
+                            <CommandItem
+                              key={type}
+                              value={type}
+                              onSelect={() => {
+                                handleInputChange("appointmentType", type);
+                                setAppointmentTypeComboboxOpen(false);
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  formData.appointmentType === type ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              {type}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
                 {errors.appointmentType && (
                   <p className="text-sm text-red-600">{errors.appointmentType}</p>
                 )}
@@ -622,35 +711,41 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="date">Date *</Label>
-                <Input
-                  id="date"
-                  type="date"
-                  min={today}
-                  value={formData.date}
-                  onChange={(e) => handleInputChange("date", e.target.value)}
-                  className={errors.date ? "border-red-500" : ""}
-                />
-                {errors.date && (
-                  <p className="text-sm text-red-600">{errors.date}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="time">Time *</Label>
-                <Input
-                  id="time"
-                  type="time"
-                  value={formData.time}
-                  onChange={(e) => handleInputChange("time", e.target.value)}
-                  className={errors.time ? "border-red-500" : ""}
-                />
-                {errors.time && (
-                  <p className="text-sm text-red-600">{errors.time}</p>
-                )}
-              </div>
             </div>
+
+            {/* Date and time input */}
+            {formData.doctorId && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="date">Date *</Label>
+                  <Input
+                    id="date"
+                    type="date"
+                    min={today}
+                    value={formData.date}
+                    onChange={(e) => handleInputChange("date", e.target.value)}
+                    className={errors.date ? "border-red-500" : ""}
+                  />
+                  {errors.date && (
+                    <p className="text-sm text-red-600">{errors.date}</p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="time">Time *</Label>
+                  <Input
+                    id="time"
+                    type="time"
+                    value={formData.time}
+                    onChange={(e) => handleInputChange("time", e.target.value)}
+                    className={errors.time ? "border-red-500" : ""}
+                  />
+                  {errors.time && (
+                    <p className="text-sm text-red-600">{errors.time}</p>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Reason and Symptoms - For Virtual Appointments */}
             {isVirtualAppointment && (

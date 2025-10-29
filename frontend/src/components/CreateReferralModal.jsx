@@ -18,6 +18,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Check, ChevronsUpDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { referralAPI, patientAPI, doctorAPI, clinicAPI, authAPI } from "@/services/api";
 
@@ -34,6 +38,12 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
   const [selectedClinic, setSelectedClinic] = useState(null);
   const [currentUserClinic, setCurrentUserClinic] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+  const [patientComboboxOpen, setPatientComboboxOpen] = useState(false);
+  const [clinicComboboxOpen, setClinicComboboxOpen] = useState(false);
+  const [doctorComboboxOpen, setDoctorComboboxOpen] = useState(false);
+  const [referringDoctorComboboxOpen, setReferringDoctorComboboxOpen] = useState(false);
+  const [inboundDoctorComboboxOpen, setInboundDoctorComboboxOpen] = useState(false);
+  const [inboundReferringDoctorComboboxOpen, setInboundReferringDoctorComboboxOpen] = useState(false);
   const [formData, setFormData] = useState({
     patientId: "",
     patientName: "",
@@ -437,21 +447,50 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div className="space-y-1">
               <Label htmlFor="patient" className="text-sm">Select Patient *</Label>
-              <Select
-                value={selectedPatient?._id || ""}
-                onValueChange={handlePatientSelect}
-              >
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Choose a patient" />
-                </SelectTrigger>
-                <SelectContent>
-                  {patients.map((patient) => (
-                    <SelectItem key={patient._id} value={patient._id}>
-                      {patient.fullName}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={patientComboboxOpen} onOpenChange={setPatientComboboxOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={patientComboboxOpen}
+                    className="w-full justify-between h-9"
+                  >
+                    {selectedPatient?.fullName || "Choose a patient"}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-full p-0" align="start" onWheel={(e) => e.stopPropagation()}>
+                  <Command>
+                    <CommandInput placeholder="Search patients..." />
+                    <CommandList className="max-h-[300px] overflow-y-auto">
+                      <CommandEmpty>No patient found.</CommandEmpty>
+                      <CommandGroup>
+                        {patients.map((patient) => (
+                          <CommandItem
+                            key={patient._id}
+                            value={`${patient.fullName} ${patient.phone || ''} ${patient.email || ''}`}
+                            onSelect={() => {
+                              handlePatientSelect(patient._id);
+                              setPatientComboboxOpen(false);
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                selectedPatient?._id === patient._id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            <div className="flex flex-col">
+                              <span className="font-medium">{patient.fullName}</span>
+                              <span className="text-sm text-muted-foreground">{patient.phone}</span>
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
               {!selectedPatient && (
                 <Input
                   name="patientName"
@@ -466,74 +505,158 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
             {formData.referralType === 'outbound' ? (
               <div className="space-y-1">
                 <Label htmlFor="clinic" className="text-sm">Select External Clinic *</Label>
-                <Select
-                  value={selectedClinic?._id || ""}
-                  onValueChange={handleClinicSelect}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Choose external clinic" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {clinics.map((clinic) => (
-                      <SelectItem key={clinic._id} value={clinic._id}>
-                        {clinic.name || clinic.fullName || clinic.adminName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={clinicComboboxOpen} onOpenChange={setClinicComboboxOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={clinicComboboxOpen}
+                      className="w-full justify-between h-9"
+                    >
+                      {selectedClinic ? (selectedClinic.name || selectedClinic.fullName || selectedClinic.adminName) : "Choose external clinic"}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full p-0" align="start" onWheel={(e) => e.stopPropagation()}>
+                    <Command>
+                      <CommandInput placeholder="Search clinics..." />
+                      <CommandList className="max-h-[300px] overflow-y-auto">
+                        <CommandEmpty>No clinic found.</CommandEmpty>
+                        <CommandGroup>
+                          {clinics.map((clinic) => (
+                            <CommandItem
+                              key={clinic._id}
+                              value={`${clinic.name || clinic.fullName || clinic.adminName}`}
+                              onSelect={() => {
+                                handleClinicSelect(clinic._id);
+                                setClinicComboboxOpen(false);
+                              }}
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  selectedClinic?._id === clinic._id ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              {clinic.name || clinic.fullName || clinic.adminName}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
             ) : (
               <div className="space-y-1">
                 <Label htmlFor="doctor" className="text-sm">Receiving Doctor (Internal) *</Label>
-                <Select
-                  value={selectedDoctor?._id || ""}
-                  onValueChange={handleDoctorSelect}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Choose doctor from your clinic" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {currentClinicDoctors && currentClinicDoctors.length > 0 ? (
-                      currentClinicDoctors
-                        .filter((doctor) => doctor.isActive !== false)
-                        .filter((doctor) => formData.referringProvider.name !== doctor.fullName)
-                        .map((doctor) => (
-                          <SelectItem key={doctor._id} value={doctor._id}>
-                            {doctor.fullName} - {doctor.specialty}
-                          </SelectItem>
-                        ))
-                    ) : (
-                      <SelectItem value="no-doctors-available-inbound" disabled>No doctors available</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
+                <Popover open={inboundDoctorComboboxOpen} onOpenChange={setInboundDoctorComboboxOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={inboundDoctorComboboxOpen}
+                      className="w-full justify-between h-9"
+                    >
+                      {selectedDoctor ? `${selectedDoctor.fullName} - ${selectedDoctor.specialty}` : "Choose doctor from your clinic"}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full p-0" align="start" onWheel={(e) => e.stopPropagation()}>
+                    <Command>
+                      <CommandInput placeholder="Search doctors..." />
+                      <CommandList className="max-h-[300px] overflow-y-auto">
+                        <CommandEmpty>No doctor found.</CommandEmpty>
+                        <CommandGroup>
+                          {currentClinicDoctors && currentClinicDoctors.length > 0 ? (
+                            currentClinicDoctors
+                              .filter((doctor) => doctor.isActive !== false)
+                              .filter((doctor) => formData.referringProvider.name !== doctor.fullName)
+                              .map((doctor) => (
+                                <CommandItem
+                                  key={doctor._id}
+                                  value={`${doctor.fullName} ${doctor.specialty}`}
+                                  onSelect={() => {
+                                    handleDoctorSelect(doctor._id);
+                                    setInboundDoctorComboboxOpen(false);
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      selectedDoctor?._id === doctor._id ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                  <div className="flex flex-col">
+                                    <span className="font-medium">{doctor.fullName}</span>
+                                    <span className="text-sm text-muted-foreground">{doctor.specialty}</span>
+                                  </div>
+                                </CommandItem>
+                              ))
+                          ) : (
+                            <div className="p-2 text-sm text-muted-foreground">No doctors available</div>
+                          )}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
             )}
 
             {formData.referralType === 'outbound' && selectedClinic && (
               <div className="space-y-1">
                 <Label htmlFor="specialist" className="text-sm">Select Doctor *</Label>
-                <Select
-                  value={selectedDoctor?._id || ""}
-                  onValueChange={handleDoctorSelect}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Choose doctor from clinic" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {doctors && doctors.length > 0 ? (
-                      doctors
-                        .filter((doctor) => doctor.isActive !== false)
-                        .map((doctor) => (
-                          <SelectItem key={doctor._id} value={doctor._id}>
-                            {doctor.fullName} - {doctor.specialty}
-                          </SelectItem>
-                        ))
-                    ) : (
-                      <SelectItem value="no-doctors-available-outbound" disabled>No doctors available</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
+                <Popover open={doctorComboboxOpen} onOpenChange={setDoctorComboboxOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={doctorComboboxOpen}
+                      className="w-full justify-between h-9"
+                    >
+                      {selectedDoctor ? `${selectedDoctor.fullName} - ${selectedDoctor.specialty}` : "Choose doctor from clinic"}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full p-0" align="start" onWheel={(e) => e.stopPropagation()}>
+                    <Command>
+                      <CommandInput placeholder="Search doctors..." />
+                      <CommandList className="max-h-[300px] overflow-y-auto">
+                        <CommandEmpty>No doctor found.</CommandEmpty>
+                        <CommandGroup>
+                          {doctors && doctors.length > 0 ? (
+                            doctors
+                              .filter((doctor) => doctor.isActive !== false)
+                              .map((doctor) => (
+                                <CommandItem
+                                  key={doctor._id}
+                                  value={`${doctor.fullName} ${doctor.specialty}`}
+                                  onSelect={() => {
+                                    handleDoctorSelect(doctor._id);
+                                    setDoctorComboboxOpen(false);
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      selectedDoctor?._id === doctor._id ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                  <div className="flex flex-col">
+                                    <span className="font-medium">{doctor.fullName}</span>
+                                    <span className="text-sm text-muted-foreground">{doctor.specialty}</span>
+                                  </div>
+                                </CommandItem>
+                              ))
+                          ) : (
+                            <div className="p-2 text-sm text-muted-foreground">No doctors available</div>
+                          )}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
             )}
 
@@ -614,41 +737,65 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
                 <Label htmlFor="referringProvider.name" className="text-sm">
                   Referring Doctor * {currentUser?.role === 'doctor' && '(Auto-filled)'}
                 </Label>
-                <Select
-                  value={currentClinicDoctors.find(doc => doc.fullName === formData.referringProvider.name)?._id || ""}
-                  onValueChange={(value) => {
-                    const selectedDoc = currentClinicDoctors.find(doc => doc._id === value);
-                    setFormData(prev => ({
-                      ...prev,
-                      referringProvider: {
-                        ...prev.referringProvider,
-                        name: selectedDoc ? selectedDoc.fullName : value,
-                        contact: selectedDoc ? `${selectedDoc.phone || ''} ${selectedDoc.email || ''}`.trim() : '',
-                        clinic: selectedDoc ? 'Current Clinic' : ''
-                      }
-                    }));
-                  }}
-                  disabled={currentUser?.role === 'doctor'}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Select referring doctor">
+                <Popover open={referringDoctorComboboxOpen} onOpenChange={setReferringDoctorComboboxOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={referringDoctorComboboxOpen}
+                      className="w-full justify-between h-9"
+                      disabled={currentUser?.role === 'doctor'}
+                    >
                       {formData.referringProvider.name || "Select referring doctor"}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {currentClinicDoctors && currentClinicDoctors.length > 0 ? (
-                      currentClinicDoctors
-                        .filter((doctor) => doctor.isActive !== false)
-                        .map((doctor) => (
-                          <SelectItem key={doctor._id} value={doctor._id}>
-                            {doctor.fullName} - {doctor.specialty}
-                          </SelectItem>
-                        ))
-                    ) : (
-                      <SelectItem value="no-doctors-available-disabled" disabled>No doctors available</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full p-0" align="start" onWheel={(e) => e.stopPropagation()}>
+                    <Command>
+                      <CommandInput placeholder="Search doctors..." />
+                      <CommandList className="max-h-[300px] overflow-y-auto">
+                        <CommandEmpty>No doctor found.</CommandEmpty>
+                        <CommandGroup>
+                          {currentClinicDoctors && currentClinicDoctors.length > 0 ? (
+                            currentClinicDoctors
+                              .filter((doctor) => doctor.isActive !== false)
+                              .map((doctor) => (
+                                <CommandItem
+                                  key={doctor._id}
+                                  value={`${doctor.fullName} ${doctor.specialty}`}
+                                  onSelect={() => {
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      referringProvider: {
+                                        ...prev.referringProvider,
+                                        name: doctor.fullName,
+                                        contact: `${doctor.phone || ''} ${doctor.email || ''}`.trim(),
+                                        clinic: 'Current Clinic'
+                                      }
+                                    }));
+                                    setReferringDoctorComboboxOpen(false);
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      formData.referringProvider.name === doctor.fullName ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                  <div className="flex flex-col">
+                                    <span className="font-medium">{doctor.fullName}</span>
+                                    <span className="text-sm text-muted-foreground">{doctor.specialty}</span>
+                                  </div>
+                                </CommandItem>
+                              ))
+                          ) : (
+                            <div className="p-2 text-sm text-muted-foreground">No doctors available</div>
+                          )}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
               
             </div>
@@ -661,42 +808,66 @@ const CreateReferralModal = ({ isOpen, onClose, onSuccess }) => {
                 <Label htmlFor="referringProvider.name" className="text-sm">
                   Referring Doctor (Internal) * {currentUser?.role === 'doctor' && '(Auto-filled)'}
                 </Label>
-                <Select
-                  value={currentClinicDoctors.find(doc => doc.fullName === formData.referringProvider.name)?._id || ""}
-                  onValueChange={(value) => {
-                    const selectedDoc = currentClinicDoctors.find(doc => doc._id === value);
-                    setFormData(prev => ({
-                      ...prev,
-                      referringProvider: {
-                        ...prev.referringProvider,
-                        name: selectedDoc ? selectedDoc.fullName : value,
-                        contact: selectedDoc ? `${selectedDoc.phone || ''} ${selectedDoc.email || ''}`.trim() : '',
-                        clinic: currentUserClinic?.name || 'Current Clinic'
-                      }
-                    }));
-                  }}
-                  disabled={currentUser?.role === 'doctor'}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Select referring doctor from your clinic">
+                <Popover open={inboundReferringDoctorComboboxOpen} onOpenChange={setInboundReferringDoctorComboboxOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={inboundReferringDoctorComboboxOpen}
+                      className="w-full justify-between h-9"
+                      disabled={currentUser?.role === 'doctor'}
+                    >
                       {formData.referringProvider.name || "Select referring doctor from your clinic"}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {currentClinicDoctors && currentClinicDoctors.length > 0 ? (
-                      currentClinicDoctors
-                        .filter((doctor) => doctor.isActive !== false)
-                        .filter((doctor) => formData.specialistName !== doctor.fullName)
-                        .map((doctor) => (
-                          <SelectItem key={doctor._id} value={doctor._id}>
-                            {doctor.fullName} - {doctor.specialty}
-                          </SelectItem>
-                        ))
-                    ) : (
-                      <SelectItem value="no-doctors-available-disabled-inbound" disabled>No doctors available</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full p-0" align="start" onWheel={(e) => e.stopPropagation()}>
+                    <Command>
+                      <CommandInput placeholder="Search doctors..." />
+                      <CommandList className="max-h-[300px] overflow-y-auto">
+                        <CommandEmpty>No doctor found.</CommandEmpty>
+                        <CommandGroup>
+                          {currentClinicDoctors && currentClinicDoctors.length > 0 ? (
+                            currentClinicDoctors
+                              .filter((doctor) => doctor.isActive !== false)
+                              .filter((doctor) => formData.specialistName !== doctor.fullName)
+                              .map((doctor) => (
+                                <CommandItem
+                                  key={doctor._id}
+                                  value={`${doctor.fullName} ${doctor.specialty}`}
+                                  onSelect={() => {
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      referringProvider: {
+                                        ...prev.referringProvider,
+                                        name: doctor.fullName,
+                                        contact: `${doctor.phone || ''} ${doctor.email || ''}`.trim(),
+                                        clinic: currentUserClinic?.name || 'Current Clinic'
+                                      }
+                                    }));
+                                    setInboundReferringDoctorComboboxOpen(false);
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      formData.referringProvider.name === doctor.fullName ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                  <div className="flex flex-col">
+                                    <span className="font-medium">{doctor.fullName}</span>
+                                    <span className="text-sm text-muted-foreground">{doctor.specialty}</span>
+                                  </div>
+                                </CommandItem>
+                              ))
+                          ) : (
+                            <div className="p-2 text-sm text-muted-foreground">No doctors available</div>
+                          )}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
           )}

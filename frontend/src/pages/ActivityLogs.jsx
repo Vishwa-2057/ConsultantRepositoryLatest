@@ -59,6 +59,9 @@ const ActivityLogs = () => {
         startDate: getStartDate()
       });
       
+      console.log('Activity logs response:', response);
+      console.log('Logs received:', response.logs);
+      
       setLogs(response.logs || []);
       setPagination(response.pagination || {});
     } catch (error) {

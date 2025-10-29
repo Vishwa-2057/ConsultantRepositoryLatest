@@ -1,4 +1,4 @@
-import { Calendar, Users, UserCheck, Video, Share2, FileText, Mail, AlertTriangle, Home, LogOut, User, LayoutDashboard, Stethoscope, Heart, ArrowLeftRight, CreditCard, MessageCircle, UserPlus, Pill, Shield } from "lucide-react";
+import { Calendar, Users, UserCheck, Video, Share2, FileText, Mail, AlertTriangle, Home, LogOut, User, LayoutDashboard, Stethoscope, Heart, ArrowLeftRight, CreditCard, MessageCircle, UserPlus, Pill, Shield, Clock } from "lucide-react";
 import LogoImage from "@/assets/Images/Logo.png";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
@@ -21,13 +21,14 @@ const allNavigationItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard, routeName: "dashboard" },
   { title: "Patient Management", url: "/patients", icon: Users, routeName: "patient-management" },
   { title: "Appointments", url: "/appointments", icon: Calendar, routeName: "appointment-management" },
+  { title: "Slot Management", url: "/slot-management", icon: Clock, routeName: "slot-management" },
   { title: "Doctor Management", url: "/doctors", icon: UserCheck, routeName: "doctors-management" },
   { title: "Nurse Management", url: "/nurses", icon: UserPlus, routeName: "nurses-management" },
   { title: "Prescriptions", url: "/prescriptions", icon: Pill, routeName: "prescriptions" },
   { title: "Teleconsultation", url: "/teleconsultation", icon: Video, routeName: "teleconsultation" },
+  { title: "Referral System", url: "/referrals", icon: Share2, routeName: "referral-system" },
   { title: "Invoice Management", url: "/invoices", icon: FileText, routeName: "invoice-management" },
   { title: "Community Hub", url: "/community", icon: MessageCircle, routeName: "community-hub" },
-  { title: "Referral System", url: "/referrals", icon: Share2, routeName: "referral-system" },
 ];
 
 export function ConsultantSidebar({ mobile = false }) {
@@ -106,8 +107,8 @@ export function ConsultantSidebar({ mobile = false }) {
         {/* Footer - hide on auth pages, show logged-in user */}
         {!collapsed && !['/login','/register'].includes(currentPath) && authUser && (
           <div className={`${mobile ? 'p-6' : 'p-4'} border-t border-border bg-muted/30 mt-auto`}>
-            <div className={`${mobile ? 'text-base' : 'text-sm'} overflow-hidden`}>
-              <p className="font-medium text-foreground whitespace-nowrap text-ellipsis overflow-hidden">
+            <div className={`${mobile ? 'text-base' : 'text-md'} overflow-hidden`}>
+              <p className="font-medium text-foreground whitespace-nowrap text-ellipsis overflow-hidden" style={{color: "#0059b3"}}>
                 {authUser.name || authUser.fullName || 'User'}
               </p>
               <p className={`text-muted-foreground ${mobile ? 'text-sm' : 'text-xs'} whitespace-nowrap text-ellipsis overflow-hidden`}>

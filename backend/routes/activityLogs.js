@@ -34,6 +34,79 @@ const getClinicIdFromUser = async (currentUser) => {
   return clinicId;
 };
 
+// POST /api/activity-logs - Create a new activity log
+router.post('/', auth, async (req, res) => {
+  try {
+    const {
+      activityType,
+      userName,
+      userEmail,
+      userRole,
+      timestamp,
+      description,
+      details,
+      ipAddress,
+      deviceInfo
+    } = req.body;
+
+    // Get current user's clinic ID and clinic name
+    const currentUser = req.user;
+    const clinicId = await getClinicIdFromUser(currentUser);
+
+    // If no clinic ID found, skip creating the log (optional for logout)
+    if (!clinicId) {
+      console.log('No clinic ID found for user, skipping activity log creation');
+      return res.status(200).json({
+        message: 'Activity log skipped - no clinic association',
+        skipped: true
+      });
+    }
+
+    // Get clinic name
+    let clinicName = 'Unknown Clinic';
+    try {
+      const clinic = await Clinic.findById(clinicId).select('name');
+      if (clinic) {
+        clinicName = clinic.name;
+      }
+    } catch (err) {
+      console.log('Could not fetch clinic name:', err.message);
+    }
+
+    // Create activity log
+    const activityLog = new ActivityLog({
+      userId: currentUser.id,
+      clinicId: clinicId,
+      clinicName: clinicName,
+      activityType: activityType || 'logout',
+      userName: userName || currentUser.name || currentUser.fullName || 'Unknown User',
+      userEmail: userEmail || currentUser.email || 'unknown@email.com',
+      userRole: userRole || currentUser.role,
+      timestamp: timestamp ? new Date(timestamp) : new Date(),
+      notes: description || `${userName || currentUser.name} performed ${activityType}`,
+      ipAddress: ipAddress || req.ip,
+      deviceInfo: deviceInfo || {
+        browser: req.headers['user-agent'] || 'Unknown',
+        os: req.headers['sec-ch-ua-platform'] || 'Unknown'
+      }
+    });
+
+    await activityLog.save();
+
+    res.status(201).json({
+      message: 'Activity log created successfully',
+      log: activityLog
+    });
+  } catch (error) {
+    console.error('Error creating activity log:', error);
+    console.error('Error details:', error.message);
+    res.status(500).json({ 
+      error: 'Internal server error',
+      message: error.message || 'Failed to create activity log'
+    });
+  }
+});
+
 // GET /api/activity-logs - Get activity logs for clinic admin
 router.get('/', auth, requireClinicAdmin, async (req, res) => {
   try {

@@ -6,6 +6,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { 
   Heart, 
   Plus, 
@@ -30,8 +32,11 @@ import {
   FileText,
   UserX,
   UserPlus,
-  X
+  X,
+  Check,
+  ChevronsUpDown
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { nurseAPI } from '../services/api';
 import { getImageUrl } from '@/utils/imageUtils';
@@ -48,10 +53,13 @@ const NursesManagement = () => {
   const [imagePreview, setImagePreview] = useState(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [selectedNurse, setSelectedNurse] = useState(null);
+  const [departmentComboboxOpen, setDepartmentComboboxOpen] = useState(false);
   const [isNurseViewOpen, setIsNurseViewOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [activeCount, setActiveCount] = useState(0);
+  const [inactiveCount, setInactiveCount] = useState(0);
   const [pageSize, setPageSize] = useState(() => {
     const saved = localStorage.getItem('nursesManagement_pageSize');
     return saved ? parseInt(saved) : 10;
@@ -93,6 +101,20 @@ const NursesManagement = () => {
         const pagination = response.pagination || {};
         setTotalPages(pagination.totalPages || 1);
         setTotalCount(pagination.totalCount || response.data?.length || 0);
+        
+        // Update active/inactive counts from pagination or calculate from all data
+        if (pagination.activeCount !== undefined && pagination.inactiveCount !== undefined) {
+          setActiveCount(pagination.activeCount);
+          setInactiveCount(pagination.inactiveCount);
+        } else {
+          // Fallback: fetch counts separately or calculate from current data
+          const allNursesResponse = await nurseAPI.getAll(1, 999999, {});
+          if (allNursesResponse.success) {
+            const allNurses = allNursesResponse.data || [];
+            setActiveCount(allNurses.filter(n => n.isActive).length);
+            setInactiveCount(allNurses.filter(n => !n.isActive).length);
+          }
+        }
       } else {
         toast({
           title: "Error",
@@ -410,7 +432,7 @@ const NursesManagement = () => {
               <UserPlus className="w-4 h-4 text-green-600" />
             </div>
             <span className="text-sm text-green-600 font-medium">
-              Active: {nurses.filter(n => n.isActive).length}
+              Active: {activeCount}
             </span>
           </div>
           <div className="flex items-center space-x-2">
@@ -418,7 +440,7 @@ const NursesManagement = () => {
               <UserX className="w-4 h-4 text-red-600" />
             </div>
             <span className="text-sm text-red-600 font-medium">
-              Inactive: {nurses.filter(n => !n.isActive).length}
+              Inactive: {inactiveCount}
             </span>
           </div>
         </div>
@@ -776,25 +798,49 @@ const NursesManagement = () => {
                         <span className="text-sm text-gray-400">No departments selected</span>
                       )}
                     </div>
-                    <Select 
-                      value="" 
-                      onValueChange={(value) => {
-                        if (!nurseForm.department.includes(value)) {
-                          setNurseForm({...nurseForm, department: [...nurseForm.department, value]});
-                        }
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Add department..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {departments.filter(dept => !nurseForm.department.includes(dept)).map((dept) => (
-                          <SelectItem key={dept} value={dept}>
-                            {dept}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <Popover open={departmentComboboxOpen} onOpenChange={setDepartmentComboboxOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={departmentComboboxOpen}
+                          className="w-full justify-between"
+                        >
+                          Add department...
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-full p-0" align="start" onWheel={(e) => e.stopPropagation()}>
+                        <Command>
+                          <CommandInput placeholder="Search departments..." />
+                          <CommandList className="max-h-[300px] overflow-y-auto">
+                            <CommandEmpty>No department found.</CommandEmpty>
+                            <CommandGroup>
+                              {departments.filter(dept => !nurseForm.department.includes(dept)).map((dept) => (
+                                <CommandItem
+                                  key={dept}
+                                  value={dept}
+                                  onSelect={() => {
+                                    if (!nurseForm.department.includes(dept)) {
+                                      setNurseForm({...nurseForm, department: [...nurseForm.department, dept]});
+                                    }
+                                    setDepartmentComboboxOpen(false);
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      nurseForm.department.includes(dept) ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                  {dept}
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
                     <p className="text-xs text-gray-500">
                       Select multiple departments where this nurse will work
                     </p>

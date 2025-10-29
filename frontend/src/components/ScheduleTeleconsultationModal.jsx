@@ -4,17 +4,26 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import { Calendar, Clock, Video, User, Settings } from 'lucide-react';
-import { patientAPI, appointmentAPI, teleconsultationAPI, doctorAPI } from '@/services/api';
+import { Calendar, Clock, Video, User, Settings, Check, ChevronsUpDown, AlertCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { patientAPI, appointmentAPI, teleconsultationAPI, doctorAPI, doctorAvailabilityAPI } from '@/services/api';
 import { toast } from 'sonner';
 import { getCurrentUser, isDoctor } from '@/utils/roleUtils';
+import { getAvailableTimeSlots } from '@/utils/availabilityUtils';
+// import TimeSlotPicker from '@/components/TimeSlotPicker'; // Removed - using manual date/time selection
 
 const ScheduleTeleconsultationModal = ({ isOpen, onClose, onSuccess, selectedPatient = null }) => {
   const [loading, setLoading] = useState(false);
   const [patients, setPatients] = useState([]);
   const [doctors, setDoctors] = useState([]);
+  const [doctorComboboxOpen, setDoctorComboboxOpen] = useState(false);
+  const [availableSlots, setAvailableSlots] = useState([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [slotDuration, setSlotDuration] = useState(30);
   
   // Get current user from localStorage
   const user = getCurrentUser();
@@ -68,8 +77,50 @@ const ScheduleTeleconsultationModal = ({ isOpen, onClose, onSuccess, selectedPat
           fileSharing: true
         }
       });
+      // setSelectedSlot(null); // Removed
+      // setShowSlotPicker(false); // Removed
     }
   }, [isOpen, selectedPatient]);
+
+  // Load available slots when doctor or date changes
+  const doctorId = formData.doctorId;
+  const scheduledDate = formData.scheduledDate;
+  
+  useEffect(() => {
+    if (doctorId && scheduledDate) {
+      loadAvailableSlots();
+    } else {
+      setAvailableSlots([]);
+    }
+  }, [doctorId, scheduledDate]);
+
+  const loadAvailableSlots = async () => {
+    try {
+      setLoadingSlots(true);
+      const response = await doctorAvailabilityAPI.getAvailableSlots(formData.doctorId, formData.scheduledDate);
+      
+      if (response.success) {
+        const { availability, exceptions, appointments } = response;
+        const selectedDate = new Date(formData.scheduledDate);
+        
+        // Get slot duration from availability
+        const duration = availability.length > 0 && availability[0].slotDuration 
+          ? availability[0].slotDuration 
+          : 30;
+        setSlotDuration(duration);
+        setFormData(prev => ({ ...prev, duration }));
+        
+        const slots = getAvailableTimeSlots(availability, exceptions, appointments, selectedDate, duration);
+        setAvailableSlots(slots);
+      }
+    } catch (error) {
+      console.error('Error loading available slots:', error);
+      setAvailableSlots([]);
+      toast.error('Failed to load available time slots');
+    } finally {
+      setLoadingSlots(false);
+    }
+  };
 
   const loadPatients = async () => {
     try {
@@ -251,68 +302,127 @@ const ScheduleTeleconsultationModal = ({ isOpen, onClose, onSuccess, selectedPat
                 <span className="text-sm text-blue-600">(You)</span>
               </div>
             ) : (
-              <Select value={formData.doctorId} onValueChange={(value) => handleInputChange('doctorId', value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a doctor" />
-                </SelectTrigger>
-                <SelectContent>
-                  {doctors.map((doctor) => (
-                    <SelectItem key={doctor._id} value={doctor._id}>
-                      Dr. {doctor.fullName} - {doctor.specialty}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={doctorComboboxOpen} onOpenChange={setDoctorComboboxOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={doctorComboboxOpen}
+                    className="w-full justify-between"
+                  >
+                    {formData.doctorId
+                      ? `Dr. ${doctors.find(d => d._id === formData.doctorId)?.fullName || 'Select doctor...'}`
+                      : "Select a doctor..."}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-full p-0" align="start" onWheel={(e) => e.stopPropagation()}>
+                  <Command>
+                    <CommandInput placeholder="Search doctors..." />
+                    <CommandList className="max-h-[300px] overflow-y-auto">
+                      <CommandEmpty>No doctor found.</CommandEmpty>
+                      <CommandGroup>
+                        {doctors.map((doctor) => (
+                          <CommandItem
+                            key={doctor._id}
+                            value={`${doctor.fullName} ${doctor.specialty}`}
+                            onSelect={() => {
+                              handleInputChange('doctorId', doctor._id);
+                              setDoctorComboboxOpen(false);
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                formData.doctorId === doctor._id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            <div className="flex flex-col">
+                              <span className="font-medium">Dr. {doctor.fullName}</span>
+                              <span className="text-sm text-muted-foreground">{doctor.specialty}</span>
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             )}
           </div>
 
-          {/* Date and Time */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="date" className="flex items-center gap-2">
-                <Calendar className="w-4 h-4" />
-                Date
-              </Label>
-              <Input
-                id="date"
-                type="date"
-                value={formData.scheduledDate}
-                onChange={(e) => handleInputChange('scheduledDate', e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
-                required
-              />
+          {/* Date, Time and Duration Selection */}
+          {formData.doctorId && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="date" className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4" />
+                  Date
+                </Label>
+                <Input
+                  id="date"
+                  type="date"
+                  value={formData.scheduledDate}
+                  onChange={(e) => handleInputChange('scheduledDate', e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="time" className="flex items-center gap-2">
+                  <Clock className="w-4 h-4" />
+                  Time
+                </Label>
+                {loadingSlots ? (
+                  <div className="flex items-center justify-center h-10 border rounded-md bg-gray-50">
+                    <Clock className="w-4 h-4 animate-spin text-muted-foreground mr-2" />
+                    <span className="text-sm text-muted-foreground">Loading slots...</span>
+                  </div>
+                ) : availableSlots.length > 0 ? (
+                  <div className="space-y-2">
+                    <Select 
+                      value={formData.scheduledTime} 
+                      onValueChange={(value) => handleInputChange('scheduledTime', value)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select available time" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[300px]">
+                        {availableSlots.map((slot) => (
+                          <SelectItem key={slot.time} value={slot.time}>
+                            {slot.display}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {formData.scheduledTime && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        Slot will be occupied for {formData.duration} minutes
+                      </p>
+                    )}
+                  </div>
+                ) : formData.scheduledDate ? (
+                  <div className="flex items-center justify-center h-10 border rounded-md bg-amber-50 border-amber-200">
+                    <span className="text-sm text-amber-700">No slots available</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-10 border rounded-md bg-gray-50">
+                    <span className="text-sm text-muted-foreground">Select a date first</span>
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="time" className="flex items-center gap-2">
-                <Clock className="w-4 h-4" />
-                Time
-              </Label>
-              <Input
-                id="time"
-                type="time"
-                value={formData.scheduledTime}
-                onChange={(e) => handleInputChange('scheduledTime', e.target.value)}
-                required
-              />
-            </div>
-          </div>
+          )}
 
           {/* Duration */}
           <div className="space-y-2">
-            <Label htmlFor="duration">Duration (minutes)</Label>
-            <Select value={formData.duration.toString()} onValueChange={(value) => handleInputChange('duration', parseInt(value))}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="15">15 minutes</SelectItem>
-                <SelectItem value="30">30 minutes</SelectItem>
-                <SelectItem value="45">45 minutes</SelectItem>
-                <SelectItem value="60">1 hour</SelectItem>
-                <SelectItem value="90">1.5 hours</SelectItem>
-                <SelectItem value="120">2 hours</SelectItem>
-              </SelectContent>
-            </Select>
+            <Label htmlFor="duration">Slot Duration</Label>
+            <div className="flex items-center gap-2 h-10 px-3 border rounded-md bg-gray-50">
+              <Clock className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-medium">{slotDuration} minutes</span>
+              <span className="text-xs text-muted-foreground">(configured)</span>
+            </div>
           </div>
 
           {/* Security Settings */}

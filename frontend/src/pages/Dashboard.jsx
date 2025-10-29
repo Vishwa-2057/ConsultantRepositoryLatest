@@ -34,6 +34,7 @@ import ComplianceAlertModal from '../components/ComplianceAlertModal';
 import ActivityLogsModal from '../components/ActivityLogsModal';
 import Carousel from "@/components/Carousel";
 import { getCurrentUser, isDoctor, isNurse, isHeadNurse, isSupervisor, isClinic } from "@/utils/roleUtils";
+import SnakeGame from "@/components/SnakeGame";
 
 // Import lab images
 import labPhoto1 from "@/assets/Images/labphoto1.jpg";
@@ -82,6 +83,9 @@ const Dashboard = () => {
   const [monthlyRevenue, setMonthlyRevenue] = useState(0);
   const [monthlyRevenueChange, setMonthlyRevenueChange] = useState("+0%");
   const [monthlyRevenueLoading, setMonthlyRevenueLoading] = useState(true);
+  const [isSnakeGameOpen, setIsSnakeGameOpen] = useState(false);
+  const [clickCount, setClickCount] = useState(0);
+  const [clickTimeout, setClickTimeout] = useState(null);
   const [complianceRate, setComplianceRate] = useState(94.2);
   const [complianceRateLoading, setComplianceRateLoading] = useState(true);
   const [totalDoctors, setTotalDoctors] = useState(0);
@@ -461,20 +465,15 @@ const Dashboard = () => {
   const loadChartData = async () => {
     setChartsLoading(true);
     try {
-      // Load appointment trend data (last 7 days) - use mock data to reduce API calls
-      const appointmentTrend = [];
-      
-      // Generate mock trend data instead of making 7 API calls
-      for (let i = 6; i >= 0; i--) {
-        const date = new Date();
-        date.setDate(date.getDate() - i);
-        appointmentTrend.push({
-          date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-          appointments: Math.floor(Math.random() * 15) + 5 // Random between 5-20
-        });
+      // Load appointment trend data (last 7 days) from API
+      try {
+        const trendResponse = await appointmentAPI.getTrend(7);
+        const appointmentTrend = trendResponse.trendData || [];
+        setAppointmentTrendData(appointmentTrend);
+      } catch (error) {
+        console.error('Failed to load appointment trend data:', error);
+        setAppointmentTrendData([]);
       }
-      
-      setAppointmentTrendData(appointmentTrend);
 
       // Load patient age distribution data - use smaller limit to reduce load
       try {
@@ -616,6 +615,33 @@ const Dashboard = () => {
     return "normal";
   };
 
+  // Snake game Easter egg - triple click handler
+  const handleRevenueIconClick = () => {
+    const newCount = clickCount + 1;
+    console.log('Revenue icon clicked! Count:', newCount);
+    
+    // Clear existing timeout
+    if (clickTimeout) {
+      clearTimeout(clickTimeout);
+    }
+    
+    // Check if triple clicked
+    if (newCount === 3) {
+      console.log('Triple click detected! Opening Snake game...');
+      setIsSnakeGameOpen(true);
+      setClickCount(0);
+    } else {
+      setClickCount(newCount);
+      
+      // Set new timeout to reset click count after 1 second
+      const timeout = setTimeout(() => {
+        console.log('Resetting click count');
+        setClickCount(0);
+      }, 1000);
+      setClickTimeout(timeout);
+    }
+  };
+
   // Modal handlers
   const handleNewAppointment = () => setIsAppointmentModalOpen(true);
   const handleViewAppointments = () => setIsAppointmentViewModalOpen(true);
@@ -658,6 +684,7 @@ const Dashboard = () => {
 
   return (
     <div className="p-3 sm:p-4 lg:p-6 space-y-4 sm:space-y-6">
+      
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -795,7 +822,10 @@ const Dashboard = () => {
         {/* Stats Column - Responsive layout */}
         <div className="xl:col-span-1 grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 xl:grid-cols-1">
           {stats.map((stat, index) => (
-            <Card key={index} className="border-0 shadow-soft hover:shadow-medical transition-all duration-200">
+            <Card 
+              key={index} 
+              className="border-0 shadow-soft hover:shadow-medical transition-all duration-200"
+            >
               <CardContent className="p-4 sm:p-6">
                 <div className="flex items-center justify-between">
                   <div className="min-w-0 flex-1">
@@ -803,7 +833,10 @@ const Dashboard = () => {
                     <p className="text-xl sm:text-2xl font-bold text-foreground">{stat.value}</p>
                     <p className={`text-xs sm:text-sm ${stat.color} truncate`}>{stat.change}</p>
                   </div>
-                  <div className={`p-2 sm:p-3 rounded-lg bg-gradient-primary/10 flex-shrink-0`}>
+                  <div 
+                    className={`p-2 sm:p-3 rounded-lg bg-gradient-primary/10 flex-shrink-0`}
+                    onClick={stat.title === 'Revenue (Month)' ? handleRevenueIconClick : undefined}
+                  >
                     <stat.icon className={`w-5 h-5 sm:w-6 sm:h-6 ${stat.color}`} />
                   </div>
                 </div>
@@ -817,7 +850,10 @@ const Dashboard = () => {
       {(currentUser?.role === 'clinic' || currentUser?.isClinic) && clinicStats.length > 0 && (
         <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
           {clinicStats.map((stat, index) => (
-            <Card key={index} className="border-0 shadow-soft hover:shadow-medical transition-all duration-200">
+            <Card 
+              key={index} 
+              className="border-0 shadow-soft hover:shadow-medical transition-all duration-200"
+            >
               <CardContent className="p-4 sm:p-6">
                 <div className="flex items-center justify-between">
                   <div className="min-w-0 flex-1">
@@ -825,7 +861,10 @@ const Dashboard = () => {
                     <p className="text-xl sm:text-2xl font-bold text-foreground">{stat.value}</p>
                     <p className={`text-xs sm:text-sm ${stat.color} truncate`}>{stat.change}</p>
                   </div>
-                  <div className={`p-2 sm:p-3 rounded-lg bg-gradient-primary/10 flex-shrink-0`}>
+                  <div 
+                    className={`p-2 sm:p-3 rounded-lg bg-gradient-primary/10 flex-shrink-0`}
+                    onClick={stat.title === 'Revenue (Month)' ? handleRevenueIconClick : undefined}
+                  >
                     <stat.icon className={`w-5 h-5 sm:w-6 sm:h-6 ${stat.color}`} />
                   </div>
                 </div>
@@ -934,6 +973,9 @@ const Dashboard = () => {
         isOpen={isActivityLogsModalOpen}
         onClose={() => setIsActivityLogsModalOpen(false)}
       />
+
+      {/* Snake Game Easter Egg */}
+      <SnakeGame isOpen={isSnakeGameOpen} onClose={() => setIsSnakeGameOpen(false)} />
  
     </div>
   );

@@ -6,6 +6,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Textarea } from "@/components/ui/textarea";
 import { 
   UserCheck, 
@@ -30,8 +32,11 @@ import {
   GraduationCap,
   UserX,
   UserPlus,
-  X
+  X,
+  Check,
+  ChevronsUpDown
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { doctorAPI } from "@/services/api";
 import { getImageUrl } from '@/utils/imageUtils';
@@ -54,6 +59,8 @@ const DoctorsManagement = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
+  const [activeCount, setActiveCount] = useState(0);
+  const [inactiveCount, setInactiveCount] = useState(0);
   const [pageSize, setPageSize] = useState(() => {
     const saved = localStorage.getItem('doctorsManagement_pageSize');
     return saved ? parseInt(saved) : 10;
@@ -61,6 +68,7 @@ const DoctorsManagement = () => {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [languageInput, setLanguageInput] = useState('');
   const [filteredLanguages, setFilteredLanguages] = useState([]);
+  const [specialtyComboboxOpen, setSpecialtyComboboxOpen] = useState(false);
   
   // Common languages list
   const commonLanguages = [
@@ -153,11 +161,30 @@ const DoctorsManagement = () => {
       }
       
       const response = await doctorAPI.getAll(currentPage, pageSize, filters);
+      console.log('API Response:', response);
+      console.log('Pagination:', response.pagination);
+      console.log('Total Count from API:', response.pagination?.totalCount);
       if (response.success) {
         setDoctors(response.data || []);
         const pagination = response.pagination || {};
         setTotalPages(pagination.totalPages || 1);
         setTotalCount(pagination.totalCount || response.data?.length || 0);
+        console.log('Set totalCount to:', pagination.totalCount || response.data?.length || 0);
+        
+        // Update active/inactive counts from pagination or calculate from all data
+        if (pagination.activeCount !== undefined && pagination.inactiveCount !== undefined) {
+          setActiveCount(pagination.activeCount);
+          setInactiveCount(pagination.inactiveCount);
+        } else {
+          // Fallback: fetch counts separately or calculate from current data
+          // For now, we'll need to get all doctors to count properly
+          const allDoctorsResponse = await doctorAPI.getAll(1, 999999, {});
+          if (allDoctorsResponse.success) {
+            const allDoctors = allDoctorsResponse.data || [];
+            setActiveCount(allDoctors.filter(d => d.isActive).length);
+            setInactiveCount(allDoctors.filter(d => !d.isActive).length);
+          }
+        }
       } else {
         toast({
           title: "Error",
@@ -494,6 +521,7 @@ const DoctorsManagement = () => {
     "Orthopedic Surgeon",
     "Otolaryngologist",
     "Pediatrician",
+    "Physiotherapist",
     "Psychiatrist",
     "Radiologist",
     "Anesthesiologist",
@@ -525,7 +553,7 @@ const DoctorsManagement = () => {
               <UserCheck className="w-4 h-4 text-blue-600" />
             </div>
             <span className="text-sm text-blue-600 font-medium">
-              Total: {doctors.length}
+              Total: {totalCount}
             </span>
           </div>
           <div className="flex items-center space-x-2">
@@ -533,7 +561,7 @@ const DoctorsManagement = () => {
               <UserPlus className="w-4 h-4 text-green-600" />
             </div>
             <span className="text-sm text-green-600 font-medium">
-              Active: {doctors.filter(d => d.isActive).length}
+              Active: {activeCount}
             </span>
           </div>
           <div className="flex items-center space-x-2">
@@ -541,7 +569,7 @@ const DoctorsManagement = () => {
               <UserX className="w-4 h-4 text-red-600" />
             </div>
             <span className="text-sm text-red-600 font-medium">
-              Inactive: {doctors.filter(d => !d.isActive).length}
+              Inactive: {inactiveCount}
             </span>
           </div>
         </div>
@@ -564,7 +592,7 @@ const DoctorsManagement = () => {
               <h2 className="text-xl font-semibold text-gray-900">Doctors List</h2>
               <div className="flex items-center space-x-2">
                 <Badge variant="secondary" className="px-3 py-1 text-sm font-medium bg-blue-100 text-blue-700 border-0">
-                  {filteredDoctors.length}
+                  {totalCount}
                 </Badge>
               </div>
             </div>
@@ -856,18 +884,47 @@ const DoctorsManagement = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="specialty">Medical Specialty</Label>
-                  <Select value={doctorForm.specialty} onValueChange={(value) => setDoctorForm({...doctorForm, specialty: value})}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select specialty" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {specialties.map((specialty) => (
-                        <SelectItem key={specialty} value={specialty}>
-                          {specialty}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Popover open={specialtyComboboxOpen} onOpenChange={setSpecialtyComboboxOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={specialtyComboboxOpen}
+                        className="w-full justify-between"
+                      >
+                        {doctorForm.specialty || "Select specialty..."}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-full p-0" align="start" onWheel={(e) => e.stopPropagation()}>
+                      <Command>
+                        <CommandInput placeholder="Search specialties..." />
+                        <CommandList className="max-h-[300px] overflow-y-auto">
+                          <CommandEmpty>No specialty found.</CommandEmpty>
+                          <CommandGroup>
+                            {specialties.map((specialty) => (
+                              <CommandItem
+                                key={specialty}
+                                value={specialty}
+                                onSelect={() => {
+                                  setDoctorForm({...doctorForm, specialty: specialty});
+                                  setSpecialtyComboboxOpen(false);
+                                }}
+                              >
+                                <Check
+                                  className={cn(
+                                    "mr-2 h-4 w-4",
+                                    doctorForm.specialty === specialty ? "opacity-100" : "opacity-0"
+                                  )}
+                                />
+                                {specialty}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 <div>
                   <Label htmlFor="qualification">Qualification *</Label>

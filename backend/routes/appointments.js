@@ -1098,6 +1098,62 @@ router.get('/upcoming', auth, async (req, res) => {
   }
 });
 
+// GET /api/appointments/stats/trend - Get appointment trend data (last 7 days)
+router.get('/stats/trend', auth, async (req, res) => {
+  try {
+    const { days = 7 } = req.query;
+    const numDays = parseInt(days);
+    
+    // Build base query for filtering
+    let baseQuery = {};
+    
+    // For doctors, filter by doctorId
+    if (req.user.role === 'doctor') {
+      baseQuery.doctorId = req.user.id;
+    }
+    
+    // For clinic admins, filter by clinicId
+    if (req.user.role === 'clinic') {
+      baseQuery.clinicId = req.user.id;
+    }
+    
+    // For nursing staff, filter by their clinic
+    if (['nurse', 'head_nurse', 'supervisor'].includes(req.user.role)) {
+      const Nurse = require('../models/Nurse');
+      const nurse = await Nurse.findById(req.user.id);
+      
+      if (nurse && nurse.clinicId) {
+        baseQuery.clinicId = nurse.clinicId;
+      }
+    }
+    
+    // Generate trend data for the last N days
+    const trendData = [];
+    
+    for (let i = numDays - 1; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const endOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
+      
+      const count = await Appointment.countDocuments({
+        ...baseQuery,
+        date: { $gte: startOfDay, $lt: endOfDay }
+      });
+      
+      trendData.push({
+        date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        appointments: count
+      });
+    }
+    
+    res.json({ trendData });
+  } catch (error) {
+    console.error('Error fetching appointment trend:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /api/appointments/stats/summary - Get appointment statistics
 router.get('/stats/summary', auth, async (req, res) => {
   try {

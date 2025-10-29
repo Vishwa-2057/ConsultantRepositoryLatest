@@ -21,7 +21,9 @@ import {
   CheckCircle,
   AlertCircle,
   Loader2,
-  Download
+  Download,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import { generateReferralPDF } from "@/utils/pdfGenerator";
 
@@ -94,8 +96,9 @@ const ReferralSystem = () => {
       r.referralType === 'outbound' && r.status === 'Pending'
     ).length;
 
+    // Count all inbound referrals (not just 'New' status)
     const inboundNew = referrals.filter(r => 
-      r.referralType === 'inbound' && r.status === 'New'
+      r.referralType === 'inbound'
     ).length;
 
     const completedThisMonth = referrals.filter(r => {
@@ -125,6 +128,8 @@ const ReferralSystem = () => {
       if (searchTerm.trim()) {
         filters.search = searchTerm.trim();
       }
+      // Exclude completed referrals from the API call
+      filters.status = 'not-completed';
       
       const response = await referralAPI.getAll(currentPage, pageSize, filters);
       
@@ -145,14 +150,19 @@ const ReferralSystem = () => {
       // Set pagination info
       if (response.pagination) {
         setTotalPages(response.pagination.totalPages || 1);
-        setTotalCount(response.pagination.totalCount || 0);
+        // Backend returns 'totalReferrals', not 'totalCount'
+        setTotalCount(response.pagination.totalReferrals || response.pagination.totalCount || 0);
       } else {
         setTotalPages(1);
         setTotalCount(referrals.length);
       }
       
-      // Calculate and set statistics
-      const calculatedStats = calculateStats(referrals);
+      // Fetch all referrals for accurate statistics (not just current page)
+      const allReferralsResponse = await referralAPI.getAll(1, 1000, {});
+      const allReferrals = allReferralsResponse.referrals || [];
+      
+      // Calculate and set statistics from all referrals
+      const calculatedStats = calculateStats(allReferrals);
       setStats(calculatedStats);
     } catch (error) {
       console.error('Error fetching referrals:', error);
@@ -381,36 +391,12 @@ const ReferralSystem = () => {
     }
   };
 
-  // Filter referrals based on search term and exclude completed ones
-  const filteredOutbound = outboundReferrals.filter(referral => 
-    referral.status !== 'Completed' && (
-      referral.patientName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      referral.specialistName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      referral.reason?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      referral.externalClinic?.toLowerCase().includes(searchTerm.toLowerCase())
-    )
-  );
-
-  const filteredInbound = inboundReferrals.filter(referral => 
-    referral.status !== 'Completed' && (
-      referral.patientName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      referral.specialistName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      referral.reason?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      referral.hospital?.toLowerCase().includes(searchTerm.toLowerCase())
-    )
-  );
-
   // Combine both inbound and outbound referrals for unified display
+  // No need to filter out completed ones since backend already excludes them
   const filteredReferrals = [
-    ...filteredOutbound.map(ref => ({ ...ref, type: 'outbound' })),
-    ...filteredInbound.map(ref => ({ ...ref, type: 'inbound' }))
-  ].filter(referral => 
-    referral.patientName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    referral.specialistName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    referral.reason?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    referral.externalClinic?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    referral.hospital?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+    ...outboundReferrals.map(ref => ({ ...ref, type: 'outbound' })),
+    ...inboundReferrals.map(ref => ({ ...ref, type: 'inbound' }))
+  ];
 
   if (isLoading) {
     return (
@@ -445,19 +431,19 @@ const ReferralSystem = () => {
         {/* Stats */}
         <div className="flex items-center space-x-6">
           <div className="flex items-center space-x-2">
-            <div className="p-1.5 bg-blue-100 rounded-full">
-              <ArrowRight className="w-4 h-4 text-blue-600" />
-            </div>
-            <span className="text-sm text-blue-600 font-medium">
-              Outbound: {stats.outboundPending || 0}
-            </span>
-          </div>
-          <div className="flex items-center space-x-2">
             <div className="p-1.5 bg-green-100 rounded-full">
               <ArrowLeft className="w-4 h-4 text-green-600" />
             </div>
             <span className="text-sm text-green-600 font-medium">
               Inbound: {stats.inboundNew || 0}
+            </span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="p-1.5 bg-blue-100 rounded-full">
+              <ArrowRight className="w-4 h-4 text-blue-600" />
+            </div>
+            <span className="text-sm text-blue-600 font-medium">
+              Outbound: {stats.outboundPending || 0}
             </span>
           </div>
           <div className="flex items-center space-x-2">
@@ -498,7 +484,7 @@ const ReferralSystem = () => {
               <h2 className="text-xl font-semibold text-gray-900">Referrals</h2>
               <div className="flex items-center space-x-2">
                 <Badge variant="secondary" className="px-3 py-1 text-sm font-medium bg-blue-100 text-blue-700 border-0">
-                  {filteredReferrals.length}
+                  {totalCount}
                 </Badge>
               </div>
             </div>

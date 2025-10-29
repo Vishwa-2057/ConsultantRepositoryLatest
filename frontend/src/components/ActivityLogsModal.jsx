@@ -264,23 +264,22 @@ const ActivityLogsModal = ({ isOpen, onClose }) => {
                 {/* Single Line Activity Details */}
                 <div className="flex-1 min-w-0 flex items-center justify-between">
                   <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <span className="font-medium text-sm truncate">{log.userName}</span>
+                    <span className="font-medium text-sm truncate max-w-[120px]">{log.userName}</span>
                     <Badge variant={getActivityColor(log.activityType)} className="text-xs flex-shrink-0">
-                      {log.activityType}
+                      {log.activityType.replace('_', ' ')}
                     </Badge>
-                    <span className="text-xs text-muted-foreground truncate">{log.userEmail}</span>
+                    <span className="text-xs text-muted-foreground truncate max-w-[150px]">{log.userEmail}</span>
                     <span className="text-xs text-muted-foreground flex-shrink-0">
-                      {log.deviceInfo?.browser || 'Unknown'} • {log.deviceInfo?.os || 'Unknown'}
+                      {log.deviceInfo?.browser || 'Unknown'}
                     </span>
-                    <span className="text-xs text-muted-foreground capitalize flex-shrink-0">{log.userRole}</span>
                     {log.duration && (
-                      <span className="text-xs text-muted-foreground flex-shrink-0">
+                      <span className="text-xs text-green-600 flex-shrink-0">
                         {formatDuration(log.duration)}
                       </span>
                     )}
                     {/* Appointment info for appointment activities */}
                     {(log.activityType === 'appointment_created' || log.activityType === 'appointment_status_changed') && (
-                      <span className="text-xs text-blue-600 flex-shrink-0">
+                      <span className="text-xs text-blue-600 flex-shrink-0 truncate max-w-[200px]">
                         {log.patientName} • Dr. {log.doctorName}
                         {log.activityType === 'appointment_status_changed' && (
                           <span className="ml-1">({log.oldStatus} → {log.newStatus})</span>

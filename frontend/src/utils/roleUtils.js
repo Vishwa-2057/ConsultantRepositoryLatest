@@ -14,6 +14,7 @@ export const ROLE_PERMISSIONS = {
       'dashboard',
       'patient-management',
       'appointment-management',
+      'slot-management',
       'doctors-management',
       'nurses-management',
       'teleconsultation',

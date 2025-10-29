@@ -34,6 +34,8 @@ const activityLogRoutes = require('./routes/activityLogs');
 const auditLogRoutes = require('./routes/auditLogs');
 const revenueRoutes = require('./routes/revenue');
 const teleconsultationRoutes = require('./routes/teleconsultations');
+const doctorAvailabilityRoutes = require('./routes/doctorAvailability');
+const scheduleExceptionRoutes = require('./routes/scheduleExceptions');
 
 // Middleware
 app.use(helmet());
@@ -264,6 +266,8 @@ app.use('/api/activity-logs', activityLogRoutes);
 app.use('/api/audit-logs', auditLogRoutes);
 app.use('/api/revenue', revenueRoutes);
 app.use('/api/teleconsultations', teleconsultationRoutes);
+app.use('/api/doctor-availability', doctorAvailabilityRoutes);
+app.use('/api/schedule-exceptions', scheduleExceptionRoutes);
 
 app.get("/", (req, res) => {
   res.send("Backend is running ✅");
