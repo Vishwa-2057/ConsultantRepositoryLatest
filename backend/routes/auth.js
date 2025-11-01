@@ -1276,10 +1276,10 @@ router.post('/forgot-password', forgotPasswordValidation, async (req, res) => {
     }
 
     if (!user) {
-      // Don't reveal if email exists or not for security
-      return res.json({ 
-        message: 'If an account with this email exists, a password reset code has been sent.',
-        success: true 
+      // Return error if email is not found in the system
+      return res.status(404).json({ 
+        error: 'No account found with this email address. Please check your email or contact your administrator.',
+        success: false 
       });
     }
 

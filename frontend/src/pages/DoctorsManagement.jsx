@@ -69,6 +69,7 @@ const DoctorsManagement = () => {
   const [languageInput, setLanguageInput] = useState('');
   const [filteredLanguages, setFilteredLanguages] = useState([]);
   const [specialtyComboboxOpen, setSpecialtyComboboxOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('all');
   
   // Common languages list
   const commonLanguages = [
@@ -147,9 +148,20 @@ const DoctorsManagement = () => {
     }
   };
 
-  // Filter doctors based on search query
-  // Use doctors directly since filtering is now done server-side
-  const filteredDoctors = doctors;
+  // Filter doctors based on search query and status
+  const filteredDoctors = doctors.filter(doctor => {
+    // Status filter
+    if (statusFilter === 'active' && !doctor.isActive) return false;
+    if (statusFilter === 'inactive' && doctor.isActive) return false;
+    return true;
+  });
+
+  // Calculate pagination for filtered results
+  const filteredTotalCount = filteredDoctors.length;
+  const filteredTotalPages = Math.ceil(filteredTotalCount / pageSize);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const paginatedDoctors = filteredDoctors.slice(startIndex, endIndex);
 
   // Load doctors
   const loadDoctors = async () => {
@@ -160,31 +172,17 @@ const DoctorsManagement = () => {
         filters.search = searchQuery.trim();
       }
       
-      const response = await doctorAPI.getAll(currentPage, pageSize, filters);
+      // Load all doctors for client-side pagination and filtering
+      const response = await doctorAPI.getAll(1, 999999, filters);
       console.log('API Response:', response);
-      console.log('Pagination:', response.pagination);
-      console.log('Total Count from API:', response.pagination?.totalCount);
       if (response.success) {
-        setDoctors(response.data || []);
-        const pagination = response.pagination || {};
-        setTotalPages(pagination.totalPages || 1);
-        setTotalCount(pagination.totalCount || response.data?.length || 0);
-        console.log('Set totalCount to:', pagination.totalCount || response.data?.length || 0);
+        const allDoctors = response.data || [];
+        setDoctors(allDoctors);
+        setTotalCount(allDoctors.length);
         
-        // Update active/inactive counts from pagination or calculate from all data
-        if (pagination.activeCount !== undefined && pagination.inactiveCount !== undefined) {
-          setActiveCount(pagination.activeCount);
-          setInactiveCount(pagination.inactiveCount);
-        } else {
-          // Fallback: fetch counts separately or calculate from current data
-          // For now, we'll need to get all doctors to count properly
-          const allDoctorsResponse = await doctorAPI.getAll(1, 999999, {});
-          if (allDoctorsResponse.success) {
-            const allDoctors = allDoctorsResponse.data || [];
-            setActiveCount(allDoctors.filter(d => d.isActive).length);
-            setInactiveCount(allDoctors.filter(d => !d.isActive).length);
-          }
-        }
+        // Calculate active/inactive counts
+        setActiveCount(allDoctors.filter(d => d.isActive).length);
+        setInactiveCount(allDoctors.filter(d => !d.isActive).length);
       } else {
         toast({
           title: "Error",
@@ -196,7 +194,7 @@ const DoctorsManagement = () => {
       console.error('Error loading doctors:', error);
       toast({
         title: "Error",
-        description: "Failed to load doctors",
+        description: error.message || "Failed to load doctors",
         variant: "destructive"
       });
     } finally {
@@ -215,14 +213,14 @@ const DoctorsManagement = () => {
 
   useEffect(() => {
     loadDoctors();
-  }, [currentPage, pageSize, searchQuery]);
+  }, [searchQuery]);
 
-  // Reset to page 1 when search query changes
+  // Reset to page 1 when search query or status filter changes
   useEffect(() => {
     if (currentPage !== 1) {
       setCurrentPage(1);
     }
-  }, [searchQuery]);
+  }, [searchQuery, statusFilter]);
 
   // Handle image file selection
   const handleImageSelect = (e) => {
@@ -284,6 +282,8 @@ const DoctorsManagement = () => {
       { field: 'fullName', name: 'Full Name' },
       { field: 'email', name: 'Email' },
       { field: 'password', name: 'Password' },
+      { field: 'phone', name: 'Phone Number' },
+      { field: 'specialty', name: 'Specialty' },
       { field: 'qualification', name: 'Qualification' },
       { field: 'uhid', name: 'UHID' },
       { field: 'about', name: 'About Doctor' }
@@ -293,7 +293,7 @@ const DoctorsManagement = () => {
     if (!selectedImage) {
       toast({
         title: "Validation Error",
-        description: "Profile image is required",
+        description: "Profile image is required. Please upload a profile picture for the doctor.",
         variant: "destructive"
       });
       return;
@@ -317,20 +317,62 @@ const DoctorsManagement = () => {
     for (const { field, name } of requiredFields) {
       if (!doctorForm[field] || doctorForm[field].trim() === '') {
         toast({
-          title: "Validation Error",
-          description: `${name} is required`,
+          title: "Missing Required Field",
+          description: `${name} is required. Please fill in this field to continue.`,
           variant: "destructive"
         });
         return;
       }
     }
 
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(doctorForm.email)) {
+      toast({
+        title: "Invalid Email",
+        description: "Please enter a valid email address (e.g., doctor@example.com).",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Validate password strength
+    if (doctorForm.password.length < 6) {
+      toast({
+        title: "Weak Password",
+        description: "Password must be at least 6 characters long for security.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Validate phone number format (basic validation)
+    const phoneRegex = /^[0-9]{10,15}$/;
+    if (!phoneRegex.test(doctorForm.phone.replace(/[\s\-\(\)]/g, ''))) {
+      toast({
+        title: "Invalid Phone Number",
+        description: "Please enter a valid phone number (10-15 digits).",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Check if at least one language is selected
+    if (!doctorForm.languages || doctorForm.languages.length === 0) {
+      toast({
+        title: "Missing Languages",
+        description: "Please select at least one language that the doctor speaks.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     // Check current address fields
     for (const { field, name } of currentAddressFields) {
       if (!doctorForm.currentAddress[field] || doctorForm.currentAddress[field].trim() === '') {
         toast({
-          title: "Validation Error",
-          description: `${name} is required`,
+          title: "Missing Address Information",
+          description: `${name} is required. Please complete the current address details.`,
           variant: "destructive"
         });
         return;
@@ -341,8 +383,8 @@ const DoctorsManagement = () => {
     for (const { field, name } of permanentAddressFields) {
       if (!doctorForm.permanentAddress[field] || doctorForm.permanentAddress[field].trim() === '') {
         toast({
-          title: "Validation Error",
-          description: `${name} is required`,
+          title: "Missing Address Information",
+          description: `${name} is required. Please complete the permanent address details.`,
           variant: "destructive"
         });
         return;
@@ -427,7 +469,7 @@ const DoctorsManagement = () => {
       console.error('Error adding doctor:', error);
       toast({
         title: "Error",
-        description: "Failed to add doctor",
+        description: error.message || "Failed to add doctor",
         variant: "destructive"
       });
     } finally {
@@ -438,7 +480,7 @@ const DoctorsManagement = () => {
   // Handle activate doctor
   const handleActivateDoctor = async (doctorId, doctorName) => {
     try {
-      const response = await doctorAPI.update(doctorId, { isActive: true });
+      const response = await doctorAPI.activate(doctorId);
       if (response.success) {
         toast({
           title: "Success",
@@ -456,7 +498,7 @@ const DoctorsManagement = () => {
       console.error('Error activating doctor:', error);
       toast({
         title: "Error",
-        description: "Failed to activate doctor",
+        description: error.message || "Failed to activate doctor",
         variant: "destructive"
       });
     }
@@ -465,7 +507,7 @@ const DoctorsManagement = () => {
   // Handle deactivate doctor
   const handleDeactivateDoctor = async (doctorId, doctorName) => {
     try {
-      const response = await doctorAPI.update(doctorId, { isActive: false });
+      const response = await doctorAPI.deactivate(doctorId);
       if (response.success) {
         toast({
           title: "Success",
@@ -483,7 +525,7 @@ const DoctorsManagement = () => {
       console.error('Error deactivating doctor:', error);
       toast({
         title: "Error",
-        description: "Failed to deactivate doctor",
+        description: error.message || "Failed to deactivate doctor",
         variant: "destructive"
       });
     }
@@ -539,11 +581,25 @@ const DoctorsManagement = () => {
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <Input
-            placeholder="Search doctors by name, email, or specialty..."
+            placeholder="Search doctors by name, phone, email, or specialty..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10 h-10 bg-white border-gray-200 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           />
+        </div>
+        
+        {/* Status Filter */}
+        <div className="flex-shrink-0">
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-32 h-10 bg-white border-gray-200 rounded-lg shadow-sm">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="inactive">Inactive</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         
         {/* Stats */}
@@ -592,7 +648,7 @@ const DoctorsManagement = () => {
               <h2 className="text-xl font-semibold text-gray-900">Doctors List</h2>
               <div className="flex items-center space-x-2">
                 <Badge variant="secondary" className="px-3 py-1 text-sm font-medium bg-blue-100 text-blue-700 border-0">
-                  {totalCount}
+                  {filteredDoctors.length}
                 </Badge>
               </div>
             </div>
@@ -600,7 +656,7 @@ const DoctorsManagement = () => {
               <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-lg border">
                 <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                 <span className="text-sm font-medium text-gray-700">
-                  {((currentPage - 1) * pageSize) + 1}-{Math.min(currentPage * pageSize, totalCount)} of {totalCount}
+                  {filteredTotalCount > 0 ? ((currentPage - 1) * pageSize) + 1 : 0}-{Math.min(currentPage * pageSize, filteredTotalCount)} of {filteredTotalCount}
                 </span>
               </div>
               <div className="flex items-center gap-2 px-2.5 py-1 bg-white rounded-md border border-gray-200">
@@ -631,12 +687,41 @@ const DoctorsManagement = () => {
           ) : filteredDoctors.length === 0 ? (
             <div className="flex items-center justify-center h-32">
               <p className="text-muted-foreground">
-                {searchQuery ? "No doctors found matching your search." : "No doctors found."}
+                {searchQuery || statusFilter !== 'all' 
+                  ? "No doctors found matching your filters." 
+                  : "No doctors found."}
               </p>
             </div>
           ) : (
             <div className="space-y-2">
-              {filteredDoctors.map((doctor) => (
+              {/* Table Headers */}
+              <div className="bg-gray-100 rounded-lg p-4 mb-2">
+                <div className="flex items-center justify-between gap-6">
+                  <div className="w-12 flex-shrink-0">
+                    <span className="text-xs font-semibold text-gray-600 uppercase">Photo</span>
+                  </div>
+                  <div className="w-40 flex-shrink-0">
+                    <span className="text-xs font-semibold text-gray-600 uppercase">Name & UHID</span>
+                  </div>
+                  <div className="w-32 flex-shrink-0">
+                    <span className="text-xs font-semibold text-gray-600 uppercase">Specialty</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs font-semibold text-gray-600 uppercase">Email</span>
+                  </div>
+                  <div className="w-32 flex-shrink-0">
+                    <span className="text-xs font-semibold text-gray-600 uppercase">Phone</span>
+                  </div>
+                  <div className="w-24 flex-shrink-0">
+                    <span className="text-xs font-semibold text-gray-600 uppercase">Status</span>
+                  </div>
+                  <div className="w-24 flex-shrink-0 text-right">
+                    <span className="text-xs font-semibold text-gray-600 uppercase">Actions</span>
+                  </div>
+                </div>
+              </div>
+              
+              {paginatedDoctors.map((doctor) => (
                 <div 
                   key={doctor._id} 
                   className={`bg-gray-50 hover:bg-gray-100 rounded-lg p-4 transition-all duration-200 cursor-pointer ${!doctor.isActive ? 'opacity-75' : ''}`}
@@ -705,32 +790,30 @@ const DoctorsManagement = () => {
                     </div>
                     
                     {/* Actions - Fixed width */}
-                    <div className="w-24 flex-shrink-0 flex items-center justify-end gap-2">
+                    <div className="w-32 flex-shrink-0 flex items-center justify-end gap-2">
                       {doctor.isActive ? (
                         <Button
                           size="sm"
                           variant="outline"
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-600"
                           onClick={(e) => {
                             e.stopPropagation();
                             handleDeactivateDoctor(doctor._id, doctor.fullName);
                           }}
-                          title="Deactivate Doctor"
                         >
-                          <UserX className="w-3 h-3" />
+                          Deactivate
                         </Button>
                       ) : (
                         <Button
                           size="sm"
                           variant="outline"
-                          className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                          className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-600"
                           onClick={(e) => {
                             e.stopPropagation();
                             handleActivateDoctor(doctor._id, doctor.fullName);
                           }}
-                          title="Activate Doctor"
                         >
-                          <UserPlus className="w-3 h-3" />
+                          Activate
                         </Button>
                       )}
                     </div>
@@ -743,7 +826,7 @@ const DoctorsManagement = () => {
       </div>
 
       {/* Page Navigation - Only show when multiple pages */}
-      {totalPages > 1 && (
+      {filteredTotalPages > 1 && (
         <div className="flex justify-center pb-2">
           <div className="flex items-center gap-2 bg-white rounded-xl shadow-sm border border-gray-100 p-2">
             <Button
@@ -767,14 +850,14 @@ const DoctorsManagement = () => {
             
             {/* Page Numbers */}
             <div className="flex items-center gap-1">
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              {Array.from({ length: Math.min(5, filteredTotalPages) }, (_, i) => {
                 let pageNum;
-                if (totalPages <= 5) {
+                if (filteredTotalPages <= 5) {
                   pageNum = i + 1;
                 } else if (currentPage <= 3) {
                   pageNum = i + 1;
-                } else if (currentPage >= totalPages - 2) {
-                  pageNum = totalPages - 4 + i;
+                } else if (currentPage >= filteredTotalPages - 2) {
+                  pageNum = filteredTotalPages - 4 + i;
                 } else {
                   pageNum = currentPage - 2 + i;
                 }
@@ -796,8 +879,8 @@ const DoctorsManagement = () => {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, filteredTotalPages))}
+              disabled={currentPage === filteredTotalPages}
               className="h-10 px-4 text-sm bg-white border-gray-200 rounded-lg shadow-sm hover:bg-gray-50"
             >
               <ChevronRight className="w-4 h-4" />
@@ -805,8 +888,8 @@ const DoctorsManagement = () => {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentPage(totalPages)}
-              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(filteredTotalPages)}
+              disabled={currentPage === filteredTotalPages}
               className="h-10 px-4 text-sm bg-white border-gray-200 rounded-lg shadow-sm hover:bg-gray-50"
             >
               Last
@@ -818,6 +901,19 @@ const DoctorsManagement = () => {
       {/* Add Doctor Modal */}
       <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
         <DialogContent className="max-w-6xl max-h-[95vh] overflow-y-auto">
+          {/* Loading Overlay */}
+          {(submitting || uploadingImage) && (
+            <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center rounded-lg">
+              <div className="text-center space-y-3">
+                <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
+                <p className="text-lg font-semibold text-gray-900">
+                  {uploadingImage ? "Uploading Image..." : "Adding Doctor..."}
+                </p>
+                <p className="text-sm text-gray-600">Please wait, do not close this window</p>
+              </div>
+            </div>
+          )}
+          
           <DialogHeader>
             <DialogTitle>Add New Doctor</DialogTitle>
             <DialogDescription>
@@ -838,6 +934,7 @@ const DoctorsManagement = () => {
                     onChange={(e) => setDoctorForm({...doctorForm, fullName: e.target.value})}
                     placeholder="Dr. John Smith"
                     maxLength={100}
+                    disabled={submitting || uploadingImage}
                   />
                 </div>
                 <div>
@@ -848,6 +945,7 @@ const DoctorsManagement = () => {
                     value={doctorForm.email}
                     onChange={(e) => setDoctorForm({...doctorForm, email: e.target.value})}
                     placeholder="doctor@hospital.com"
+                    disabled={submitting || uploadingImage}
                   />
                 </div>
                 <div>
@@ -863,6 +961,7 @@ const DoctorsManagement = () => {
                     }}
                     placeholder="9876543210"
                     maxLength={15}
+                    disabled={submitting || uploadingImage}
                   />
                 </div>
                 <div>
@@ -873,6 +972,7 @@ const DoctorsManagement = () => {
                     onChange={(e) => setDoctorForm({...doctorForm, uhid: e.target.value.toUpperCase()})}
                     placeholder="DOC001"
                     style={{ textTransform: 'uppercase' }}
+                    disabled={submitting || uploadingImage}
                   />
                 </div>
               </div>
@@ -891,6 +991,7 @@ const DoctorsManagement = () => {
                         role="combobox"
                         aria-expanded={specialtyComboboxOpen}
                         className="w-full justify-between"
+                        disabled={submitting || uploadingImage}
                       >
                         {doctorForm.specialty || "Select specialty..."}
                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -933,6 +1034,7 @@ const DoctorsManagement = () => {
                     value={doctorForm.qualification}
                     onChange={(e) => setDoctorForm({...doctorForm, qualification: e.target.value})}
                     placeholder="MBBS, MD, MS, etc."
+                    disabled={submitting || uploadingImage}
                   />
                 </div>
                 <div>
@@ -944,6 +1046,7 @@ const DoctorsManagement = () => {
                       accept="image/*"
                       onChange={handleImageSelect}
                       className="cursor-pointer"
+                      disabled={submitting || uploadingImage}
                     />
                     {imagePreview && (
                       <div className="flex items-center space-x-3">
@@ -980,6 +1083,7 @@ const DoctorsManagement = () => {
                       currentAddress: {...doctorForm.currentAddress, street: e.target.value}
                     })}
                     placeholder="123 Main Street, Apartment 4B"
+                    disabled={submitting || uploadingImage}
                   />
                 </div>
                 <div>
@@ -992,6 +1096,7 @@ const DoctorsManagement = () => {
                       currentAddress: {...doctorForm.currentAddress, city: e.target.value}
                     })}
                     placeholder="Mumbai"
+                    disabled={submitting || uploadingImage}
                   />
                 </div>
                 <div>
@@ -1004,6 +1109,7 @@ const DoctorsManagement = () => {
                       currentAddress: {...doctorForm.currentAddress, state: e.target.value}
                     })}
                     placeholder="Maharashtra"
+                    disabled={submitting || uploadingImage}
                   />
                 </div>
                 <div>
@@ -1016,6 +1122,7 @@ const DoctorsManagement = () => {
                       currentAddress: {...doctorForm.currentAddress, zipCode: e.target.value}
                     })}
                     placeholder="400001"
+                    disabled={submitting || uploadingImage}
                   />
                 </div>
                 <div>
@@ -1028,6 +1135,7 @@ const DoctorsManagement = () => {
                       currentAddress: {...doctorForm.currentAddress, country: e.target.value}
                     })}
                     placeholder="India"
+                    disabled={submitting || uploadingImage}
                   />
                 </div>
               </div>
@@ -1052,6 +1160,7 @@ const DoctorsManagement = () => {
                       }
                     }}
                     className="rounded border-gray-300"
+                    disabled={submitting || uploadingImage}
                   />
                   <Label htmlFor="sameAsCurrent" className="text-sm">Same as current address</Label>
                 </div>
@@ -1067,7 +1176,7 @@ const DoctorsManagement = () => {
                       permanentAddress: {...doctorForm.permanentAddress, street: e.target.value}
                     })}
                     placeholder="123 Main Street, Apartment 4B"
-                    disabled={sameAsCurrent}
+                    disabled={sameAsCurrent || submitting || uploadingImage}
                   />
                 </div>
                 <div>
@@ -1080,7 +1189,7 @@ const DoctorsManagement = () => {
                       permanentAddress: {...doctorForm.permanentAddress, city: e.target.value}
                     })}
                     placeholder="Mumbai"
-                    disabled={sameAsCurrent}
+                    disabled={sameAsCurrent || submitting || uploadingImage}
                   />
                 </div>
                 <div>
@@ -1093,7 +1202,7 @@ const DoctorsManagement = () => {
                       permanentAddress: {...doctorForm.permanentAddress, state: e.target.value}
                     })}
                     placeholder="Maharashtra"
-                    disabled={sameAsCurrent}
+                    disabled={sameAsCurrent || submitting || uploadingImage}
                   />
                 </div>
                 <div>
@@ -1106,7 +1215,7 @@ const DoctorsManagement = () => {
                       permanentAddress: {...doctorForm.permanentAddress, zipCode: e.target.value}
                     })}
                     placeholder="400001"
-                    disabled={sameAsCurrent}
+                    disabled={sameAsCurrent || submitting || uploadingImage}
                   />
                 </div>
                 <div>
@@ -1119,7 +1228,7 @@ const DoctorsManagement = () => {
                       permanentAddress: {...doctorForm.permanentAddress, country: e.target.value}
                     })}
                     placeholder="India"
-                    disabled={sameAsCurrent}
+                    disabled={sameAsCurrent || submitting || uploadingImage}
                   />
                 </div>
               </div>
@@ -1139,6 +1248,7 @@ const DoctorsManagement = () => {
                     maxLength={1000}
                     rows={4}
                     required
+                    disabled={submitting || uploadingImage}
                   />
                   <p className="text-xs text-gray-500 mt-1">{doctorForm.about.length}/1000 characters</p>
                 </div>
@@ -1154,6 +1264,7 @@ const DoctorsManagement = () => {
                         onChange={(e) => handleLanguageInputChange(e.target.value)}
                         onKeyPress={handleLanguageKeyPress}
                         placeholder="Type to search and add languages..."
+                        disabled={submitting || uploadingImage}
                       />
                       {filteredLanguages.length > 0 && (
                         <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-40 overflow-y-auto">
@@ -1181,6 +1292,7 @@ const DoctorsManagement = () => {
                               type="button"
                               onClick={() => removeLanguage(language)}
                               className="ml-1 hover:text-red-500"
+                              disabled={submitting || uploadingImage}
                             >
                               <X className="w-3 h-3" />
                             </button>
@@ -1203,6 +1315,7 @@ const DoctorsManagement = () => {
                         value={doctorForm.password}
                         onChange={(e) => setDoctorForm({...doctorForm, password: e.target.value})}
                         placeholder="Enter secure password"
+                        disabled={submitting || uploadingImage}
                       />
                       <Button
                         type="button"
@@ -1210,6 +1323,7 @@ const DoctorsManagement = () => {
                         size="sm"
                         className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                         onClick={() => setShowPassword(!showPassword)}
+                        disabled={submitting || uploadingImage}
                       >
                         {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
@@ -1221,7 +1335,7 @@ const DoctorsManagement = () => {
           </div>
 
           <DialogFooter className="px-6 pb-6">
-            <Button variant="outline" onClick={() => setIsAddModalOpen(false)}>
+            <Button variant="outline" onClick={() => setIsAddModalOpen(false)} disabled={submitting || uploadingImage}>
               Cancel
             </Button>
             <Button onClick={handleAddDoctor} disabled={submitting || uploadingImage}>

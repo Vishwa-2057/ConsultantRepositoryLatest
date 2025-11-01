@@ -26,6 +26,7 @@ import {
   ChevronRight
 } from "lucide-react";
 import { generateReferralPDF } from "@/utils/pdfGenerator";
+import { isDoctor, getCurrentUser } from "@/utils/roleUtils";
 
 const ReferralSystem = () => {
   const { toast } = useToast();
@@ -71,6 +72,7 @@ const ReferralSystem = () => {
   const [inboundReferrals, setInboundReferrals] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("outbound");
+  const [viewMode, setViewMode] = useState("all"); // "all" or "incoming"
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -92,11 +94,12 @@ const ReferralSystem = () => {
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
 
+    // Count all outbound referrals
     const outboundPending = referrals.filter(r => 
-      r.referralType === 'outbound' && r.status === 'Pending'
+      r.referralType === 'outbound'
     ).length;
 
-    // Count all inbound referrals (not just 'New' status)
+    // Count all inbound referrals
     const inboundNew = referrals.filter(r => 
       r.referralType === 'inbound'
     ).length;
@@ -128,38 +131,62 @@ const ReferralSystem = () => {
       if (searchTerm.trim()) {
         filters.search = searchTerm.trim();
       }
-      // Exclude completed referrals from the API call
-      filters.status = 'not-completed';
+      // Show all referrals including completed ones
       
-      const response = await referralAPI.getAll(currentPage, pageSize, filters);
+      // Fetch ALL referrals (no pagination on backend) so we can sort properly
+      const response = await referralAPI.getAll(1, 10000, filters);
       
       // Separate outbound and inbound referrals based on referralType field
-      const referrals = response.referrals || [];
-      console.log('Fetched referrals:', referrals.length, 'referrals');
-      console.log('Referrals data:', referrals);
+      const allReferrals = response.referrals || [];
+      console.log('Fetched referrals:', allReferrals.length, 'referrals');
+      console.log('Referrals data:', allReferrals);
       
-      const outbound = referrals.filter(r => r.referralType === 'outbound');
-      const inbound = referrals.filter(r => r.referralType === 'inbound');
+      // Sort function: Pending first, then by date (newest first)
+      const sortReferrals = (a, b) => {
+        // Priority order: Pending > Scheduled > In Progress > New > Completed
+        const statusPriority = {
+          'Pending': 1,
+          'Scheduled': 2,
+          'In Progress': 3,
+          'New': 4,
+          'Completed': 5
+        };
+        
+        const aPriority = statusPriority[a.status] || 99;
+        const bPriority = statusPriority[b.status] || 99;
+        
+        if (aPriority !== bPriority) {
+          return aPriority - bPriority;
+        }
+        
+        // If same status, sort by date (newest first)
+        return new Date(b.createdAt) - new Date(a.createdAt);
+      };
       
-      console.log('Outbound referrals:', outbound.length);
-      console.log('Inbound referrals:', inbound.length);
+      // Sort all referrals first (pending first, regardless of inbound/outbound)
+      const sortedReferrals = allReferrals.sort(sortReferrals);
       
-      setOutboundReferrals(outbound);
-      setInboundReferrals(inbound);
+      // Client-side pagination on ALL sorted referrals (mixed inbound and outbound)
+      const startIndex = (currentPage - 1) * pageSize;
+      const endIndex = startIndex + pageSize;
+      const paginatedReferrals = sortedReferrals.slice(startIndex, endIndex);
       
-      // Set pagination info
-      if (response.pagination) {
-        setTotalPages(response.pagination.totalPages || 1);
-        // Backend returns 'totalReferrals', not 'totalCount'
-        setTotalCount(response.pagination.totalReferrals || response.pagination.totalCount || 0);
-      } else {
-        setTotalPages(1);
-        setTotalCount(referrals.length);
-      }
+      // Separate paginated referrals for display (but they're already sorted by priority)
+      const paginatedOutbound = paginatedReferrals.filter(r => r.referralType === 'outbound');
+      const paginatedInbound = paginatedReferrals.filter(r => r.referralType === 'inbound');
       
-      // Fetch all referrals for accurate statistics (not just current page)
-      const allReferralsResponse = await referralAPI.getAll(1, 1000, {});
-      const allReferrals = allReferralsResponse.referrals || [];
+      console.log('Total referrals:', allReferrals.length);
+      console.log('Paginated referrals:', paginatedReferrals.length);
+      console.log('Outbound in page:', paginatedOutbound.length);
+      console.log('Inbound in page:', paginatedInbound.length);
+      
+      setOutboundReferrals(paginatedOutbound);
+      setInboundReferrals(paginatedInbound);
+      
+      // Set pagination info based on total referrals
+      const calculatedTotalPages = Math.ceil(allReferrals.length / pageSize);
+      setTotalPages(calculatedTotalPages);
+      setTotalCount(allReferrals.length);
       
       // Calculate and set statistics from all referrals
       const calculatedStats = calculateStats(allReferrals);
@@ -235,17 +262,8 @@ const ReferralSystem = () => {
       // Update status to completed via API
       await referralAPI.updateStatus(referralId, 'Completed');
       
-      // Remove from both lists (since we're filtering out completed ones)
-      setOutboundReferrals(prev => prev.filter(r => r._id !== referralId));
-      setInboundReferrals(prev => prev.filter(r => r._id !== referralId));
-      
-      // Recalculate stats
-      const allReferrals = [
-        ...outboundReferrals.filter(r => r._id !== referralId),
-        ...inboundReferrals.filter(r => r._id !== referralId)
-      ];
-      const updatedStats = calculateStats(allReferrals);
-      setStats(updatedStats);
+      // Refresh the referrals list to show updated status
+      await fetchReferrals();
       
       toast({
         title: "Success",
@@ -393,10 +411,25 @@ const ReferralSystem = () => {
 
   // Combine both inbound and outbound referrals for unified display
   // No need to filter out completed ones since backend already excludes them
-  const filteredReferrals = [
-    ...outboundReferrals.map(ref => ({ ...ref, type: 'outbound' })),
-    ...inboundReferrals.map(ref => ({ ...ref, type: 'inbound' }))
-  ];
+  const filteredReferrals = viewMode === "incoming" 
+    ? (() => {
+        const currentUser = getCurrentUser();
+        const currentUserId = currentUser?._id || currentUser?.id;
+        // Filter inbound referrals to only show those where the logged-in doctor is the recipient
+        return inboundReferrals
+          .filter(ref => ref.specialistId === currentUserId)
+          .map(ref => ({ ...ref, type: 'inbound' }));
+      })()
+    : [
+        ...outboundReferrals.map(ref => ({ ...ref, type: 'outbound' })),
+        ...inboundReferrals.map(ref => ({ ...ref, type: 'inbound' }))
+      ];
+
+  // Calculate dynamic count and pagination based on current view mode
+  const displayCount = filteredReferrals.length;
+  const displayTotalPages = Math.ceil(displayCount / pageSize) || 1;
+  const displayStartIndex = Math.min(((currentPage - 1) * pageSize) + 1, displayCount);
+  const displayEndIndex = Math.min(currentPage * pageSize, displayCount);
 
   if (isLoading) {
     return (
@@ -466,6 +499,22 @@ const ReferralSystem = () => {
         
         {/* Actions */}
         <div className="flex items-center gap-3">
+          {isDoctor() && (
+            <Button 
+              variant={viewMode === "incoming" ? "default" : "outline"}
+              className={viewMode === "incoming" 
+                ? "bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
+                : "border-green-600 text-green-600 hover:bg-green-50 px-6 py-2 rounded-lg transition-all duration-200"
+              }
+              onClick={() => {
+                setViewMode(viewMode === "incoming" ? "all" : "incoming");
+                setCurrentPage(1);
+              }}
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              {viewMode === "incoming" ? "Show All Referrals" : "Incoming Referrals"}
+            </Button>
+          )}
           <Button 
             className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
             onClick={() => setIsCreateModalOpen(true)}
@@ -481,10 +530,12 @@ const ReferralSystem = () => {
         <div className="px-6 py-4 border-b border-gray-100">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <h2 className="text-xl font-semibold text-gray-900">Referrals</h2>
+              <h2 className="text-xl font-semibold text-gray-900">
+                {viewMode === "incoming" ? "Incoming Referrals" : "Referrals"}
+              </h2>
               <div className="flex items-center space-x-2">
                 <Badge variant="secondary" className="px-3 py-1 text-sm font-medium bg-blue-100 text-blue-700 border-0">
-                  {totalCount}
+                  {displayCount}
                 </Badge>
               </div>
             </div>
@@ -492,7 +543,7 @@ const ReferralSystem = () => {
               <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-lg border">
                 <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                 <span className="text-sm font-medium text-gray-700">
-                  {((currentPage - 1) * pageSize) + 1}-{Math.min(currentPage * pageSize, totalCount)} of {totalCount}
+                  {displayCount > 0 ? `${displayStartIndex}-${displayEndIndex}` : '0'} of {displayCount}
                 </span>
               </div>
               <div className="flex items-center gap-2 px-2.5 py-1 bg-white rounded-md border border-gray-200">
@@ -590,18 +641,17 @@ const ReferralSystem = () => {
                             {referral.urgency}
                           </Badge>
                           <div className="flex space-x-2">
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => handleCompleteReferral(referral._id || referral.id)}
-                              className="text-green-600 border-green-600 hover:bg-green-50"
-                            >
-                              <CheckCircle className="w-4 h-4 mr-1" />
-                              Complete
-                            </Button>
-                            <Button variant="ghost" size="sm">
-                              <Phone className="w-4 h-4" />
-                            </Button>
+                            {referral.status !== 'Completed' && isDoctor() && (
+                              <Button 
+                                variant="outline" 
+                                size="sm"
+                                onClick={() => handleCompleteReferral(referral._id || referral.id)}
+                                className="text-green-600 border-green-600 hover:bg-green-50"
+                              >
+                                <CheckCircle className="w-4 h-4 mr-1" />
+                                Complete
+                              </Button>
+                            )}
                             <Button 
                               variant="ghost" 
                               size="sm"
@@ -622,7 +672,7 @@ const ReferralSystem = () => {
       </div>
 
       {/* Page Navigation - Only show when multiple pages */}
-      {totalPages > 1 && (
+      {displayTotalPages > 1 && (
         <div className="flex justify-center pb-2">
           <div className="flex items-center gap-2 bg-white rounded-xl shadow-sm border border-gray-100 p-2">
             <Button
@@ -646,14 +696,14 @@ const ReferralSystem = () => {
             
             {/* Page Numbers */}
             <div className="flex items-center gap-1">
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              {Array.from({ length: Math.min(5, displayTotalPages) }, (_, i) => {
                 let pageNum;
-                if (totalPages <= 5) {
+                if (displayTotalPages <= 5) {
                   pageNum = i + 1;
                 } else if (currentPage <= 3) {
                   pageNum = i + 1;
-                } else if (currentPage >= totalPages - 2) {
-                  pageNum = totalPages - 4 + i;
+                } else if (currentPage >= displayTotalPages - 2) {
+                  pageNum = displayTotalPages - 4 + i;
                 } else {
                   pageNum = currentPage - 2 + i;
                 }
@@ -675,8 +725,8 @@ const ReferralSystem = () => {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, displayTotalPages))}
+              disabled={currentPage === displayTotalPages}
               className="h-10 px-4 text-sm bg-white border-gray-200 rounded-lg shadow-sm hover:bg-gray-50"
             >
               <ChevronRight className="w-4 h-4" />
@@ -684,8 +734,8 @@ const ReferralSystem = () => {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentPage(totalPages)}
-              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(displayTotalPages)}
+              disabled={currentPage === displayTotalPages}
               className="h-10 px-4 text-sm bg-white border-gray-200 rounded-lg shadow-sm hover:bg-gray-50"
             >
               Last

@@ -2,8 +2,12 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const Referral = require('../models/Referral');
 const Patient = require('../models/Patient');
+const Doctor = require('../models/Doctor');
+const Clinic = require('../models/Clinic');
+const Nurse = require('../models/Nurse');
 const emailService = require('../services/emailService');
 const auth = require('../middleware/auth');
+const ActivityLogger = require('../utils/activityLogger');
 const router = express.Router();
 
 // Test email endpoint
@@ -356,6 +360,48 @@ router.post('/', auth, validateReferral, async (req, res) => {
       // Don't fail the referral creation if email fails
     }
 
+    // Log referral creation activity
+    try {
+      let currentUser = null;
+      let clinicName = 'Unknown Clinic';
+      
+      if (req.user.role === 'clinic') {
+        currentUser = await Clinic.findById(req.user.id);
+        clinicName = currentUser?.name || currentUser?.fullName || 'Unknown Clinic';
+      } else if (req.user.role === 'doctor') {
+        currentUser = await Doctor.findById(req.user.id);
+        if (currentUser?.clinicId) {
+          const clinic = await Clinic.findById(currentUser.clinicId);
+          clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+        }
+      } else if (['nurse', 'head_nurse', 'supervisor'].includes(req.user.role)) {
+        currentUser = await Nurse.findById(req.user.id);
+        if (currentUser?.clinicId) {
+          const clinic = await Clinic.findById(currentUser.clinicId);
+          clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+        }
+      }
+
+      if (currentUser) {
+        await ActivityLogger.logReferralActivity(
+          'referral_created',
+          referral,
+          patient,
+          {
+            id: currentUser._id,
+            fullName: currentUser.fullName || currentUser.name,
+            email: currentUser.email || currentUser.adminEmail,
+            role: req.user.role,
+            clinicId: req.user.role === 'clinic' ? req.user.id : (currentUser.clinicId || req.user.id)
+          },
+          req,
+          clinicName
+        );
+      }
+    } catch (logError) {
+      console.error('Failed to log referral creation:', logError);
+    }
+
     res.status(201).json({
       message: 'Referral created successfully',
       referral: populatedReferral
@@ -501,6 +547,50 @@ router.patch('/:id/status', auth, async (req, res) => {
     const updatedReferral = await Referral.findById(req.params.id)
       .populate('patientId', 'fullName phone email')
       .populate('referredBy', 'fullName specialty phone email');
+
+    // Log referral completion activity if status is Completed
+    if (status === 'Completed') {
+      try {
+        let currentUser = null;
+        let clinicName = 'Unknown Clinic';
+        
+        if (req.user.role === 'clinic') {
+          currentUser = await Clinic.findById(req.user.id);
+          clinicName = currentUser?.name || currentUser?.fullName || 'Unknown Clinic';
+        } else if (req.user.role === 'doctor') {
+          currentUser = await Doctor.findById(req.user.id);
+          if (currentUser?.clinicId) {
+            const clinic = await Clinic.findById(currentUser.clinicId);
+            clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+          }
+        } else if (['nurse', 'head_nurse', 'supervisor'].includes(req.user.role)) {
+          currentUser = await Nurse.findById(req.user.id);
+          if (currentUser?.clinicId) {
+            const clinic = await Clinic.findById(currentUser.clinicId);
+            clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+          }
+        }
+
+        if (currentUser) {
+          await ActivityLogger.logReferralActivity(
+            'referral_completed',
+            updatedReferral,
+            updatedReferral.patientId,
+            {
+              id: currentUser._id,
+              fullName: currentUser.fullName || currentUser.name,
+              email: currentUser.email || currentUser.adminEmail,
+              role: req.user.role,
+              clinicId: req.user.role === 'clinic' ? req.user.id : (currentUser.clinicId || req.user.id)
+            },
+            req,
+            clinicName
+          );
+        }
+      } catch (logError) {
+        console.error('Failed to log referral completion:', logError);
+      }
+    }
 
     res.json({
       message: 'Referral status updated successfully',

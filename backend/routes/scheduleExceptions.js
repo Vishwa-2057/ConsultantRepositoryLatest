@@ -36,7 +36,7 @@ router.get('/:doctorId', async (req, res) => {
 // Create schedule exception
 router.post('/', async (req, res) => {
   try {
-    const { doctorId, clinicId, date, type, startTime, endTime, reason } = req.body;
+    const { doctorId, clinicId, date, type, startTime, endTime, reason, breaks } = req.body;
     
     if (!doctorId || !clinicId || !date || !type) {
       return res.status(400).json({
@@ -45,11 +45,31 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Validate custom_hours type has times
-    if (type === 'custom_hours' && (!startTime || !endTime)) {
+    // Validate custom_hours and blocked_hours type has times
+    if ((type === 'custom_hours' || type === 'blocked_hours') && (!startTime || !endTime)) {
       return res.status(400).json({
         success: false,
-        message: 'Start time and end time are required for custom hours'
+        message: 'Start time and end time are required for custom hours and blocked hours'
+      });
+    }
+
+    // Check if an exception already exists for this doctor on this date
+    const exceptionDate = new Date(date);
+    exceptionDate.setHours(0, 0, 0, 0);
+    
+    const existingException = await ScheduleException.findOne({
+      doctorId,
+      date: {
+        $gte: exceptionDate,
+        $lt: new Date(exceptionDate.getTime() + 24 * 60 * 60 * 1000)
+      },
+      isActive: true
+    });
+
+    if (existingException) {
+      return res.status(400).json({
+        success: false,
+        message: 'An exception already exists for this date. Please delete the existing exception first or choose a different date.'
       });
     }
 
@@ -60,6 +80,7 @@ router.post('/', async (req, res) => {
       type,
       startTime,
       endTime,
+      breaks: breaks || [],
       reason,
       isActive: true
     });

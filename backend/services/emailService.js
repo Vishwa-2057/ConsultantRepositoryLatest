@@ -970,15 +970,15 @@ This is an automated message from Healthcare Management System. Please do not re
     <body>
         <div class="container">
             <div class="header">
-                <div class="logo">🏥 Healthcare System</div>
+                <div class="logo">Healthcare System</div>
                 <h2 style="color: #e74c3c; margin: 0;">Password Reset Request</h2>
             </div>
             
-            <p>Hello <strong>${userName}</strong>,</p>
+            <p>Dear <strong>${userName}</strong>,</p>
             
-            <p>We received a request to reset your password for your Healthcare Management System account.</p>
+            <p>We have received a request to reset the password for your Healthcare Management System account.</p>
             
-            <p>Use the following verification code to reset your password:</p>
+            <p>Please use the following verification code to complete your password reset:</p>
             
             <table width="100%" cellpadding="0" cellspacing="0" style="margin: 30px 0;">
               <tr>
@@ -995,15 +995,16 @@ This is an automated message from Healthcare Management System. Please do not re
             </p>
             
             <div class="warning">
-                <strong>⚠️ Security Notice:</strong>
+                <strong>Security Notice:</strong>
                 <ul style="margin: 10px 0; padding-left: 20px;">
                     <li>This code will expire in <strong>10 minutes</strong></li>
                     <li>Never share this code with anyone</li>
-                    <li>If you didn't request this reset, please ignore this email</li>
+                    <li>Our support team will never ask for this code</li>
+                    <li>If you didn't request this reset, please ignore this email and contact support immediately</li>
                 </ul>
             </div>
             
-            <p>If you didn't request a password reset, please ignore this email or contact support if you have concerns.</p>
+            <p>If you did not initiate this password reset request, please disregard this email. However, if you have concerns about your account security, we recommend contacting our support team immediately.</p>
             
             <div class="footer">
                 <p>This is an automated message from Healthcare Management System.</p>
@@ -1019,20 +1020,21 @@ This is an automated message from Healthcare Management System. Please do not re
     return `
 Healthcare Management System - Password Reset Request
 
-Hello ${userName},
+Dear ${userName},
 
-We received a request to reset your password for your Healthcare Management System account.
+We have received a request to reset the password for your Healthcare Management System account.
 
 Your password reset verification code is: ${otpCode}
 
 SECURITY NOTICE:
-- This code will expire in 5 minutes
+- This code will expire in 10 minutes
 - Never share this code with anyone
-- If you didn't request this reset, please ignore this email
+- Our support team will never ask for this code
+- If you didn't request this reset, please ignore this email and contact support immediately
 
-If you didn't request a password reset, please ignore this email or contact support if you have concerns.
+If you did not initiate this password reset request, please disregard this email. However, if you have concerns about your account security, we recommend contacting our support team immediately.
 
-This is an automated message from Healthcare Management System.
+This is an automated message from Healthcare Management System. Please do not reply to this email.
 © ${new Date().getFullYear()} Healthcare Management System. All rights reserved.
     `;
   }

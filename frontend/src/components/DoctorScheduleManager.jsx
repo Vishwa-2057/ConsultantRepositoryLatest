@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { doctorAvailabilityAPI, scheduleExceptionAPI } from "@/services/api";
 import { Calendar, Clock, Plus, X, Save, Trash2, AlertCircle, CalendarOff, Loader2 } from "lucide-react";
@@ -42,12 +43,15 @@ const DoctorScheduleManager = ({ doctorId, clinicId }) => {
   // Exceptions state
   const [exceptions, setExceptions] = useState([]);
   const [showExceptionForm, setShowExceptionForm] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [exceptionToDelete, setExceptionToDelete] = useState(null);
   const [exceptionForm, setExceptionForm] = useState({
     date: '',
     type: 'unavailable',
     startTime: '09:00',
     endTime: '17:00',
-    reason: ''
+    reason: '',
+    breaks: []
   });
 
   // Bulk exception state
@@ -235,6 +239,22 @@ const DoctorScheduleManager = ({ doctorId, clinicId }) => {
         return;
       }
 
+      // Check if an exception already exists for this date
+      const selectedDate = new Date(exceptionForm.date).toISOString().split('T')[0];
+      const existingException = exceptions.find(ex => {
+        const exDate = new Date(ex.date).toISOString().split('T')[0];
+        return exDate === selectedDate;
+      });
+
+      if (existingException) {
+        toast({
+          title: "Error",
+          description: "An exception already exists for this date. Please delete it first or choose a different date.",
+          variant: "destructive"
+        });
+        return;
+      }
+
       await scheduleExceptionAPI.create({
         doctorId,
         clinicId,
@@ -252,7 +272,8 @@ const DoctorScheduleManager = ({ doctorId, clinicId }) => {
         type: 'unavailable',
         startTime: '09:00',
         endTime: '17:00',
-        reason: ''
+        reason: '',
+        breaks: []
       });
       
       await loadExceptions();
@@ -260,7 +281,7 @@ const DoctorScheduleManager = ({ doctorId, clinicId }) => {
       console.error('Error adding exception:', error);
       toast({
         title: "Error",
-        description: "Failed to add exception",
+        description: error.message || "Failed to add exception",
         variant: "destructive"
       });
     }
@@ -309,9 +330,16 @@ const DoctorScheduleManager = ({ doctorId, clinicId }) => {
     }
   };
 
-  const handleDeleteException = async (id) => {
+  const confirmDeleteException = (exception) => {
+    setExceptionToDelete(exception);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteException = async () => {
+    if (!exceptionToDelete) return;
+    
     try {
-      await scheduleExceptionAPI.delete(id);
+      await scheduleExceptionAPI.delete(exceptionToDelete._id);
       toast({
         title: "Success",
         description: "Exception deleted successfully"
@@ -324,7 +352,34 @@ const DoctorScheduleManager = ({ doctorId, clinicId }) => {
         description: "Failed to delete exception",
         variant: "destructive"
       });
+    } finally {
+      setDeleteDialogOpen(false);
+      setExceptionToDelete(null);
     }
+  };
+
+  // Break management functions
+  const handleAddBreak = () => {
+    setExceptionForm(prev => ({
+      ...prev,
+      breaks: [...prev.breaks, { startTime: '12:00', endTime: '13:00' }]
+    }));
+  };
+
+  const handleRemoveBreak = (index) => {
+    setExceptionForm(prev => ({
+      ...prev,
+      breaks: prev.breaks.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleBreakChange = (index, field, value) => {
+    setExceptionForm(prev => ({
+      ...prev,
+      breaks: prev.breaks.map((breakItem, i) => 
+        i === index ? { ...breakItem, [field]: value } : breakItem
+      )
+    }));
   };
 
   if (loading) {
@@ -350,11 +405,11 @@ const DoctorScheduleManager = ({ doctorId, clinicId }) => {
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Slot Duration Setting */}
-          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="p-4 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-lg">
             <div className="flex items-center justify-between">
               <div>
-                <Label className="font-medium text-blue-900">Appointment Slot Duration</Label>
-                <p className="text-sm text-blue-700 mt-1">
+                <Label className="font-medium text-blue-900 dark:text-blue-100">Appointment Slot Duration</Label>
+                <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
                   Time slots will be created in {slotDuration}-minute intervals
                 </p>
               </div>
@@ -377,7 +432,7 @@ const DoctorScheduleManager = ({ doctorId, clinicId }) => {
           </div>
 
           {schedule.map((day) => (
-            <div key={day.dayOfWeek} className="p-4 border rounded-lg space-y-3">
+            <div key={day.dayOfWeek} className="p-4 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 rounded-lg space-y-3">
               <div className="flex items-center gap-3">
                 <Switch
                   checked={day.enabled}
@@ -385,7 +440,7 @@ const DoctorScheduleManager = ({ doctorId, clinicId }) => {
                     handleScheduleChange(day.dayOfWeek, 'enabled', checked)
                   }
                 />
-                <Label className="font-medium w-28">{day.dayLabel}</Label>
+                <Label className="font-medium w-28 text-gray-900 dark:text-white">{day.dayLabel}</Label>
                 
                 {!day.enabled && (
                   <span className="text-sm text-muted-foreground">
@@ -399,8 +454,8 @@ const DoctorScheduleManager = ({ doctorId, clinicId }) => {
                   {day.slots.map((slot, slotIndex) => (
                     <div key={slotIndex}>
                       <div className="flex items-center gap-6">
-                        <Badge variant="secondary" className="w-20 justify-center">
-                          Slot {slotIndex + 1}
+                        <Badge variant="secondary" className="w-32 justify-center bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100">
+                          Work Period {slotIndex + 1}
                         </Badge>
                         <div className="flex items-center gap-3">
                           <Label className="text-sm text-muted-foreground">From</Label>
@@ -437,11 +492,11 @@ const DoctorScheduleManager = ({ doctorId, clinicId }) => {
                       {/* Show break indicator between slots */}
                       {slotIndex < day.slots.length - 1 && day.slots[slotIndex + 1] && (
                         <div className="flex items-center gap-2 ml-24 mt-1 mb-1">
-                          <div className="h-px w-8 bg-amber-300"></div>
-                          <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-300">
+                          <div className="h-px w-8 bg-amber-300 dark:bg-amber-600"></div>
+                          <Badge variant="outline" className="text-xs bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">
                             Break: {slot.endTime} - {day.slots[slotIndex + 1].startTime}
                           </Badge>
-                          <div className="h-px flex-1 bg-amber-300"></div>
+                          <div className="h-px flex-1 bg-amber-300 dark:bg-amber-600"></div>
                         </div>
                       )}
                     </div>
@@ -519,8 +574,8 @@ const DoctorScheduleManager = ({ doctorId, clinicId }) => {
         <CardContent className="space-y-4">
           {/* Bulk Exception Form */}
           {showBulkException && (
-            <div className="p-4 border rounded-lg bg-blue-50 space-y-3">
-              <h4 className="font-medium flex items-center gap-2">
+            <div className="p-4 border border-blue-200 dark:border-blue-800 rounded-lg bg-blue-50 dark:bg-blue-950/40 space-y-3">
+              <h4 className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
                 <Calendar className="w-4 h-4" />
                 Add Vacation/Time Off Period
               </h4>
@@ -578,8 +633,8 @@ const DoctorScheduleManager = ({ doctorId, clinicId }) => {
 
           {/* Single Exception Form */}
           {showExceptionForm && (
-            <div className="p-4 border rounded-lg bg-amber-50 space-y-3">
-              <h4 className="font-medium flex items-center gap-2">
+            <div className="p-4 border border-amber-200 dark:border-amber-800 rounded-lg bg-amber-50 dark:bg-amber-950/30 space-y-3">
+              <h4 className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
                 <AlertCircle className="w-4 h-4" />
                 Add Single Exception
               </h4>
@@ -595,9 +650,16 @@ const DoctorScheduleManager = ({ doctorId, clinicId }) => {
                       date: e.target.value
                     }))}
                   />
+                  {exceptionForm.date && exceptions.find(ex => 
+                    new Date(ex.date).toISOString().split('T')[0] === exceptionForm.date
+                  ) && (
+                    <p className="text-xs text-red-600 font-medium">
+                      ⚠️ This date already has an exception
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
-                  <Label>Type</Label>
+                  <Label>Exception Type</Label>
                   <Select
                     value={exceptionForm.type}
                     onValueChange={(value) => setExceptionForm(prev => ({
@@ -609,17 +671,35 @@ const DoctorScheduleManager = ({ doctorId, clinicId }) => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="unavailable">Unavailable</SelectItem>
-                      <SelectItem value="custom_hours">Custom Hours</SelectItem>
+                      <SelectItem value="unavailable">Unavailable (Block All Day)</SelectItem>
+                      <SelectItem value="blocked_hours">Block Specific Hours</SelectItem>
+                      <SelectItem value="custom_hours">Custom Hours (Override Schedule)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
               
-              {exceptionForm.type === 'custom_hours' && (
+              {/* Info message based on type */}
+              <div className={`p-3 rounded-md text-sm border ${
+                exceptionForm.type === 'unavailable' ? 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800' : 
+                exceptionForm.type === 'blocked_hours' ? 'bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800' :
+                'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800'
+              }`}>
+                {exceptionForm.type === 'unavailable' ? (
+                  <p><strong>Unavailable:</strong> No appointment slots will be available on this date. The entire day will be blocked.</p>
+                ) : exceptionForm.type === 'blocked_hours' ? (
+                  <p><strong>Block Specific Hours:</strong> The time range you specify will be blocked (unavailable). Slots outside this range will remain available according to the regular schedule.</p>
+                ) : (
+                  <p><strong>Custom Hours:</strong> The regular schedule for this date will be completely replaced. Only slots within the custom hours you specify will be available.</p>
+                )}
+              </div>
+              
+              {(exceptionForm.type === 'custom_hours' || exceptionForm.type === 'blocked_hours') && (
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
-                    <Label>Start Time</Label>
+                    <Label>
+                      {exceptionForm.type === 'blocked_hours' ? 'Block From' : 'Start Time'}
+                    </Label>
                     <Input
                       type="time"
                       value={exceptionForm.startTime}
@@ -630,7 +710,9 @@ const DoctorScheduleManager = ({ doctorId, clinicId }) => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>End Time</Label>
+                    <Label>
+                      {exceptionForm.type === 'blocked_hours' ? 'Block Until' : 'End Time'}
+                    </Label>
                     <Input
                       type="time"
                       value={exceptionForm.endTime}
@@ -640,6 +722,64 @@ const DoctorScheduleManager = ({ doctorId, clinicId }) => {
                       }))}
                     />
                   </div>
+                </div>
+              )}
+              
+              {/* Breaks Section - Only for Custom Hours */}
+              {exceptionForm.type === 'custom_hours' && (
+                <div className="space-y-3 p-3 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-semibold">Breaks (Optional)</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleAddBreak}
+                    >
+                      <Plus className="w-3 h-3 mr-1" />
+                      Add Break
+                    </Button>
+                  </div>
+                  
+                  {exceptionForm.breaks.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">No breaks added. Click "Add Break" to add break times.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {exceptionForm.breaks.map((breakItem, index) => (
+                        <div key={index} className="flex items-center gap-2 p-2 bg-white dark:bg-gray-900 rounded border border-gray-200 dark:border-gray-700">
+                          <div className="flex-1 grid grid-cols-2 gap-2">
+                            <div>
+                              <Label className="text-xs">Break Start</Label>
+                              <Input
+                                type="time"
+                                value={breakItem.startTime}
+                                onChange={(e) => handleBreakChange(index, 'startTime', e.target.value)}
+                                className="h-8"
+                              />
+                            </div>
+                            <div>
+                              <Label className="text-xs">Break End</Label>
+                              <Input
+                                type="time"
+                                value={breakItem.endTime}
+                                onChange={(e) => handleBreakChange(index, 'endTime', e.target.value)}
+                                className="h-8"
+                              />
+                            </div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveBreak(index)}
+                            className="h-8 px-2"
+                          >
+                            <X className="w-4 h-4 text-red-500" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
               
@@ -682,12 +822,12 @@ const DoctorScheduleManager = ({ doctorId, clinicId }) => {
               exceptions.map((exception) => (
                 <div
                   key={exception._id}
-                  className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50"
+                  className="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                 >
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4 text-muted-foreground" />
-                      <span className="font-medium">
+                      <span className="font-medium text-gray-900 dark:text-white">
                         {new Date(exception.date).toLocaleDateString('en-US', {
                           weekday: 'long',
                           year: 'numeric',
@@ -695,25 +835,54 @@ const DoctorScheduleManager = ({ doctorId, clinicId }) => {
                           day: 'numeric'
                         })}
                       </span>
-                      <Badge variant={exception.type === 'unavailable' ? 'destructive' : 'secondary'}>
-                        {exception.type === 'unavailable' ? 'Unavailable' : 'Custom Hours'}
+                      <Badge variant={
+                        exception.type === 'unavailable' ? 'destructive' : 
+                        exception.type === 'blocked_hours' ? 'outline' :
+                        'secondary'
+                      }>
+                        {exception.type === 'unavailable' ? 'Unavailable' : 
+                         exception.type === 'blocked_hours' ? 'Blocked Hours' :
+                         'Custom Hours'}
                       </Badge>
                     </div>
                     {exception.type === 'custom_hours' && (
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {exception.startTime} - {exception.endTime}
+                      <div className="mt-1 space-y-1">
+                        <p className="text-sm text-blue-600 dark:text-blue-400 font-medium">
+                          Override Schedule: {exception.startTime} - {exception.endTime}
+                        </p>
+                        {exception.breaks && exception.breaks.length > 0 && (
+                          <div className="text-xs text-muted-foreground">
+                            <span className="font-medium">Breaks: </span>
+                            {exception.breaks.map((breakItem, idx) => (
+                              <span key={idx}>
+                                {breakItem.startTime} - {breakItem.endTime}
+                                {idx < exception.breaks.length - 1 ? ', ' : ''}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {exception.type === 'blocked_hours' && (
+                      <p className="text-sm text-orange-600 dark:text-orange-400 font-medium mt-1">
+                        Blocked: {exception.startTime} - {exception.endTime}
+                      </p>
+                    )}
+                    {exception.type === 'unavailable' && (
+                      <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                        No slots available on this date
                       </p>
                     )}
                     {exception.reason && (
                       <p className="text-sm text-muted-foreground mt-1">
-                        {exception.reason}
+                        Reason: {exception.reason}
                       </p>
                     )}
                   </div>
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => handleDeleteException(exception._id)}
+                    onClick={() => confirmDeleteException(exception)}
                   >
                     <Trash2 className="w-4 h-4 text-red-500" />
                   </Button>
@@ -723,6 +892,43 @@ const DoctorScheduleManager = ({ doctorId, clinicId }) => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Schedule Exception</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this exception for{' '}
+              <strong>
+                {exceptionToDelete && new Date(exceptionToDelete.date).toLocaleDateString('en-US', {
+                  weekday: 'long',
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                })}
+              </strong>?
+              {exceptionToDelete?.reason && (
+                <span className="block mt-2 text-sm">
+                  Reason: {exceptionToDelete.reason}
+                </span>
+              )}
+              <span className="block mt-2 font-semibold text-destructive">
+                This action cannot be undone.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteException}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete Exception
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

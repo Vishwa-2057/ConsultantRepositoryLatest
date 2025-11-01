@@ -94,17 +94,32 @@ class ActivityLogger {
       if (options.appointmentTime) activityData.appointmentTime = options.appointmentTime;
       if (options.oldStatus) activityData.oldStatus = options.oldStatus;
       if (options.newStatus) activityData.newStatus = options.newStatus;
+      
+      // Add new activity-specific fields
+      if (options.prescriptionId) activityData.prescriptionId = new mongoose.Types.ObjectId(options.prescriptionId);
+      if (options.nurseId) activityData.nurseId = new mongoose.Types.ObjectId(options.nurseId);
+      if (options.nurseName) activityData.nurseName = options.nurseName;
+      if (options.teleconsultationId) activityData.teleconsultationId = new mongoose.Types.ObjectId(options.teleconsultationId);
+      if (options.invoiceId) activityData.invoiceId = new mongoose.Types.ObjectId(options.invoiceId);
+      if (options.invoiceAmount) activityData.invoiceAmount = options.invoiceAmount;
+      if (options.referralId) activityData.referralId = new mongoose.Types.ObjectId(options.referralId);
+      if (options.referralType) activityData.referralType = options.referralType;
+      if (options.targetEntity) activityData.targetEntity = options.targetEntity;
+      if (options.targetEntityId) activityData.targetEntityId = new mongoose.Types.ObjectId(options.targetEntityId);
 
       // Don't include the req object or any other complex objects
 
       // Save to database
-      const log = await ActivityLog.logActivity(activityData);
+      console.log('Attempting to save activity log:', { activityType, userName, clinicName });
+      const log = new ActivityLog(activityData);
+      await log.save();
       
-      console.log(`Activity logged: ${activityType} for user ${userName} (${userEmail}) at ${clinicName}`);
+      console.log(`✓ Activity logged successfully: ${activityType} for user ${userName} (${userEmail}) at ${clinicName}`);
       
       return log;
     } catch (error) {
-      console.error('Error logging activity:', error);
+      console.error('✗ Error logging activity:', error);
+      console.error('Activity data that failed:', activityData);
       // Don't throw error to avoid breaking the main flow
       return null;
     }
@@ -399,6 +414,111 @@ class ActivityLogger {
       os,
       device
     };
+  }
+
+  /**
+   * Helper method to log prescription activities
+   */
+  static async logPrescriptionActivity(activityType, prescription, patient, doctor, user, req, clinicName) {
+    return this.logActivity({
+      userId: user.id || user._id,
+      userName: user.fullName || user.name,
+      userEmail: user.email,
+      userRole: user.role,
+      clinicId: prescription.clinicId || user.clinicId,
+      clinicName,
+      activityType,
+      req,
+      prescriptionId: prescription._id,
+      patientId: patient._id,
+      patientName: patient.fullName,
+      doctorId: doctor._id,
+      doctorName: doctor.fullName,
+      notes: `Prescription ${activityType.replace('prescription_', '')} for ${patient.fullName}`
+    });
+  }
+
+  /**
+   * Helper method to log doctor/nurse management activities
+   */
+  static async logStaffActivity(activityType, targetEntity, user, req, clinicName) {
+    return this.logActivity({
+      userId: user.id || user._id,
+      userName: user.fullName || user.name,
+      userEmail: user.email,
+      userRole: user.role,
+      clinicId: user.clinicId || user._id,
+      clinicName,
+      activityType,
+      req,
+      targetEntity: targetEntity.fullName,
+      targetEntityId: targetEntity._id,
+      notes: `${activityType.replace('_', ' ')} - ${targetEntity.fullName}`
+    });
+  }
+
+  /**
+   * Helper method to log teleconsultation activities
+   */
+  static async logTeleconsultationActivity(activityType, teleconsultation, patient, doctor, user, req, clinicName) {
+    return this.logActivity({
+      userId: user.id || user._id,
+      userName: user.fullName || user.name,
+      userEmail: user.email,
+      userRole: user.role,
+      clinicId: teleconsultation.clinicId || user.clinicId,
+      clinicName,
+      activityType,
+      req,
+      teleconsultationId: teleconsultation._id,
+      patientId: patient._id,
+      patientName: patient.fullName || patient.name,
+      doctorId: doctor._id,
+      doctorName: doctor.fullName,
+      notes: `Teleconsultation ${activityType.replace('teleconsultation_', '')} for ${patient.fullName || patient.name}`
+    });
+  }
+
+  /**
+   * Helper method to log invoice activities
+   */
+  static async logInvoiceActivity(activityType, invoice, patient, user, req, clinicName) {
+    return this.logActivity({
+      userId: user.id || user._id,
+      userName: user.fullName || user.name,
+      userEmail: user.email,
+      userRole: user.role,
+      clinicId: invoice.clinicId || user.clinicId,
+      clinicName,
+      activityType,
+      req,
+      invoiceId: invoice._id,
+      invoiceAmount: invoice.totalAmount,
+      patientId: patient._id,
+      patientName: patient.fullName,
+      notes: `Invoice ${activityType.replace('invoice_', '')} - Amount: ${invoice.totalAmount} for ${patient.fullName}`
+    });
+  }
+
+  /**
+   * Helper method to log referral activities
+   */
+  static async logReferralActivity(activityType, referral, patient, user, req, clinicName) {
+    return this.logActivity({
+      userId: user.id || user._id,
+      userName: user.fullName || user.name,
+      userEmail: user.email,
+      userRole: user.role,
+      clinicId: referral.clinicId || user.clinicId,
+      clinicName,
+      activityType,
+      req,
+      referralId: referral._id,
+      referralType: referral.referralType,
+      patientId: patient._id,
+      patientName: patient.fullName || patient.name,
+      notes: `${referral.referralType} referral ${activityType.replace('referral_', '')} for ${patient.fullName || patient.name}`
+    });
   }
 }
 

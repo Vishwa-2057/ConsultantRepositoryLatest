@@ -673,9 +673,13 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
                       value={medication.instructions}
                       onChange={(e) => handleMedicationChange(index, 'instructions', e.target.value)}
                       placeholder="e.g., Take after meals"
+                      className={errors[`medication_${index}_instructions`] ? "border-red-500" : ""}
                       rows={2}
                       disabled={loading}
                     />
+                    {errors[`medication_${index}_instructions`] && (
+                      <p className="text-sm text-red-500">{errors[`medication_${index}_instructions`]}</p>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -692,8 +696,10 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
                 min={new Date().toISOString().split('T')[0]}
                 value={formData.followUpDate}
                 onChange={(e) => handleInputChange('followUpDate', e.target.value)}
+                className={errors.followUpDate ? "border-red-500" : ""}
                 disabled={loading}
               />
+              {errors.followUpDate && <p className="text-sm text-red-500">{errors.followUpDate}</p>}
             </div>
 
             <div className="space-y-2">
@@ -703,9 +709,11 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
                 value={formData.notes}
                 onChange={(e) => handleInputChange('notes', e.target.value)}
                 placeholder="Additional notes..."
+                className={errors.notes ? "border-red-500" : ""}
                 rows={3}
                 disabled={loading}
               />
+              {errors.notes && <p className="text-sm text-red-500">{errors.notes}</p>}
             </div>
           </div>
 
@@ -716,9 +724,11 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
               value={formData.followUpInstructions}
               onChange={(e) => handleInputChange('followUpInstructions', e.target.value)}
               placeholder="Instructions for follow-up visit..."
+              className={errors.followUpInstructions ? "border-red-500" : ""}
               rows={2}
               disabled={loading}
             />
+            {errors.followUpInstructions && <p className="text-sm text-red-500">{errors.followUpInstructions}</p>}
           </div>
 
           {/* Form Actions */}

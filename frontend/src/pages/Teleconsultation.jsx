@@ -50,6 +50,7 @@ const Teleconsultation = () => {
     return saved ? parseInt(saved) : 10;
   });
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Format consultation data for display
   const formatConsultationForDisplay = (consultation) => {
@@ -274,6 +275,39 @@ const Teleconsultation = () => {
     setSelectedConsultation(null);
   };
 
+  // Filter consultations based on search query
+  const filteredUpcomingTeleconsultations = upcomingTeleconsultations.filter(teleconsultation => {
+    if (!searchQuery.trim()) return true;
+    const searchLower = searchQuery.toLowerCase();
+    const patientName = (teleconsultation.patientName || teleconsultation.patientId?.fullName || '').toLowerCase();
+    const type = (teleconsultation.type || '').toLowerCase();
+    return patientName.includes(searchLower) || type.includes(searchLower);
+  });
+
+  const filteredTeleconsultationHistory = teleconsultationHistory.filter(teleconsultation => {
+    if (!searchQuery.trim()) return true;
+    const searchLower = searchQuery.toLowerCase();
+    const patientName = (teleconsultation.patientName || teleconsultation.patientId?.fullName || '').toLowerCase();
+    const type = (teleconsultation.type || '').toLowerCase();
+    return patientName.includes(searchLower) || type.includes(searchLower);
+  });
+
+  const filteredUpcomingConsultations = upcomingConsultations.filter(consultation => {
+    if (!searchQuery.trim()) return true;
+    const searchLower = searchQuery.toLowerCase();
+    const patientName = (consultation.patientName || consultation.patientId?.fullName || '').toLowerCase();
+    const type = (consultation.appointmentType || consultation.type || '').toLowerCase();
+    return patientName.includes(searchLower) || type.includes(searchLower);
+  });
+
+  const filteredConsultationHistory = consultationHistory.filter(consultation => {
+    if (!searchQuery.trim()) return true;
+    const searchLower = searchQuery.toLowerCase();
+    const patientName = (consultation.patientName || consultation.patientId?.fullName || '').toLowerCase();
+    const type = (consultation.appointmentType || consultation.type || '').toLowerCase();
+    return patientName.includes(searchLower) || type.includes(searchLower);
+  });
+
   return (
     <div className="p-6 space-y-6">
       {/* Search, Stats and Actions - Single Line */}
@@ -283,6 +317,8 @@ const Teleconsultation = () => {
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <input
             placeholder="Search consultations by patient name or type..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10 h-10 w-full bg-white border border-gray-200 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
           />
         </div>
@@ -294,7 +330,7 @@ const Teleconsultation = () => {
               <Video className="w-4 h-4 text-blue-600" />
             </div>
             <span className="text-sm text-blue-600 font-medium">
-              Scheduled: {upcomingTeleconsultations.length || 0}
+              Scheduled: {filteredUpcomingTeleconsultations.length || 0}
             </span>
           </div>
           <div className="flex items-center space-x-2">
@@ -302,7 +338,7 @@ const Teleconsultation = () => {
               <CheckCircle className="w-4 h-4 text-green-600" />
             </div>
             <span className="text-sm text-green-600 font-medium">
-              Completed: {teleconsultationHistory.length || 0}
+              Completed: {filteredTeleconsultationHistory.length || 0}
             </span>
           </div>
         </div>
@@ -317,7 +353,7 @@ const Teleconsultation = () => {
               <h2 className="text-xl font-semibold text-gray-900">Consultations</h2>
               <div className="flex items-center space-x-2">
                 <Badge variant="secondary" className="px-3 py-1 text-sm font-medium bg-blue-100 text-blue-700 border-0">
-                  {(upcomingTeleconsultations.length + upcomingConsultations.length + teleconsultationHistory.length + consultationHistory.length)} Total
+                  {(filteredUpcomingTeleconsultations.length + filteredUpcomingConsultations.length + filteredTeleconsultationHistory.length + filteredConsultationHistory.length)} Total
                 </Badge>
               </div>
             </div>
@@ -353,7 +389,7 @@ const Teleconsultation = () => {
             <div className="flex items-center justify-center h-32">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
             </div>
-          ) : (upcomingConsultations.length === 0 && upcomingTeleconsultations.length === 0 && teleconsultationHistory.length === 0 && consultationHistory.length === 0) ? (
+          ) : (filteredUpcomingTeleconsultations.length === 0 && filteredUpcomingConsultations.length === 0 && filteredTeleconsultationHistory.length === 0 && filteredConsultationHistory.length === 0) ? (
             <div className="flex items-center justify-center h-32">
               <div className="text-center">
                 <Calendar className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
@@ -364,7 +400,7 @@ const Teleconsultation = () => {
           ) : (
             <div className="space-y-2">
               {/* Upcoming Teleconsultations */}
-              {upcomingTeleconsultations.map((teleconsultation) => {
+              {filteredUpcomingTeleconsultations.map((teleconsultation) => {
                 const appointment = formatTeleconsultationForDisplay(teleconsultation);
                 return (
                   <div key={`tele-${appointment.id}`} className="p-4 rounded-lg bg-blue-50 hover:bg-blue-100 transition-all duration-200 border-0">
@@ -456,7 +492,7 @@ const Teleconsultation = () => {
                       Completed Teleconsultations
                     </h3>
                   </div>
-                  {teleconsultationHistory.map((teleconsultation) => {
+                  {filteredTeleconsultationHistory.map((teleconsultation) => {
                     const appointment = formatTeleconsultationForDisplay(teleconsultation);
                     return (
                       <div key={`tele-history-${appointment.id}`} className="p-4 rounded-lg bg-gray-50 hover:bg-gray-100 transition-all duration-200 border-0">

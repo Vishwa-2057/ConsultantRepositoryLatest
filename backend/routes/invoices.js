@@ -4,7 +4,11 @@ const mongoose = require('mongoose');
 const Invoice = require('../models/Invoice');
 const Patient = require('../models/Patient');
 const Revenue = require('../models/Revenue');
+const Doctor = require('../models/Doctor');
+const Clinic = require('../models/Clinic');
+const Nurse = require('../models/Nurse');
 const auth = require('../middleware/auth');
+const ActivityLogger = require('../utils/activityLogger');
 const router = express.Router();
 
 // Helper function to get user's clinic ID
@@ -241,6 +245,48 @@ router.post('/', auth, validateInvoice, async (req, res) => {
     const populatedInvoice = await Invoice.findById(invoice._id)
       .populate('patientId', 'fullName phone email');
 
+    // Log invoice creation activity
+    try {
+      let currentUser = null;
+      let clinicName = 'Unknown Clinic';
+      
+      if (req.user.role === 'clinic') {
+        currentUser = await Clinic.findById(req.user.id);
+        clinicName = currentUser?.name || currentUser?.fullName || 'Unknown Clinic';
+      } else if (req.user.role === 'doctor') {
+        currentUser = await Doctor.findById(req.user.id);
+        if (currentUser?.clinicId) {
+          const clinic = await Clinic.findById(currentUser.clinicId);
+          clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+        }
+      } else if (['nurse', 'head_nurse', 'supervisor'].includes(req.user.role)) {
+        currentUser = await Nurse.findById(req.user.id);
+        if (currentUser?.clinicId) {
+          const clinic = await Clinic.findById(currentUser.clinicId);
+          clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+        }
+      }
+
+      if (currentUser) {
+        await ActivityLogger.logInvoiceActivity(
+          'invoice_created',
+          invoice,
+          patient,
+          {
+            id: currentUser._id,
+            fullName: currentUser.fullName || currentUser.name,
+            email: currentUser.email || currentUser.adminEmail,
+            role: req.user.role,
+            clinicId: req.user.role === 'clinic' ? req.user.id : (currentUser.clinicId || req.user.id)
+          },
+          req,
+          clinicName
+        );
+      }
+    } catch (logError) {
+      console.error('Failed to log invoice creation:', logError);
+    }
+
     res.status(201).json({
       message: 'Invoice created successfully',
       invoice: populatedInvoice
@@ -300,6 +346,48 @@ router.put('/:id', auth, validateInvoice, async (req, res) => {
     )
     .populate('patientId', 'fullName phone email')
     .select('-__v');
+
+    // Log invoice update activity
+    try {
+      let currentUser = null;
+      let clinicName = 'Unknown Clinic';
+      
+      if (req.user.role === 'clinic') {
+        currentUser = await Clinic.findById(req.user.id);
+        clinicName = currentUser?.name || currentUser?.fullName || 'Unknown Clinic';
+      } else if (req.user.role === 'doctor') {
+        currentUser = await Doctor.findById(req.user.id);
+        if (currentUser?.clinicId) {
+          const clinic = await Clinic.findById(currentUser.clinicId);
+          clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+        }
+      } else if (['nurse', 'head_nurse', 'supervisor'].includes(req.user.role)) {
+        currentUser = await Nurse.findById(req.user.id);
+        if (currentUser?.clinicId) {
+          const clinic = await Clinic.findById(currentUser.clinicId);
+          clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+        }
+      }
+
+      if (currentUser) {
+        await ActivityLogger.logInvoiceActivity(
+          'invoice_updated',
+          updatedInvoice,
+          updatedInvoice.patientId,
+          {
+            id: currentUser._id,
+            fullName: currentUser.fullName || currentUser.name,
+            email: currentUser.email || currentUser.adminEmail,
+            role: req.user.role,
+            clinicId: req.user.role === 'clinic' ? req.user.id : (currentUser.clinicId || req.user.id)
+          },
+          req,
+          clinicName
+        );
+      }
+    } catch (logError) {
+      console.error('Failed to log invoice update:', logError);
+    }
 
     res.json({
       message: 'Invoice updated successfully',

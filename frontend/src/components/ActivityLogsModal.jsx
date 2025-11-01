@@ -25,7 +25,13 @@ import {
   Calendar,
   UserPlus,
   FileText,
-  Key
+  Key,
+  Pill,
+  Stethoscope,
+  Heart,
+  Video,
+  Receipt,
+  Send
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { activityLogAPI } from "@/services/api";
@@ -91,6 +97,26 @@ const ActivityLogsModal = ({ isOpen, onClose }) => {
         return <FileText className="w-4 h-4 text-blue-600" />;
       case 'password_reset':
         return <Key className="w-4 h-4 text-purple-600" />;
+      case 'prescription_created':
+      case 'prescription_updated':
+        return <Pill className="w-4 h-4 text-purple-600" />;
+      case 'doctor_created':
+      case 'doctor_activated':
+      case 'doctor_deactivated':
+        return <Stethoscope className="w-4 h-4 text-blue-600" />;
+      case 'nurse_created':
+      case 'nurse_activated':
+      case 'nurse_deactivated':
+        return <Heart className="w-4 h-4 text-pink-600" />;
+      case 'teleconsultation_created':
+      case 'teleconsultation_completed':
+        return <Video className="w-4 h-4 text-indigo-600" />;
+      case 'invoice_created':
+      case 'invoice_updated':
+        return <Receipt className="w-4 h-4 text-green-600" />;
+      case 'referral_created':
+      case 'referral_completed':
+        return <Send className="w-4 h-4 text-orange-600" />;
       default:
         return <Activity className="w-4 h-4 text-gray-600" />;
     }
@@ -214,11 +240,21 @@ const ActivityLogsModal = ({ isOpen, onClose }) => {
               <SelectItem value="all">All Activities</SelectItem>
               <SelectItem value="login">Login</SelectItem>
               <SelectItem value="logout">Logout</SelectItem>
-              <SelectItem value="session_expired">Session Expired</SelectItem>
-              <SelectItem value="forced_logout">Forced Logout</SelectItem>
               <SelectItem value="appointment_created">Appointment Created</SelectItem>
               <SelectItem value="appointment_status_changed">Appointment Status Changed</SelectItem>
-              <SelectItem value="password_reset">Password Reset</SelectItem>
+              <SelectItem value="prescription_created">Prescription Created</SelectItem>
+              <SelectItem value="doctor_created">Doctor Created</SelectItem>
+              <SelectItem value="doctor_activated">Doctor Activated</SelectItem>
+              <SelectItem value="doctor_deactivated">Doctor Deactivated</SelectItem>
+              <SelectItem value="nurse_created">Nurse Created</SelectItem>
+              <SelectItem value="nurse_activated">Nurse Activated</SelectItem>
+              <SelectItem value="nurse_deactivated">Nurse Deactivated</SelectItem>
+              <SelectItem value="teleconsultation_created">Teleconsultation Created</SelectItem>
+              <SelectItem value="teleconsultation_completed">Teleconsultation Completed</SelectItem>
+              <SelectItem value="invoice_created">Invoice Created</SelectItem>
+              <SelectItem value="invoice_updated">Invoice Updated</SelectItem>
+              <SelectItem value="referral_created">Referral Created</SelectItem>
+              <SelectItem value="referral_completed">Referral Completed</SelectItem>
             </SelectContent>
           </Select>
 
@@ -284,6 +320,31 @@ const ActivityLogsModal = ({ isOpen, onClose }) => {
                         {log.activityType === 'appointment_status_changed' && (
                           <span className="ml-1">({log.oldStatus} → {log.newStatus})</span>
                         )}
+                      </span>
+                    )}
+                    {/* Doctor/Nurse info for staff management activities */}
+                    {(log.activityType === 'doctor_created' || log.activityType === 'doctor_activated' || log.activityType === 'doctor_deactivated' ||
+                      log.activityType === 'nurse_created' || log.activityType === 'nurse_activated' || log.activityType === 'nurse_deactivated') && log.targetEntity && (
+                      <span className="text-xs text-purple-600 flex-shrink-0 truncate max-w-[200px]">
+                        → {log.targetEntity}
+                      </span>
+                    )}
+                    {/* Teleconsultation info */}
+                    {(log.activityType === 'teleconsultation_created' || log.activityType === 'teleconsultation_completed') && (
+                      <span className="text-xs text-indigo-600 flex-shrink-0 truncate max-w-[200px]">
+                        {log.patientName} • Dr. {log.doctorName}
+                      </span>
+                    )}
+                    {/* Invoice info */}
+                    {(log.activityType === 'invoice_created' || log.activityType === 'invoice_updated') && (
+                      <span className="text-xs text-green-600 flex-shrink-0 truncate max-w-[200px]">
+                        {log.patientName} • ₹{log.invoiceAmount?.toLocaleString()}
+                      </span>
+                    )}
+                    {/* Referral info */}
+                    {(log.activityType === 'referral_created' || log.activityType === 'referral_completed') && (
+                      <span className="text-xs text-orange-600 flex-shrink-0 truncate max-w-[200px]">
+                        {log.patientName} → Dr. {log.specialistName}
                       </span>
                     )}
                   </div>

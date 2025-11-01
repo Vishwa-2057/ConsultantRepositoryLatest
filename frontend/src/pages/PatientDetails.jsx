@@ -2014,8 +2014,7 @@ const PatientDetails = () => {
           <div className="space-y-6">
             {/* Medical Conditions */}
             <div className="space-y-3">
-              <Label className="text-base font-semibold flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-orange-600" />
+              <Label className="text-base font-semibold">
                 Medical Conditions
               </Label>
               <div className="flex gap-2">
@@ -2051,8 +2050,7 @@ const PatientDetails = () => {
 
             {/* Allergies */}
             <div className="space-y-3">
-              <Label className="text-base font-semibold flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-red-600" />
+              <Label className="text-base font-semibold">
                 Allergies
               </Label>
               <div className="flex gap-2">
@@ -2088,8 +2086,7 @@ const PatientDetails = () => {
 
             {/* Current Medications */}
             <div className="space-y-3">
-              <Label className="text-base font-semibold flex items-center gap-2">
-                <Pill className="w-4 h-4 text-blue-600" />
+              <Label className="text-base font-semibold">
                 Current Medications
               </Label>
               <div className="flex gap-2">
@@ -2125,8 +2122,7 @@ const PatientDetails = () => {
 
             {/* Previous Surgeries */}
             <div className="space-y-3">
-              <Label className="text-base font-semibold flex items-center gap-2">
-                <Activity className="w-4 h-4 text-purple-600" />
+              <Label className="text-base font-semibold">
                 Previous Surgeries
               </Label>
               <div className="flex gap-2">

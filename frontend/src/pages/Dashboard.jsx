@@ -718,7 +718,7 @@ const Dashboard = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <TrendingUp className="w-5 h-5 text-primary" />
-                Appointments Trend (Last 7 Days)
+                Appointment Trends (7 Days)
               </CardTitle>
               <CardDescription>
                 Daily appointment bookings over the past week

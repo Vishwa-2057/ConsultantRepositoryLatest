@@ -769,18 +769,16 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
 
         {/* Submitting Overlay */}
         {submitting && (
-          <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center">
-            <div className="bg-white p-6 rounded-lg shadow-lg border flex items-center gap-3">
-              <div className="w-6 h-6 border-2 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
-              <div>
-                <p className="font-medium text-gray-900">Creating Patient...</p>
-                <p className="text-sm text-gray-600">Please wait while we process your request</p>
-              </div>
+          <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center rounded-lg">
+            <div className="text-center space-y-3">
+              <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
+              <p className="text-lg font-semibold text-gray-900">Creating Patient...</p>
+              <p className="text-sm text-gray-600">Please wait, do not close this window</p>
             </div>
           </div>
         )}
 
-        <div className={`space-y-8 ${submitting ? 'pointer-events-none opacity-50' : ''}`}>
+        <div className="space-y-8">
           {/* Personal Information */}
           <div className="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
             <h3 className="text-xl flex items-center gap-3 mb-6 text-gray-800">
@@ -799,6 +797,7 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                   onBlur={(e) => handleFieldBlur("fullName", e.target.value)}
                   placeholder="Enter full name"
                   className={errors.fullName ? "border-red-500" : ""}
+                  disabled={submitting}
                 />
                 {errors.fullName && <p className="text-sm text-red-500 mt-1">{errors.fullName}</p>}
               </div>
@@ -812,6 +811,7 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                   onChange={(e) => handleInputChange("dateOfBirth", e.target.value)}
                   max={new Date().toISOString().split('T')[0]}
                   className={errors.dateOfBirth ? "border-red-500" : ""}
+                  disabled={submitting}
                 />
                 {errors.dateOfBirth && <p className="text-sm text-red-500 mt-1">{errors.dateOfBirth}</p>}
                 {calculatedAge !== null && (
@@ -823,7 +823,7 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
               
               <div>
                 <Label htmlFor="gender">Gender *</Label>
-                <Select value={formData.gender} onValueChange={(value) => handleInputChange("gender", value)}>
+                <Select value={formData.gender} onValueChange={(value) => handleInputChange("gender", value)} disabled={submitting}>
                   <SelectTrigger className={errors.gender ? "border-red-500" : ""}>
                     <SelectValue placeholder="Select gender" />
                   </SelectTrigger>
@@ -845,13 +845,14 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                   onBlur={(e) => handleFieldBlur("uhid", e.target.value)}
                   placeholder="Enter UHID"
                   className={errors.uhid ? "border-red-500" : ""}
+                  disabled={submitting}
                 />
                 {errors.uhid && <p className="text-sm text-red-500 mt-1">{errors.uhid}</p>}
               </div>
               
               <div>
                 <Label htmlFor="bloodGroup">Blood Group *</Label>
-                <Select value={formData.bloodGroup} onValueChange={(value) => handleInputChange("bloodGroup", value)}>
+                <Select value={formData.bloodGroup} onValueChange={(value) => handleInputChange("bloodGroup", value)} disabled={submitting}>
                   <SelectTrigger className={errors.bloodGroup ? "border-red-500" : ""}>
                     <SelectValue placeholder="Select blood group" />
                   </SelectTrigger>
@@ -878,26 +879,29 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                   onBlur={(e) => handleFieldBlur("occupation", e.target.value)}
                   placeholder="Enter occupation"
                   className={errors.occupation ? "border-red-500" : ""}
+                  disabled={submitting}
                 />
                 {errors.occupation && <p className="text-sm text-red-500 mt-1">{errors.occupation}</p>}
               </div>
               
               <div>
                 <Label htmlFor="maritalStatus">Marital Status</Label>
-                <Select value={formData.maritalStatus} onValueChange={(value) => handleInputChange("maritalStatus", value)}>
+                <Select value={formData.maritalStatus} onValueChange={(value) => handleInputChange("maritalStatus", value)} disabled={submitting}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select marital status" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Single">Single</SelectItem>
                     <SelectItem value="Married">Married</SelectItem>
+                    <SelectItem value="Divorced">Divorced</SelectItem>
+                    <SelectItem value="Widowed">Widowed</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               
               <div>
                 <Label htmlFor="handDominance">Hand Dominance</Label>
-                <Select value={formData.handDominance} onValueChange={(value) => handleInputChange("handDominance", value)}>
+                <Select value={formData.handDominance} onValueChange={(value) => handleInputChange("handDominance", value)} disabled={submitting}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select hand dominance" />
                   </SelectTrigger>
@@ -911,7 +915,7 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
               
               <div>
                 <Label htmlFor="nationality">Nationality</Label>
-                <Select value={formData.nationality} onValueChange={(value) => handleInputChange("nationality", value)}>
+                <Select value={formData.nationality} onValueChange={(value) => handleInputChange("nationality", value)} disabled={submitting}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select nationality" />
                   </SelectTrigger>
@@ -931,17 +935,11 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                   id="aadhaarNumber"
                   value={formData.aadhaarNumber}
                   onChange={(e) => handleInputChange("aadhaarNumber", e.target.value)}
-                  onBlur={(e) => handleFieldBlur("aadhaarNumber", e.target.value)}
                   placeholder="Enter 12-digit Aadhaar number"
-                  className={errors.aadhaarNumber ? "border-red-500" : ""}
                   maxLength={12}
+                  disabled={submitting}
                 />
-                {errors.aadhaarNumber && (
-                  <div className="flex items-center gap-1 mt-1">
-                    <AlertCircle className="w-4 h-4 text-red-500" />
-                    <p className="text-sm text-red-500">{errors.aadhaarNumber}</p>
-                  </div>
-                )}
+                {errors.aadhaarNumber && <p className="text-sm text-red-500 mt-1">{errors.aadhaarNumber}</p>}
               </div>
 
               <div>
@@ -1096,6 +1094,7 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                   placeholder="Enter password (min. 8 chars, uppercase, lowercase, number)"
                   className={errors.password ? "border-red-500" : ""}
                   required
+                  disabled={submitting}
                 />
                 {errors.password && <p className="text-sm text-red-500 mt-1">{errors.password}</p>}
               </div>

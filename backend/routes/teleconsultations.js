@@ -4,8 +4,11 @@ const Teleconsultation = require('../models/Teleconsultation');
 const Appointment = require('../models/Appointment');
 const Patient = require('../models/Patient');
 const Doctor = require('../models/Doctor');
+const Clinic = require('../models/Clinic');
+const Nurse = require('../models/Nurse');
 const jitsiService = require('../services/jitsiService');
 const auth = require('../middleware/auth');
+const ActivityLogger = require('../utils/activityLogger');
 const router = express.Router();
 
 // Validation middleware for teleconsultation creation
@@ -332,6 +335,49 @@ router.post('/', auth, validateTeleconsultation, async (req, res) => {
       moderatorPassword: meeting.moderatorPassword
     });
 
+    // Log teleconsultation creation activity
+    try {
+      let currentUser = null;
+      let clinicName = 'Unknown Clinic';
+      
+      if (req.user.role === 'clinic') {
+        currentUser = await Clinic.findById(req.user.id);
+        clinicName = currentUser?.name || currentUser?.fullName || 'Unknown Clinic';
+      } else if (req.user.role === 'doctor') {
+        currentUser = await Doctor.findById(req.user.id);
+        if (currentUser?.clinicId) {
+          const clinic = await Clinic.findById(currentUser.clinicId);
+          clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+        }
+      } else if (['nurse', 'head_nurse', 'supervisor'].includes(req.user.role)) {
+        currentUser = await Nurse.findById(req.user.id);
+        if (currentUser?.clinicId) {
+          const clinic = await Clinic.findById(currentUser.clinicId);
+          clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+        }
+      }
+
+      if (currentUser) {
+        await ActivityLogger.logTeleconsultationActivity(
+          'teleconsultation_created',
+          teleconsultation,
+          appointment.patientId,
+          appointment.doctorId,
+          {
+            id: currentUser._id,
+            fullName: currentUser.fullName || currentUser.name,
+            email: currentUser.email || currentUser.adminEmail,
+            role: req.user.role,
+            clinicId: req.user.role === 'clinic' ? req.user.id : (currentUser.clinicId || req.user.id)
+          },
+          req,
+          clinicName
+        );
+      }
+    } catch (logError) {
+      console.error('Failed to log teleconsultation creation:', logError);
+    }
+
     res.status(201).json({
       message: 'Teleconsultation created successfully',
       teleconsultation: populatedTeleconsultation,
@@ -471,6 +517,49 @@ router.patch('/:id/end', auth, async (req, res) => {
     const updatedTeleconsultation = await Teleconsultation.findById(teleconsultation._id)
       .populate('patientId', 'fullName phone email')
       .populate('doctorId', 'fullName specialty phone email');
+
+    // Log teleconsultation completion activity
+    try {
+      let currentUser = null;
+      let clinicName = 'Unknown Clinic';
+      
+      if (req.user.role === 'clinic') {
+        currentUser = await Clinic.findById(req.user.id);
+        clinicName = currentUser?.name || currentUser?.fullName || 'Unknown Clinic';
+      } else if (req.user.role === 'doctor') {
+        currentUser = await Doctor.findById(req.user.id);
+        if (currentUser?.clinicId) {
+          const clinic = await Clinic.findById(currentUser.clinicId);
+          clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+        }
+      } else if (req.user.role === 'nurse' || req.user.role === 'head_nurse') {
+        currentUser = await Nurse.findById(req.user.id);
+        if (currentUser?.clinicId) {
+          const clinic = await Clinic.findById(currentUser.clinicId);
+          clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+        }
+      }
+
+      if (currentUser) {
+        await ActivityLogger.logTeleconsultationActivity(
+          'teleconsultation_completed',
+          updatedTeleconsultation,
+          updatedTeleconsultation.patientId,
+          updatedTeleconsultation.doctorId,
+          {
+            id: currentUser._id,
+            fullName: currentUser.fullName || currentUser.name,
+            email: currentUser.email || currentUser.adminEmail,
+            role: req.user.role,
+            clinicId: req.user.role === 'clinic' ? req.user.id : (currentUser.clinicId || req.user.id)
+          },
+          req,
+          clinicName
+        );
+      }
+    } catch (logError) {
+      console.error('Failed to log teleconsultation completion:', logError);
+    }
 
     res.json({
       message: 'Teleconsultation ended successfully',

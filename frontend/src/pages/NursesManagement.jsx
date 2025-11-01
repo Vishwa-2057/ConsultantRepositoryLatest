@@ -21,6 +21,7 @@ import {
   EyeOff,
   Award,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Calendar,
   MapPin,
@@ -65,6 +66,7 @@ const NursesManagement = () => {
     return saved ? parseInt(saved) : 10;
   });
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [statusFilter, setStatusFilter] = useState('all');
   
   const [nurseForm, setNurseForm] = useState({
     fullName: "",
@@ -82,9 +84,20 @@ const NursesManagement = () => {
 
   const { toast } = useToast();
 
-  // Filter nurses based on search query
-  // Use nurses directly since filtering is now done server-side
-  const filteredNurses = nurses;
+  // Filter nurses based on search query and status
+  const filteredNurses = nurses.filter(nurse => {
+    // Status filter
+    if (statusFilter === 'active' && !nurse.isActive) return false;
+    if (statusFilter === 'inactive' && nurse.isActive) return false;
+    return true;
+  });
+
+  // Calculate pagination for filtered results
+  const filteredTotalCount = filteredNurses.length;
+  const filteredTotalPages = Math.ceil(filteredTotalCount / pageSize);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const paginatedNurses = filteredNurses.slice(startIndex, endIndex);
 
   // Load nurses
   const loadNurses = async () => {
@@ -95,26 +108,16 @@ const NursesManagement = () => {
         filters.search = searchQuery.trim();
       }
       
-      const response = await nurseAPI.getAll(currentPage, pageSize, filters);
+      // Load all nurses for client-side pagination and filtering
+      const response = await nurseAPI.getAll(1, 999999, filters);
       if (response.success) {
-        setNurses(response.data || []);
-        const pagination = response.pagination || {};
-        setTotalPages(pagination.totalPages || 1);
-        setTotalCount(pagination.totalCount || response.data?.length || 0);
+        const allNurses = response.data || [];
+        setNurses(allNurses);
+        setTotalCount(allNurses.length);
         
-        // Update active/inactive counts from pagination or calculate from all data
-        if (pagination.activeCount !== undefined && pagination.inactiveCount !== undefined) {
-          setActiveCount(pagination.activeCount);
-          setInactiveCount(pagination.inactiveCount);
-        } else {
-          // Fallback: fetch counts separately or calculate from current data
-          const allNursesResponse = await nurseAPI.getAll(1, 999999, {});
-          if (allNursesResponse.success) {
-            const allNurses = allNursesResponse.data || [];
-            setActiveCount(allNurses.filter(n => n.isActive).length);
-            setInactiveCount(allNurses.filter(n => !n.isActive).length);
-          }
-        }
+        // Calculate active/inactive counts
+        setActiveCount(allNurses.filter(n => n.isActive).length);
+        setInactiveCount(allNurses.filter(n => !n.isActive).length);
       } else {
         toast({
           title: "Error",
@@ -126,7 +129,7 @@ const NursesManagement = () => {
       console.error('Error loading nurses:', error);
       toast({
         title: "Error",
-        description: "Failed to load nurses",
+        description: error.message || "Failed to load nurses",
         variant: "destructive"
       });
     } finally {
@@ -145,14 +148,14 @@ const NursesManagement = () => {
 
   useEffect(() => {
     loadNurses();
-  }, [currentPage, pageSize, searchQuery]);
+  }, [searchQuery]);
 
-  // Reset to page 1 when search query changes
+  // Reset to page 1 when search query or status filter changes
   useEffect(() => {
     if (currentPage !== 1) {
       setCurrentPage(1);
     }
-  }, [searchQuery]);
+  }, [searchQuery, statusFilter]);
 
   // Handle image file selection
   const handleImageSelect = (e) => {
@@ -302,7 +305,7 @@ const NursesManagement = () => {
       console.error('Error adding nurse:', error);
       toast({
         title: "Error",
-        description: "Failed to add nurse",
+        description: error.message || "Failed to add nurse",
         variant: "destructive"
       });
     } finally {
@@ -313,7 +316,7 @@ const NursesManagement = () => {
   // Handle activate nurse
   const handleActivateNurse = async (nurseId, nurseName) => {
     try {
-      const response = await nurseAPI.update(nurseId, { isActive: true });
+      const response = await nurseAPI.activate(nurseId);
       if (response.success) {
         toast({
           title: "Success",
@@ -331,7 +334,7 @@ const NursesManagement = () => {
       console.error('Error activating nurse:', error);
       toast({
         title: "Error",
-        description: "Failed to activate nurse",
+        description: error.message || "Failed to activate nurse",
         variant: "destructive"
       });
     }
@@ -340,7 +343,7 @@ const NursesManagement = () => {
   // Handle deactivate nurse
   const handleDeactivateNurse = async (nurseId, nurseName) => {
     try {
-      const response = await nurseAPI.update(nurseId, { isActive: false });
+      const response = await nurseAPI.deactivate(nurseId);
       if (response.success) {
         toast({
           title: "Success",
@@ -358,7 +361,7 @@ const NursesManagement = () => {
       console.error('Error deactivating nurse:', error);
       toast({
         title: "Error",
-        description: "Failed to deactivate nurse",
+        description: error.message || "Failed to deactivate nurse",
         variant: "destructive"
       });
     }
@@ -417,6 +420,20 @@ const NursesManagement = () => {
           />
         </div>
         
+        {/* Status Filter */}
+        <div className="flex-shrink-0">
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-32 h-10 bg-white border-gray-200 rounded-lg shadow-sm">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="inactive">Inactive</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        
         {/* Stats */}
         <div className="flex items-center space-x-6">
           <div className="flex items-center space-x-2">
@@ -471,7 +488,7 @@ const NursesManagement = () => {
               <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-lg border">
                 <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                 <span className="text-sm font-medium text-gray-700">
-                  {((currentPage - 1) * pageSize) + 1}-{Math.min(currentPage * pageSize, totalCount)} of {totalCount}
+                  {filteredTotalCount > 0 ? ((currentPage - 1) * pageSize) + 1 : 0}-{Math.min(currentPage * pageSize, filteredTotalCount)} of {filteredTotalCount}
                 </span>
               </div>
               <div className="flex items-center gap-2 px-2.5 py-1 bg-white rounded-md border border-gray-200">
@@ -502,12 +519,41 @@ const NursesManagement = () => {
           ) : filteredNurses.length === 0 ? (
             <div className="flex items-center justify-center h-32">
               <p className="text-muted-foreground">
-                {searchQuery ? "No nurses found matching your search." : "No nurses found."}
+                {searchQuery || statusFilter !== 'all' 
+                  ? "No nurses found matching your filters." 
+                  : "No nurses found."}
               </p>
             </div>
           ) : (
             <div className="space-y-2">
-              {filteredNurses.map((nurse) => (
+              {/* Table Headers */}
+              <div className="bg-gray-100 rounded-lg p-4 mb-2">
+                <div className="flex items-center justify-between gap-6">
+                  <div className="w-12 flex-shrink-0">
+                    <span className="text-xs font-semibold text-gray-600 uppercase">Photo</span>
+                  </div>
+                  <div className="w-40 flex-shrink-0">
+                    <span className="text-xs font-semibold text-gray-600 uppercase">Name & UHID</span>
+                  </div>
+                  <div className="w-40 flex-shrink-0">
+                    <span className="text-xs font-semibold text-gray-600 uppercase">Department</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs font-semibold text-gray-600 uppercase">Email</span>
+                  </div>
+                  <div className="w-32 flex-shrink-0">
+                    <span className="text-xs font-semibold text-gray-600 uppercase">Phone</span>
+                  </div>
+                  <div className="w-24 flex-shrink-0">
+                    <span className="text-xs font-semibold text-gray-600 uppercase">Status</span>
+                  </div>
+                  <div className="w-24 flex-shrink-0 text-right">
+                    <span className="text-xs font-semibold text-gray-600 uppercase">Actions</span>
+                  </div>
+                </div>
+              </div>
+              
+              {paginatedNurses.map((nurse) => (
                 <div 
                   key={nurse._id} 
                   className={`bg-gray-50 hover:bg-gray-100 rounded-lg p-4 transition-all duration-200 cursor-pointer ${!nurse.isActive ? 'opacity-75' : ''}`}
@@ -591,32 +637,30 @@ const NursesManagement = () => {
                     </div>
                     
                     {/* Actions - Fixed width */}
-                    <div className="w-24 flex-shrink-0 flex items-center justify-end gap-2">
+                    <div className="w-32 flex-shrink-0 flex items-center justify-end gap-2">
                       {nurse.isActive ? (
                         <Button
                           size="sm"
                           variant="outline"
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-600"
                           onClick={(e) => {
                             e.stopPropagation();
                             handleDeactivateNurse(nurse._id, nurse.fullName);
                           }}
-                          title="Deactivate Nurse"
                         >
-                          <UserX className="w-3 h-3" />
+                          Deactivate
                         </Button>
                       ) : (
                         <Button
                           size="sm"
                           variant="outline"
-                          className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                          className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-600"
                           onClick={(e) => {
                             e.stopPropagation();
                             handleActivateNurse(nurse._id, nurse.fullName);
                           }}
-                          title="Activate Nurse"
                         >
-                          <UserPlus className="w-3 h-3" />
+                          Activate
                         </Button>
                       )}
                     </div>
@@ -629,7 +673,7 @@ const NursesManagement = () => {
       </div>
 
       {/* Page Navigation - Only show when multiple pages */}
-      {totalPages > 1 && (
+      {filteredTotalPages > 1 && (
         <div className="flex justify-center pb-2">
           <div className="flex items-center gap-2 bg-white rounded-xl shadow-sm border border-gray-100 p-2">
             <Button
@@ -653,14 +697,14 @@ const NursesManagement = () => {
             
             {/* Page Numbers */}
             <div className="flex items-center gap-1">
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              {Array.from({ length: Math.min(5, filteredTotalPages) }, (_, i) => {
                 let pageNum;
-                if (totalPages <= 5) {
+                if (filteredTotalPages <= 5) {
                   pageNum = i + 1;
                 } else if (currentPage <= 3) {
                   pageNum = i + 1;
-                } else if (currentPage >= totalPages - 2) {
-                  pageNum = totalPages - 4 + i;
+                } else if (currentPage >= filteredTotalPages - 2) {
+                  pageNum = filteredTotalPages - 4 + i;
                 } else {
                   pageNum = currentPage - 2 + i;
                 }
@@ -682,8 +726,8 @@ const NursesManagement = () => {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, filteredTotalPages))}
+              disabled={currentPage === filteredTotalPages}
               className="h-10 px-4 text-sm bg-white border-gray-200 rounded-lg shadow-sm hover:bg-gray-50"
             >
               <ChevronRight className="w-4 h-4" />
@@ -691,8 +735,8 @@ const NursesManagement = () => {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentPage(totalPages)}
-              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage(filteredTotalPages)}
+              disabled={currentPage === filteredTotalPages}
               className="h-10 px-4 text-sm bg-white border-gray-200 rounded-lg shadow-sm hover:bg-gray-50"
             >
               Last
@@ -704,6 +748,19 @@ const NursesManagement = () => {
       {/* Add Nurse Modal */}
       <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
         <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto">
+          {/* Loading Overlay */}
+          {(submitting || uploadingImage) && (
+            <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center rounded-lg">
+              <div className="text-center space-y-3">
+                <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
+                <p className="text-lg font-semibold text-gray-900">
+                  {uploadingImage ? "Uploading Image..." : "Adding Nurse..."}
+                </p>
+                <p className="text-sm text-gray-600">Please wait, do not close this window</p>
+              </div>
+            </div>
+          )}
+          
           <DialogHeader>
             <DialogTitle>Add New Nurse</DialogTitle>
             <DialogDescription>
@@ -724,6 +781,7 @@ const NursesManagement = () => {
                     onChange={(e) => setNurseForm({...nurseForm, fullName: e.target.value})}
                     placeholder="Nurse Jane Smith"
                     maxLength={100}
+                    disabled={submitting || uploadingImage}
                   />
                 </div>
                 <div>
@@ -735,6 +793,7 @@ const NursesManagement = () => {
                     placeholder="NUR001"
                     maxLength={50}
                     style={{ textTransform: 'uppercase' }}
+                    disabled={submitting || uploadingImage}
                   />
                 </div>
                 <div>
@@ -745,6 +804,7 @@ const NursesManagement = () => {
                     value={nurseForm.email}
                     onChange={(e) => setNurseForm({...nurseForm, email: e.target.value})}
                     placeholder="nurse@hospital.com"
+                    disabled={submitting || uploadingImage}
                   />
                 </div>
                 <div>
@@ -754,6 +814,7 @@ const NursesManagement = () => {
                     value={nurseForm.phone}
                     onChange={(e) => setNurseForm({...nurseForm, phone: e.target.value})}
                     placeholder="+91 98765 43210"
+                    disabled={submitting || uploadingImage}
                   />
                 </div>
               </div>
@@ -788,6 +849,7 @@ const NursesManagement = () => {
                                 });
                               }
                             }}
+                            disabled={submitting || uploadingImage}
                             className="ml-1 hover:text-red-600"
                           >
                             <X className="w-3 h-3" />
@@ -805,6 +867,7 @@ const NursesManagement = () => {
                           role="combobox"
                           aria-expanded={departmentComboboxOpen}
                           className="w-full justify-between"
+                          disabled={submitting || uploadingImage}
                         >
                           Add department...
                           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -853,6 +916,7 @@ const NursesManagement = () => {
                     value={nurseForm.licenseNumber}
                     onChange={(e) => setNurseForm({...nurseForm, licenseNumber: e.target.value})}
                     placeholder="RN123456"
+                    disabled={submitting || uploadingImage}
                   />
                 </div>
                 <div>
@@ -864,6 +928,7 @@ const NursesManagement = () => {
                     value={nurseForm.experience}
                     onChange={(e) => setNurseForm({...nurseForm, experience: parseInt(e.target.value) || 0})}
                     placeholder="0"
+                    disabled={submitting || uploadingImage}
                   />
                 </div>
                 <div>
@@ -875,6 +940,7 @@ const NursesManagement = () => {
                       accept="image/*"
                       onChange={handleImageSelect}
                       className="cursor-pointer"
+                      disabled={submitting || uploadingImage}
                     />
                     {imagePreview && (
                       <div className="flex items-center space-x-3">
@@ -910,6 +976,7 @@ const NursesManagement = () => {
                       value={nurseForm.password}
                       onChange={(e) => setNurseForm({...nurseForm, password: e.target.value})}
                       placeholder="Enter secure password"
+                      disabled={submitting || uploadingImage}
                     />
                     <Button
                       type="button"
@@ -917,6 +984,7 @@ const NursesManagement = () => {
                       size="sm"
                       className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                       onClick={() => setShowPassword(!showPassword)}
+                      disabled={submitting || uploadingImage}
                     >
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </Button>
@@ -927,7 +995,7 @@ const NursesManagement = () => {
           </div>
 
           <DialogFooter className="px-6 pb-6">
-            <Button variant="outline" onClick={() => setIsAddModalOpen(false)}>
+            <Button variant="outline" onClick={() => setIsAddModalOpen(false)} disabled={submitting || uploadingImage}>
               Cancel
             </Button>
             <Button onClick={handleAddNurse} disabled={submitting || uploadingImage}>

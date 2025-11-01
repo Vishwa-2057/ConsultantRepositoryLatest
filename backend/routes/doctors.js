@@ -2,8 +2,11 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
 const Doctor = require('../models/Doctor');
+const Nurse = require('../models/Nurse');
+const Clinic = require('../models/Clinic');
 const auth = require('../middleware/auth');
 const { doctorUpload, deleteFromCloudinary, extractPublicId } = require('../config/cloudinary');
+const ActivityLogger = require('../utils/activityLogger');
 const path = require('path');
 const fs = require('fs');
 const router = express.Router();
@@ -31,7 +34,8 @@ router.get('/', auth, async (req, res) => {
         { fullName: searchRegex },
         { email: searchRegex },
         { specialty: searchRegex },
-        { uhid: searchRegex }
+        { uhid: searchRegex },
+        { phone: searchRegex }
       ];
     }
     
@@ -105,7 +109,10 @@ router.get('/search', auth, async (req, res) => {
     const query = {
       $or: [
         { fullName: { $regex: q, $options: 'i' } },
-        { specialty: { $regex: q, $options: 'i' } }
+        { specialty: { $regex: q, $options: 'i' } },
+        { phone: { $regex: q, $options: 'i' } },
+        { email: { $regex: q, $options: 'i' } },
+        { uhid: { $regex: q, $options: 'i' } }
       ]
     };
     if (req.user.role === 'clinic') {
@@ -302,6 +309,49 @@ router.post('/create-with-image', auth, validateDoctor, async (req, res) => {
 
     await doctor.save();
 
+    // Log doctor creation activity
+    try {
+      let currentUser = null;
+      let clinicName = 'Unknown Clinic';
+      
+      // Try to find user based on role
+      if (req.user.role === 'clinic') {
+        currentUser = await Clinic.findById(req.user.id);
+        clinicName = currentUser?.name || currentUser?.fullName || 'Unknown Clinic';
+      } else if (req.user.role === 'doctor') {
+        currentUser = await Doctor.findById(req.user.id);
+        if (currentUser?.clinicId) {
+          const clinic = await Clinic.findById(currentUser.clinicId);
+          clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+        }
+      } else if (req.user.role === 'nurse' || req.user.role === 'head_nurse') {
+        currentUser = await Nurse.findById(req.user.id);
+        if (currentUser?.clinicId) {
+          const clinic = await Clinic.findById(currentUser.clinicId);
+          clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+        }
+      }
+
+      if (currentUser) {
+        await ActivityLogger.logStaffActivity(
+          'doctor_created',
+          doctor,
+          {
+            id: currentUser._id,
+            fullName: currentUser.fullName || currentUser.name,
+            email: currentUser.email || currentUser.adminEmail,
+            role: req.user.role,
+            clinicId: req.user.role === 'clinic' ? req.user.id : (currentUser.clinicId || req.user.id)
+          },
+          req,
+          clinicName
+        );
+      }
+    } catch (logError) {
+      console.error('Failed to log doctor creation:', logError);
+      // Don't fail the doctor creation if logging fails
+    }
+
     // Return doctor without password hash
     const doctorResponse = {
       _id: doctor._id,
@@ -410,6 +460,49 @@ router.post('/', auth, doctorUpload.single('profileImage'), validateDoctor, asyn
     });
 
     await doctor.save();
+
+    // Log activity
+    try {
+      let currentUser = null;
+      let clinicName = 'Unknown Clinic';
+      
+      // Try to find user based on role
+      if (req.user.role === 'clinic') {
+        currentUser = await Clinic.findById(req.user.id);
+        clinicName = currentUser?.name || currentUser?.fullName || 'Unknown Clinic';
+      } else if (req.user.role === 'doctor') {
+        currentUser = await Doctor.findById(req.user.id);
+        if (currentUser?.clinicId) {
+          const clinic = await Clinic.findById(currentUser.clinicId);
+          clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+        }
+      } else if (req.user.role === 'nurse' || req.user.role === 'head_nurse') {
+        currentUser = await Nurse.findById(req.user.id);
+        if (currentUser?.clinicId) {
+          const clinic = await Clinic.findById(currentUser.clinicId);
+          clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+        }
+      }
+
+      if (currentUser) {
+        await ActivityLogger.logStaffActivity(
+          'doctor_created',
+          doctor,
+          {
+            id: currentUser._id,
+            fullName: currentUser.fullName || currentUser.name,
+            email: currentUser.email || currentUser.adminEmail,
+            role: req.user.role,
+            clinicId: req.user.role === 'clinic' ? req.user.id : (currentUser.clinicId || req.user.id)
+          },
+          req,
+          clinicName
+        );
+      }
+    } catch (logError) {
+      console.error('Failed to log doctor creation:', logError);
+      // Don't fail the doctor creation if logging fails
+    }
 
     // Return doctor without password hash
     const doctorResponse = {
@@ -557,6 +650,60 @@ router.patch('/:id/activate', auth, async (req, res) => {
       });
     }
 
+    // Log doctor activation activity
+    try {
+      console.log('🔍 Starting doctor activation logging...');
+      console.log('   User ID:', req.user.id);
+      console.log('   User Role:', req.user.role);
+      
+      let currentUser = null;
+      let clinicName = 'Unknown Clinic';
+      
+      // Try to find user based on role
+      if (req.user.role === 'clinic') {
+        currentUser = await Clinic.findById(req.user.id);
+        clinicName = currentUser?.name || currentUser?.fullName || 'Unknown Clinic';
+        console.log('   Found clinic user:', currentUser?.name);
+      } else if (req.user.role === 'doctor') {
+        currentUser = await Doctor.findById(req.user.id);
+        if (currentUser?.clinicId) {
+          const clinic = await Clinic.findById(currentUser.clinicId);
+          clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+        }
+        console.log('   Found doctor user:', currentUser?.fullName);
+      } else if (req.user.role === 'nurse' || req.user.role === 'head_nurse') {
+        currentUser = await Nurse.findById(req.user.id);
+        if (currentUser?.clinicId) {
+          const clinic = await Clinic.findById(currentUser.clinicId);
+          clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+        }
+        console.log('   Found nurse user:', currentUser?.fullName);
+      }
+
+      if (currentUser) {
+        console.log('   Calling ActivityLogger.logStaffActivity...');
+        const result = await ActivityLogger.logStaffActivity(
+          'doctor_activated',
+          doctor,
+          {
+            id: currentUser._id,
+            fullName: currentUser.fullName || currentUser.name,
+            email: currentUser.email || currentUser.adminEmail,
+            role: req.user.role,
+            clinicId: req.user.role === 'clinic' ? req.user.id : (currentUser.clinicId || req.user.id)
+          },
+          req,
+          clinicName
+        );
+        console.log('   ✅ Activity log result:', result ? 'Success' : 'Failed');
+      } else {
+        console.log('   ❌ Current user not found!');
+      }
+    } catch (logError) {
+      console.error('❌ Failed to log doctor activation:', logError);
+      console.error('   Error stack:', logError.stack);
+    }
+
     res.json({
       success: true,
       message: 'Doctor activated successfully',
@@ -592,6 +739,48 @@ router.patch('/:id/deactivate', auth, async (req, res) => {
         success: false,
         message: 'Doctor not found'
       });
+    }
+
+    // Log doctor deactivation activity
+    try {
+      let currentUser = null;
+      let clinicName = 'Unknown Clinic';
+      
+      // Try to find user based on role
+      if (req.user.role === 'clinic') {
+        currentUser = await Clinic.findById(req.user.id);
+        clinicName = currentUser?.name || currentUser?.fullName || 'Unknown Clinic';
+      } else if (req.user.role === 'doctor') {
+        currentUser = await Doctor.findById(req.user.id);
+        if (currentUser?.clinicId) {
+          const clinic = await Clinic.findById(currentUser.clinicId);
+          clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+        }
+      } else if (req.user.role === 'nurse' || req.user.role === 'head_nurse') {
+        currentUser = await Nurse.findById(req.user.id);
+        if (currentUser?.clinicId) {
+          const clinic = await Clinic.findById(currentUser.clinicId);
+          clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+        }
+      }
+
+      if (currentUser) {
+        await ActivityLogger.logStaffActivity(
+          'doctor_deactivated',
+          doctor,
+          {
+            id: currentUser._id,
+            fullName: currentUser.fullName || currentUser.name,
+            email: currentUser.email || currentUser.adminEmail,
+            role: req.user.role,
+            clinicId: req.user.role === 'clinic' ? req.user.id : (currentUser.clinicId || req.user.id)
+          },
+          req,
+          clinicName
+        );
+      }
+    } catch (logError) {
+      console.error('Failed to log doctor deactivation:', logError);
     }
 
     res.json({

@@ -146,7 +146,10 @@ router.get('/', auth, requireClinicAdmin, async (req, res) => {
     if (endDate) options.endDate = endDate;
 
     // Get logs for the clinic
+    console.log('🔍 Fetching activity logs for clinic:', clinicId);
+    console.log('   Options:', options);
     const logs = await ActivityLog.getClinicLogs(clinicId, options);
+    console.log('   Found logs:', logs.length);
 
     // Get total count for pagination
     const countQuery = { clinicId };

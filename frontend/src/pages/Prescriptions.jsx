@@ -30,7 +30,8 @@ import {
   XCircle,
   AlertTriangle,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  ChevronLeft
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { prescriptionAPI } from "@/services/api";
@@ -41,7 +42,6 @@ const Prescriptions = () => {
   const [prescriptions, setPrescriptions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [expandedPrescriptions, setExpandedPrescriptions] = useState(new Set());
   const [stats, setStats] = useState({
     totalPrescriptions: 0,
@@ -74,9 +74,6 @@ const Prescriptions = () => {
       const filters = {};
       if (searchTerm.trim()) {
         filters.search = searchTerm.trim();
-      }
-      if (statusFilter !== 'all') {
-        filters.status = statusFilter;
       }
       
       const response = await prescriptionAPI.getAll(currentPage, pageSize, filters);
@@ -177,14 +174,14 @@ const Prescriptions = () => {
 
   useEffect(() => {
     loadPrescriptions();
-  }, [currentPage, pageSize, searchTerm, statusFilter]);
+  }, [currentPage, pageSize, searchTerm]);
 
-  // Reset to page 1 when search term or status filter changes
+  // Reset to page 1 when search term changes
   useEffect(() => {
     if (currentPage !== 1) {
       setCurrentPage(1);
     }
-  }, [searchTerm, statusFilter]);
+  }, [searchTerm]);
 
   // Handle actions
   const handleCreatePrescription = () => {
@@ -323,20 +320,8 @@ const Prescriptions = () => {
           </div>
         </div>
         
-        {/* Filters and Actions */}
+        {/* Actions */}
         <div className="flex items-center gap-3">
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-32 h-10 text-sm bg-white border-gray-200 rounded-lg shadow-sm">
-              <SelectValue placeholder="All Status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="Active">Active</SelectItem>
-              <SelectItem value="Completed">Completed</SelectItem>
-              <SelectItem value="Cancelled">Cancelled</SelectItem>
-            </SelectContent>
-          </Select>
-          
           {(isClinic() || isDoctor()) && (
             <Button 
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
@@ -401,6 +386,27 @@ const Prescriptions = () => {
             </div>
           ) : (
             <div className="space-y-2">
+              {/* Table Headers */}
+              <div className="bg-gray-100 rounded-lg p-4 mb-2">
+                <div className="flex items-center justify-between gap-6">
+                  <div className="w-24 flex-shrink-0">
+                    <span className="text-xs font-semibold text-gray-600 uppercase">ID</span>
+                  </div>
+                  <div className="w-40 flex-shrink-0">
+                    <span className="text-xs font-semibold text-gray-600 uppercase">Patient</span>
+                  </div>
+                  <div className="w-40 flex-shrink-0">
+                    <span className="text-xs font-semibold text-gray-600 uppercase">Doctor</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs font-semibold text-gray-600 uppercase">Medications</span>
+                  </div>
+                  <div className="w-24 flex-shrink-0">
+                    <span className="text-xs font-semibold text-gray-600 uppercase">Date</span>
+                  </div>
+                </div>
+              </div>
+              
               {filteredPrescriptions.map((prescription) => (
                 <div 
                   key={prescription._id} 
@@ -453,45 +459,9 @@ const Prescriptions = () => {
                       <div className="flex items-center gap-1">
                         <Calendar className="w-3 h-3 text-muted-foreground" />
                         <span className="text-sm text-muted-foreground">
-                          {new Date(prescription.createdAt).toLocaleDateString()}
+                          {new Date(prescription.createdAt).toLocaleDateString('en-GB')}
                         </span>
                       </div>
-                    </div>
-                    
-                    {/* Status - Fixed width */}
-                    <div className="w-20 flex-shrink-0">
-                      <Badge 
-                        variant={
-                          (prescription.status === 'active' || prescription.status === 'Active') ? 'default' : 
-                          (prescription.status === 'completed' || prescription.status === 'Completed') ? 'secondary' : 
-                          'destructive'
-                        } 
-                        className={`text-xs ${
-                          (prescription.status === 'completed' || prescription.status === 'Completed') 
-                            ? 'bg-green-100 text-green-800 hover:bg-green-200' 
-                            : ''
-                        }`}
-                      >
-                        {prescription.status}
-                      </Badge>
-                    </div>
-                    
-                    {/* Actions - Fixed width */}
-                    <div className="w-24 flex-shrink-0 flex items-center justify-end">
-                      {(prescription.status === 'active' || prescription.status === 'Active') && (isClinic() || isDoctor()) ? (
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          className="h-8 px-3 text-xs bg-green-50 hover:bg-green-100 text-green-700 border-green-200 hover:border-green-300"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleCompletePrescription(prescription._id);
-                          }}
-                        >
-                          <CheckCircle className="h-3 w-3 mr-1" />
-                          Complete
-                        </Button>
-                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -680,7 +650,7 @@ const Prescriptions = () => {
                     </div>
                     <div>
                       <Label className="text-sm font-medium text-muted-foreground">Date Issued</Label>
-                      <p className="text-sm">{new Date(viewPrescription.date || viewPrescription.createdAt).toLocaleDateString()}</p>
+                      <p className="text-sm">{new Date(viewPrescription.date || viewPrescription.createdAt).toLocaleDateString('en-GB')}</p>
                     </div>
                     <div>
                       <Label className="text-sm font-medium text-muted-foreground">Status</Label>
@@ -769,7 +739,7 @@ const Prescriptions = () => {
                         <Label className="text-sm font-medium text-muted-foreground">Follow-up Date</Label>
                         <p className="text-sm flex items-center gap-2">
                           <Calendar className="w-4 h-4" />
-                          {new Date(viewPrescription.followUpDate).toLocaleDateString()}
+                          {new Date(viewPrescription.followUpDate).toLocaleDateString('en-GB')}
                         </p>
                       </div>
                     )}

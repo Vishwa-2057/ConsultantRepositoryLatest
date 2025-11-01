@@ -17,11 +17,11 @@ const scheduleExceptionSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['unavailable', 'custom_hours'],
+    enum: ['unavailable', 'custom_hours', 'blocked_hours'],
     required: true,
     default: 'unavailable'
   },
-  // For custom_hours type
+  // For custom_hours and blocked_hours type
   startTime: {
     type: String,
     // Format: "HH:MM" (24-hour format)
@@ -30,6 +30,17 @@ const scheduleExceptionSchema = new mongoose.Schema({
     type: String,
     // Format: "HH:MM" (24-hour format)
   },
+  // For custom_hours type - break periods
+  breaks: [{
+    startTime: {
+      type: String,
+      required: true
+    },
+    endTime: {
+      type: String,
+      required: true
+    }
+  }],
   reason: {
     type: String,
     default: ''

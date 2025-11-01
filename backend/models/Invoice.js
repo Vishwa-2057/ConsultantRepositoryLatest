@@ -48,8 +48,8 @@ const invoiceSchema = new mongoose.Schema({
   shipping: { type: Number, default: 0 },
   status: {
     type: String,
-    enum: ['Approved', 'Rejected'],
-    default: 'Rejected'
+    enum: ['Approved', 'Rejected', 'Unapproved'],
+    default: 'Unapproved'
   },
   approvedBy: {
     type: mongoose.Schema.Types.ObjectId,

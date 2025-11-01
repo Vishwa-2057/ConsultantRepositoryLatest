@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { 
   UserCheck, 
   Plus, 
@@ -22,10 +24,12 @@ import {
   ChevronRight,
   ChevronDown,
   Stethoscope,
-  ArrowRight
+  ArrowRight,
+  Check,
+  ChevronsUpDown
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { patientAPI } from "@/services/api";
+import { patientAPI, doctorAPI } from "@/services/api";
 import PatientModal from "@/components/PatientModal";
 import { getImageUrl } from '@/utils/imageUtils';
 import vitalsIcon from '@/assets/Images/vitals.png';
@@ -39,6 +43,9 @@ const PatientManagement = () => {
   const navigate = useNavigate();
   const { logPageView, logPatientAccess, logSearch } = useAuditLog();
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedDoctors, setSelectedDoctors] = useState([]);
+  const [doctors, setDoctors] = useState([]);
+  const [openDoctorCombobox, setOpenDoctorCombobox] = useState(false);
   const [isPatientModalOpen, setIsPatientModalOpen] = useState(false);
   const [patients, setPatients] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -73,6 +80,11 @@ const PatientManagement = () => {
     localStorage.setItem('patientManagement_pageSize', pageSize.toString());
   }, [pageSize, isInitialLoad]);
 
+  // Load doctors on component mount
+  useEffect(() => {
+    loadDoctors();
+  }, []);
+
   // Load patients on component mount and when filters change
   useEffect(() => {
     loadPatients();
@@ -84,14 +96,25 @@ const PatientManagement = () => {
     if (searchTerm.trim()) {
       logSearch('PatientManagement', searchTerm.trim());
     }
-  }, [currentPage, pageSize, searchTerm, logPageView, logSearch]);
+  }, [currentPage, pageSize, searchTerm, selectedDoctors, logPageView, logSearch]);
 
-  // Reset to page 1 when search term changes
+  // Reset to page 1 when search term or doctor filter changes
   useEffect(() => {
     if (currentPage !== 1) {
       setCurrentPage(1);
     }
-  }, [searchTerm]);
+  }, [searchTerm, selectedDoctors]);
+
+  const loadDoctors = async () => {
+    try {
+      const response = await doctorAPI.getAll(1, 100, {}, true);
+      const doctorsList = response.doctors || response.data || [];
+      setDoctors(doctorsList);
+    } catch (err) {
+      console.error('Failed to load doctors:', err);
+      setDoctors([]);
+    }
+  };
 
   const loadPatients = async () => {
     setLoading(true);
@@ -99,6 +122,7 @@ const PatientManagement = () => {
     try {
       const filters = {};
       if (searchTerm.trim()) filters.search = searchTerm.trim();
+      if (selectedDoctors.length > 0) filters.assignedDoctors = selectedDoctors.join(',');
       const currentPageSize = pageSize;
       const response = await patientAPI.getAll(currentPage, currentPageSize, filters);
         const list = response.patients || response.data || [];
@@ -244,12 +268,94 @@ const PatientManagement = () => {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
             <Input
-              placeholder="Search patients by name or condition..."
+              placeholder="Search patients by name, UHID..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10 h-10 bg-white border-gray-200 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
             />
           </div>
+        </div>
+        <div className="min-w-[250px] max-w-[400px]">
+          <Popover open={openDoctorCombobox} onOpenChange={setOpenDoctorCombobox}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                role="combobox"
+                aria-expanded={openDoctorCombobox}
+                className={`h-auto min-h-[40px] w-full justify-between bg-white rounded-lg shadow-sm text-sm ${selectedDoctors.length > 0 ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200'}`}
+              >
+                <div className="flex flex-wrap gap-1 flex-1">
+                  {selectedDoctors.length === 0 ? (
+                    <span className="text-muted-foreground">Filter by Doctors</span>
+                  ) : (
+                    selectedDoctors.map((doctorId) => {
+                      const doctor = doctors.find((d) => (d._id || d.id) === doctorId);
+                      return doctor ? (
+                        <Badge
+                          key={doctorId}
+                          variant="secondary"
+                          className="bg-blue-100 text-blue-700 hover:bg-blue-200"
+                        >
+                          {doctor.fullName}
+                        </Badge>
+                      ) : null;
+                    })
+                  )}
+                </div>
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[300px] p-0" align="start">
+              <Command>
+                <CommandInput placeholder="Search doctors..." />
+                <CommandList className="max-h-[300px] overflow-y-auto">
+                  <CommandEmpty>No doctor found.</CommandEmpty>
+                  <CommandGroup>
+                    {selectedDoctors.length > 0 && (
+                      <CommandItem
+                        value="clear-all"
+                        onSelect={() => {
+                          setSelectedDoctors([]);
+                        }}
+                        className="justify-center text-center font-medium text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        Clear All Filters
+                      </CommandItem>
+                    )}
+                    {doctors.map((doctor) => {
+                      const isSelected = selectedDoctors.includes(doctor._id || doctor.id);
+                      return (
+                        <CommandItem
+                          key={doctor._id || doctor.id}
+                          value={`${doctor.fullName} ${doctor.specialty || ''}`}
+                          onSelect={() => {
+                            const doctorId = doctor._id || doctor.id;
+                            setSelectedDoctors((prev) =>
+                              isSelected
+                                ? prev.filter((id) => id !== doctorId)
+                                : [...prev, doctorId]
+                            );
+                          }}
+                        >
+                          <Check
+                            className={`mr-2 h-4 w-4 ${
+                              isSelected ? "opacity-100" : "opacity-0"
+                            }`}
+                          />
+                          <div className="flex flex-col flex-1">
+                            <span className="font-medium">{doctor.fullName}</span>
+                            {doctor.specialty && (
+                              <span className="text-xs text-muted-foreground">{doctor.specialty}</span>
+                            )}
+                          </div>
+                        </CommandItem>
+                      );
+                    })}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
         </div>
         <div className="flex items-center gap-3">
           {isClinic() && (
@@ -306,6 +412,36 @@ const PatientManagement = () => {
         <div className="p-6">
           {loading && <p className="text-sm text-muted-foreground">Loading...</p>}
           {error && <p className="text-sm text-red-600">{error}</p>}
+          
+          {/* Table Headers */}
+          {!loading && !error && filteredPatients.length > 0 && (
+            <div className="bg-gray-100 rounded-lg p-4 mb-2">
+              <div className="grid grid-cols-12 gap-4 items-center">
+                <div className="col-span-1">
+                  <span className="text-xs font-semibold text-gray-600 uppercase">Photo</span>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-xs font-semibold text-gray-600 uppercase">Name & UHID</span>
+                </div>
+                <div className="col-span-1">
+                  <span className="text-xs font-semibold text-gray-600 uppercase">Age/Gender</span>
+                </div>
+                <div className="col-span-1">
+                  <span className="text-xs font-semibold text-gray-600 uppercase">Blood</span>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-xs font-semibold text-gray-600 uppercase">Phone</span>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-xs font-semibold text-gray-600 uppercase">Assigned Doctors</span>
+                </div>
+                <div className="col-span-3 text-right">
+                  <span className="text-xs font-semibold text-gray-600 uppercase">Actions</span>
+                </div>
+              </div>
+            </div>
+          )}
+          
           <div className="space-y-2">
             {filteredPatients.map((patient) => {
               const patientId = patient.id || patient._id;

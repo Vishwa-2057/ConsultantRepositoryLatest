@@ -71,11 +71,11 @@ const SlotManagement = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
-            <Clock className="w-8 h-8 text-blue-600" />
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+            <Clock className="w-8 h-8 text-blue-600 dark:text-blue-400" />
             Doctor Availability Management
           </h1>
-          <p className="text-gray-600 mt-2">
+          <p className="text-gray-600 dark:text-gray-300 mt-2">
             Manage doctor schedules, weekly availability, and exceptions
           </p>
         </div>
@@ -150,16 +150,16 @@ const SlotManagement = () => {
       {/* Schedule Manager */}
       {selectedDoctor ? (
         <div>
-          <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-white font-semibold text-lg">
+              <div className="w-12 h-12 rounded-full bg-blue-600 dark:bg-blue-500 flex items-center justify-center text-white font-semibold text-lg">
                 {selectedDoctor.fullName.charAt(0)}
               </div>
               <div>
-                <h3 className="font-semibold text-gray-900">
+                <h3 className="font-semibold text-gray-900 dark:text-white">
                   Dr. {selectedDoctor.fullName}
                 </h3>
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-gray-600 dark:text-gray-300">
                   {selectedDoctor.specialty} • {selectedDoctor.email}
                 </p>
               </div>
@@ -175,10 +175,10 @@ const SlotManagement = () => {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <User className="w-16 h-16 text-gray-400 mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
               No Doctor Selected
             </h3>
-            <p className="text-gray-600 text-center max-w-md">
+            <p className="text-gray-600 dark:text-gray-300 text-center max-w-md">
               {doctors.length === 0
                 ? "No doctors found in the system. Please add doctors first."
                 : "Please select a doctor to manage their availability schedule."}

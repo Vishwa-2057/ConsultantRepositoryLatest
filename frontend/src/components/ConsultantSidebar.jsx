@@ -62,9 +62,9 @@ export function ConsultantSidebar({ mobile = false }) {
 
   return (
     <Sidebar className={`${mobile ? 'border-0' : 'border-r border-border'} bg-background dark:bg-background transition-all duration-300 ease-in-out shadow-sm h-screen ${mobile ? 'w-full' : 'sticky top-0 flex-shrink-0'} ${collapsed ? 'w-16' : 'w-64'}`} style={mobile ? { minHeight: '100vh', width: '100%' } : { minHeight: '100vh', width: collapsed ? '4rem' : '16rem', minWidth: collapsed ? '4rem' : '16rem', maxWidth: collapsed ? '4rem' : '16rem' }}>
-      <SidebarContent className="h-full flex flex-col overflow-hidden" style={{ minHeight: '100vh' }}>
+      <SidebarContent className="h-full flex flex-col overflow-x-hidden overflow-y-hidden" style={{ minHeight: '100vh' }}>
         {/* Header */}
-        <div className={`${mobile ? 'h-20' : 'h-16'} border-b border-border bg-background dark:bg-background flex items-center ${collapsed ? 'px-2 justify-center' : mobile ? 'px-6 py-6' : 'px-6 py-4'}`}>
+        <div className={`${mobile ? 'h-20' : 'h-16'} border-b border-border bg-background dark:bg-background flex items-center ${collapsed ? 'px-2 justify-center' : mobile ? 'px-6 py-6' : 'px-6 py-4'} flex-shrink-0`}>
           <div className="flex items-center gap-3">
             <div className={`${mobile ? 'w-12 h-12' : 'w-10 h-10'} rounded-lg flex items-center justify-center shadow-sm border border-border overflow-hidden bg-card`}>
               <img 
@@ -82,7 +82,7 @@ export function ConsultantSidebar({ mobile = false }) {
         </div>
 
         {/* Navigation */}
-        <SidebarGroup className={`flex-1 px-3 ${mobile ? 'py-8' : 'py-6'} min-h-0 overflow-y-auto`}>
+        <SidebarGroup className={`flex-1 px-3 ${mobile ? 'py-8' : 'py-6'} min-h-0 overflow-x-hidden overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 scrollbar-track-transparent`}>
           <SidebarGroupLabel className={`text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 px-2 ${collapsed ? "sr-only" : ""}`}>
             Navigation
           </SidebarGroupLabel>

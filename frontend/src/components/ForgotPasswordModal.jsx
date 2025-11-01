@@ -35,6 +35,7 @@ const ForgotPasswordModal = ({ isOpen, onClose }) => {
   const handleSendOTP = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
     setLoading(true);
 
     try {
@@ -44,7 +45,7 @@ const ForgotPasswordModal = ({ isOpen, onClose }) => {
         setStep(2);
         setSuccess('Password reset code sent to your email address.');
       } else {
-        setError(response.message || 'Failed to send reset code');
+        setError(response.error || response.message || 'Failed to send reset code');
       }
     } catch (err) {
       setError(err.message || 'Failed to send reset code. Please try again.');
@@ -56,6 +57,7 @@ const ForgotPasswordModal = ({ isOpen, onClose }) => {
   const handleResetPassword = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
 
     // Validate passwords match
     if (newPassword !== confirmPassword) {
@@ -79,7 +81,7 @@ const ForgotPasswordModal = ({ isOpen, onClose }) => {
           handleClose();
         }, 2000);
       } else {
-        setError(response.message || 'Failed to reset password');
+        setError(response.error || response.message || 'Failed to reset password');
       }
     } catch (err) {
       setError(err.message || 'Failed to reset password. Please try again.');
@@ -90,6 +92,7 @@ const ForgotPasswordModal = ({ isOpen, onClose }) => {
 
   const handleResendOTP = async () => {
     setError('');
+    setSuccess('');
     setLoading(true);
 
     try {
@@ -98,7 +101,7 @@ const ForgotPasswordModal = ({ isOpen, onClose }) => {
       if (response.success) {
         setSuccess('New password reset code sent to your email address.');
       } else {
-        setError(response.message || 'Failed to resend reset code');
+        setError(response.error || response.message || 'Failed to resend reset code');
       }
     } catch (err) {
       setError(err.message || 'Failed to resend reset code. Please try again.');

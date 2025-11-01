@@ -70,6 +70,21 @@ export const getAvailableTimeSlots = (availability, exceptions, existingAppointm
     
     if (!fitsInSlot) return false;
     
+    // Check if the time range overlaps with any break periods (for custom_hours exceptions)
+    if (exception && exception.type === 'custom_hours' && exception.breaks && exception.breaks.length > 0) {
+      const overlapsWithBreak = exception.breaks.some(breakPeriod => {
+        const [breakStartHour, breakStartMin] = breakPeriod.startTime.split(':').map(Number);
+        const [breakEndHour, breakEndMin] = breakPeriod.endTime.split(':').map(Number);
+        const breakStart = breakStartHour * 60 + breakStartMin;
+        const breakEnd = breakEndHour * 60 + breakEndMin;
+        
+        // Check if slot overlaps with break period
+        return (startTimeMinutes < breakEnd && endTimeMinutes > breakStart);
+      });
+      
+      if (overlapsWithBreak) return false;
+    }
+    
     // Check if any existing appointment conflicts with this time range
     return !existingAppointments.some(apt => {
       const aptDate = new Date(apt.date).toISOString().split('T')[0];
@@ -87,6 +102,11 @@ export const getAvailableTimeSlots = (availability, exceptions, existingAppointm
   // Generate time slots (using configured interval, but check for full duration availability)
   const timeSlots = [];
   
+  // Check if selected date is today
+  const today = new Date();
+  const isToday = dateString === today.toISOString().split('T')[0];
+  const currentTimeInMinutes = isToday ? (today.getHours() * 60 + today.getMinutes()) : 0;
+  
   daySlots.forEach(slot => {
     const [startHour, startMin] = slot.startTime.split(':').map(Number);
     const [endHour, endMin] = slot.endTime.split(':').map(Number);
@@ -98,6 +118,12 @@ export const getAvailableTimeSlots = (availability, exceptions, existingAppointm
       const hour = Math.floor(currentTime / 60);
       const min = currentTime % 60;
       const timeString = `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+      
+      // Skip past time slots if today is selected
+      if (isToday && currentTime <= currentTimeInMinutes) {
+        currentTime += slotInterval;
+        continue;
+      }
       
       // Check if this time slot has enough consecutive free time for the duration
       if (isTimeRangeAvailable(currentTime, duration)) {

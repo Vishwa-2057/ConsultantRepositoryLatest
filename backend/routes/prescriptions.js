@@ -2,7 +2,10 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const Prescription = require('../models/Prescription');
 const Patient = require('../models/Patient');
+const Doctor = require('../models/Doctor');
+const Clinic = require('../models/Clinic');
 const auth = require('../middleware/auth');
+const ActivityLogger = require('../utils/activityLogger');
 const router = express.Router();
 
 // Validation middleware
@@ -194,6 +197,48 @@ router.post('/', auth, validatePrescription, async (req, res) => {
     // Populate the saved prescription
     await prescription.populate('patientId', 'fullName age gender phone email');
     await prescription.populate('doctorId', 'fullName specialty');
+
+    // Log prescription creation activity
+    try {
+      // Get current user details for logging
+      let currentUser = null;
+      if (req.user.role === 'clinic') {
+        currentUser = await Clinic.findById(req.user.id);
+      } else if (req.user.role === 'doctor') {
+        currentUser = await Doctor.findById(req.user.id);
+      }
+
+      // Get clinic name for logging
+      let clinicName = 'Unknown Clinic';
+      if (prescription.clinicId) {
+        const clinic = await Clinic.findById(prescription.clinicId);
+        if (clinic) {
+          clinicName = clinic.name || clinic.fullName || 'Unknown Clinic';
+        }
+      }
+
+      const doctor = await Doctor.findById(prescription.doctorId);
+
+      if (currentUser && doctor) {
+        await ActivityLogger.logPrescriptionActivity(
+          'prescription_created',
+          prescription,
+          patient,
+          doctor,
+          {
+            id: req.user.id,
+            fullName: currentUser.fullName || currentUser.name,
+            email: currentUser.email,
+            role: req.user.role
+          },
+          req,
+          clinicName
+        );
+      }
+    } catch (logError) {
+      console.error('Failed to log prescription creation:', logError);
+      // Don't fail the prescription creation if logging fails
+    }
 
     res.status(201).json({
       message: 'Prescription created successfully',

@@ -213,58 +213,144 @@ const Login = () => {
     }, 300);
   };
 
-  // Loading screen component
+  // Modern loading screen component
   if (showLoader) {
     return (
-      <div className="min-h-screen w-full bg-gradient-to-br from-blue-600 via-blue-700 to-cyan-700 flex items-center justify-center relative overflow-hidden">
-        {/* Animated background particles */}
-        <div className="absolute inset-0">
-          {[...Array(30)].map((_, i) => (
-            <div
-              key={i}
-              className="absolute w-2 h-2 bg-white/30 rounded-full animate-pulse"
-              style={{
-                left: `${Math.random() * 100}%`,
-                top: `${Math.random() * 100}%`,
-                animationDelay: `${Math.random() * 2}s`,
-                animationDuration: `${1 + Math.random() * 2}s`
-              }}
-            />
-          ))}
+      <div className="min-h-screen w-full bg-gradient-to-br from-blue-950 via-slate-900 to-blue-950 flex items-center justify-center relative overflow-hidden">
+        {/* Animated gradient orbs */}
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute -top-40 -left-40 w-96 h-96 bg-blue-500/30 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '4s' }}></div>
+          <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-cyan-500/20 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '5s', animationDelay: '1s' }}></div>
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-purple-500/20 rounded-full blur-3xl animate-pulse" style={{ animationDuration: '6s', animationDelay: '0.5s' }}></div>
         </div>
         
-        {/* Loading content */}
+        {/* Main loading content */}
         <div className="relative z-10 text-center">
-          {/* Logo with pulse animation */}
-          <div className="mb-8 relative">
-            <div className="absolute inset-0 bg-white/30 rounded-full blur-3xl animate-pulse" style={{ width: '200px', height: '200px', left: '50%', top: '50%', transform: 'translate(-50%, -50%)' }}></div>
-            <div className="relative animate-in zoom-in duration-1000">
-              <img 
-                src={Logo} 
-                alt="Smaart Healthcare Logo" 
-                className="w-32 h-32 mx-auto object-contain drop-shadow-2xl animate-pulse"
-              />
+          {/* Animated logo container */}
+          <div className="relative mb-12">
+            {/* Outer rotating ring */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-56 h-56">
+                <svg className="w-full h-full animate-spin-slow" viewBox="0 0 200 200">
+                  <defs>
+                    <linearGradient id="ring-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.8" />
+                      <stop offset="50%" stopColor="#06b6d4" stopOpacity="0.6" />
+                      <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.3" />
+                    </linearGradient>
+                  </defs>
+                  <circle
+                    cx="100"
+                    cy="100"
+                    r="90"
+                    stroke="url(#ring-gradient)"
+                    strokeWidth="3"
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeDasharray="30 10"
+                  />
+                </svg>
+              </div>
             </div>
+            
+            {/* Middle pulsing glow */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-48 h-48 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 rounded-full blur-2xl animate-pulse"></div>
+            </div>
+            
+            {/* Logo with smooth zoom animation */}
+            <div className="relative flex items-center justify-center h-56">
+              <div className="animate-float">
+                <div className="relative">
+                  <div className="absolute inset-0 bg-white/10 rounded-full blur-xl"></div>
+                  <img 
+                    src={Logo} 
+                    alt="Smaart Healthcare Logo" 
+                    className="w-32 h-32 object-contain drop-shadow-2xl relative z-10"
+                  />
+                </div>
+              </div>
+            </div>
+            
+            {/* Orbiting particles */}
+            {[0, 1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="absolute top-1/2 left-1/2 w-3 h-3"
+                style={{
+                  animation: `orbit ${3 + i * 0.5}s linear infinite`,
+                  animationDelay: `${i * 0.25}s`
+                }}
+              >
+                <div className="w-3 h-3 bg-gradient-to-r from-blue-400 to-cyan-400 rounded-full shadow-lg shadow-blue-500/50"></div>
+              </div>
+            ))}
           </div>
           
-          {/* Title */}
-          <h1 className="text-4xl font-bold text-white mb-4 animate-in slide-in-from-bottom-4 duration-1000 delay-300">
+          {/* Title with gradient text */}
+          <h1 className="text-5xl font-bold mb-4 bg-gradient-to-r from-blue-400 via-cyan-300 to-blue-400 bg-clip-text text-transparent animate-in slide-in-from-bottom-4 duration-1000 delay-300">
             SMAART HEALTHCARE
           </h1>
           
-          {/* Loading spinner */}
-          <div className="flex items-center justify-center gap-3 animate-in fade-in duration-1000 delay-500">
-            <div className="flex gap-2">
-              <div className="w-3 h-3 bg-white rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-              <div className="w-3 h-3 bg-white rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-              <div className="w-3 h-3 bg-white rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+          {/* Subtitle */}
+          <p className="text-white/70 text-lg mb-8 animate-in fade-in duration-1000 delay-500">
+            Initializing your healthcare platform
+          </p>
+          
+          {/* Modern progress bar */}
+          <div className="max-w-xs mx-auto mb-6 animate-in fade-in duration-1000 delay-700">
+            <div className="h-1.5 bg-white/10 rounded-full overflow-hidden backdrop-blur-sm">
+              <div className="h-full bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500 rounded-full animate-progress-bar shadow-lg shadow-blue-500/50"></div>
             </div>
           </div>
           
-          <p className="text-white/80 text-sm mt-4 animate-in fade-in duration-1000 delay-700">
-            Loading your healthcare dashboard...
-          </p>
+          {/* Loading dots */}
+          <div className="flex justify-center gap-2 animate-in fade-in duration-1000 delay-900">
+            {[0, 1, 2].map((i) => (
+              <div
+                key={i}
+                className="w-2.5 h-2.5 bg-gradient-to-r from-blue-400 to-cyan-400 rounded-full animate-bounce shadow-lg shadow-blue-500/50"
+                style={{
+                  animationDelay: `${i * 0.15}s`,
+                  animationDuration: '1s'
+                }}
+              ></div>
+            ))}
+          </div>
         </div>
+        
+        {/* Custom animations */}
+        <style>{`
+          @keyframes spin-slow {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+          @keyframes orbit {
+            from {
+              transform: translate(-50%, -50%) rotate(0deg) translateX(110px) rotate(0deg);
+            }
+            to {
+              transform: translate(-50%, -50%) rotate(360deg) translateX(110px) rotate(-360deg);
+            }
+          }
+          @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+          }
+          @keyframes progress-bar {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(100%); }
+          }
+          .animate-spin-slow {
+            animation: spin-slow 8s linear infinite;
+          }
+          .animate-float {
+            animation: float 3s ease-in-out infinite;
+          }
+          .animate-progress-bar {
+            animation: progress-bar 1.5s ease-in-out infinite;
+          }
+        `}</style>
       </div>
     );
   }

@@ -69,7 +69,9 @@ router.get('/', auth, async (req, res) => {
       limit = 10,
       search = '',
       sortBy = 'createdAt',
-      sortOrder = 'desc'
+      sortOrder = 'desc',
+      assignedDoctor = '',
+      assignedDoctors = ''
     } = req.query;
 
     // Build query
@@ -84,11 +86,25 @@ router.get('/', auth, async (req, res) => {
       query.clinicId = req.user.id;
     }
     
+    // Filter by assigned doctor(s) if provided
+    if (assignedDoctors && assignedDoctors.trim()) {
+      // Multiple doctors - comma-separated IDs
+      const doctorIds = assignedDoctors.split(',').map(id => id.trim()).filter(id => id);
+      if (doctorIds.length > 0) {
+        query.assignedDoctors = { $in: doctorIds };
+      }
+    } else if (assignedDoctor && assignedDoctor.trim()) {
+      // Single doctor - backward compatibility
+      query.assignedDoctors = assignedDoctor.trim();
+    }
+    
     if (search) {
       query.$or = [
         { fullName: { $regex: search, $options: 'i' } },
         { phone: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } }
+        { email: { $regex: search, $options: 'i' } },
+        { uhid: { $regex: search, $options: 'i' } },
+        { medicalHistory: { $regex: search, $options: 'i' } }
       ];
     }
     
@@ -161,14 +177,30 @@ router.get('/grouped-by-specialty', auth, async (req, res) => {
       }
     }
     
+    // Separate search conditions for before and after lookup
+    const preSearchConditions = [];
+    const postSearchConditions = [];
+    
     if (search) {
-      matchConditions.$or = [
+      // These can be searched before lookup
+      preSearchConditions.push(
         { fullName: { $regex: search, $options: 'i' } },
         { phone: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } }
-      ];
+        { email: { $regex: search, $options: 'i' } },
+        { uhid: { $regex: search, $options: 'i' } },
+        { medicalHistory: { $regex: search, $options: 'i' } }
+      );
+      
+      // Doctor name search needs to be done after lookup
+      postSearchConditions.push(
+        { 'assignedDoctorsData.fullName': { $regex: search, $options: 'i' } }
+      );
     }
     
+    // Add pre-search conditions to match
+    if (preSearchConditions.length > 0) {
+      matchConditions.$or = preSearchConditions;
+    }
 
     // Build aggregation pipeline - simplified approach
     const pipeline = [
@@ -193,6 +225,15 @@ router.get('/grouped-by-specialty', auth, async (req, res) => {
           as: 'assignedDoctorsData'
         }
       },
+      // Add post-lookup search filter for doctor names
+      ...(postSearchConditions.length > 0 ? [{
+        $match: {
+          $or: [
+            ...preSearchConditions,
+            ...postSearchConditions
+          ]
+        }
+      }] : []),
       {
         $addFields: {
           // Determine specialty based on assigned doctors

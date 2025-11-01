@@ -457,19 +457,35 @@ const CommunityHub = () => {
                 <CardDescription>Access medical resources and guidelines</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
-                <Button variant="ghost" className="w-full justify-start">
+                <Button 
+                  variant="ghost" 
+                  className="w-full justify-start"
+                  onClick={() => window.open('https://www.nccih.nih.gov/health/providers/clinicalpractice', '_blank')}
+                >
                   <BookOpen className="w-4 h-4 mr-2" />
                   Clinical Guidelines
                 </Button>
-                <Button variant="ghost" className="w-full justify-start">
+                <Button 
+                  variant="ghost" 
+                  className="w-full justify-start"
+                  onClick={() => window.open('https://reference.medscape.com/', '_blank')}
+                >
                   <BookOpen className="w-4 h-4 mr-2" />
                   Drug Reference
                 </Button>
-                <Button variant="ghost" className="w-full justify-start">
+                <Button 
+                  variant="ghost" 
+                  className="w-full justify-start"
+                  onClick={() => window.open('https://www.mdcalc.com/', '_blank')}
+                >
                   <BookOpen className="w-4 h-4 mr-2" />
                   Medical Calculators
                 </Button>
-                <Button variant="ghost" className="w-full justify-start">
+                <Button 
+                  variant="ghost" 
+                  className="w-full justify-start"
+                  onClick={() => window.open('https://www.nature.com/subjects/medical-research/srep', '_blank')}
+                >
                   <BookOpen className="w-4 h-4 mr-2" />
                   Research Papers
                 </Button>

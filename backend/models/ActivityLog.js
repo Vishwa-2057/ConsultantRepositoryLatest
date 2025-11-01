@@ -39,7 +39,16 @@ const activityLogSchema = new mongoose.Schema({
   activityType: {
     type: String,
     required: true,
-    enum: ['login', 'logout', 'session_expired', 'forced_logout', 'appointment_created', 'appointment_status_changed'],
+    enum: [
+      'login', 'logout', 'session_expired', 'forced_logout',
+      'appointment_created', 'appointment_status_changed',
+      'prescription_created', 'prescription_updated',
+      'doctor_created', 'doctor_activated', 'doctor_deactivated',
+      'nurse_created', 'nurse_activated', 'nurse_deactivated',
+      'teleconsultation_created', 'teleconsultation_completed',
+      'invoice_created', 'invoice_updated',
+      'referral_created', 'referral_completed'
+    ],
     index: true
   },
   timestamp: {
@@ -121,6 +130,44 @@ const activityLogSchema = new mongoose.Schema({
   },
   newStatus: {
     type: String
+  },
+  
+  // Additional fields for new activity types
+  prescriptionId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Prescription'
+  },
+  nurseId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Nurse'
+  },
+  nurseName: {
+    type: String
+  },
+  teleconsultationId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Teleconsultation'
+  },
+  invoiceId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Invoice'
+  },
+  invoiceAmount: {
+    type: Number
+  },
+  referralId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Referral'
+  },
+  referralType: {
+    type: String,
+    enum: ['inbound', 'outbound']
+  },
+  targetEntity: {
+    type: String // Name of doctor/nurse being created/activated/deactivated
+  },
+  targetEntityId: {
+    type: mongoose.Schema.Types.ObjectId // ID of doctor/nurse being created/activated/deactivated
   }
 }, {
   timestamps: true,

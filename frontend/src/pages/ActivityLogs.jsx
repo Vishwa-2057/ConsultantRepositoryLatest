@@ -370,7 +370,11 @@ const ActivityLogs = () => {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        <h4 className="font-semibold text-foreground">{log.userName}</h4>
+                        <h4 className="font-semibold text-foreground">
+                          {log.activityType === 'logout' 
+                            ? `${log.userName} logged out` 
+                            : log.userName}
+                        </h4>
                         <Badge variant={getActivityColor(log.activityType)}>
                           {log.activityType.replace('_', ' ')}
                         </Badge>

@@ -12,7 +12,20 @@
     "start:frontend": "cd frontend && npm run build && npm run preview",
     "build": "cd frontend && npm run build",
     "test:connection": "node test-connection.js",
-    "setup": "npm run install:all && npm run test:connection"
+    "setup": "npm run install:all && npm run test:connection",
+    "test": "npm run test:api && npm run test:e2e",
+    "test:api": "jest --config=jest.config.js --testPathPattern=tests/api",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:chromium": "playwright test --project=chromium",
+    "test:e2e:firefox": "playwright test --project=firefox",
+    "test:e2e:webkit": "playwright test --project=webkit",
+    "test:coverage": "jest --coverage --config=jest.config.js",
+    "test:watch": "jest --watch --config=jest.config.js",
+    "test:report": "playwright show-report test-results/playwright-report",
+    "playwright:install": "playwright install",
+    "playwright:install-deps": "playwright install-deps"
   },
   "keywords": [
     "healthcare",
@@ -24,7 +37,12 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "@faker-js/faker": "^10.1.0",
+    "@playwright/test": "^1.56.1",
+    "concurrently": "^8.2.2",
+    "jest-html-reporter": "^4.3.0",
+    "jest-junit": "^16.0.0",
+    "playwright": "^1.56.1"
   },
   "dependencies": {
     "cors": "^2.8.5",

@@ -2,8 +2,11 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
 const Nurse = require('../models/Nurse');
+const Doctor = require('../models/Doctor');
+const Clinic = require('../models/Clinic');
 const auth = require('../middleware/auth');
 const { nurseUpload, deleteFromCloudinary, extractPublicId } = require('../config/cloudinary');
+const ActivityLogger = require('../utils/activityLogger');
 const fs = require('fs');
 const router = express.Router();
 
@@ -222,6 +225,58 @@ router.post('/create-with-image', auth, async (req, res) => {
     });
 
     await nurse.save();
+
+    // Log nurse creation activity
+    try {
+      console.log('🔍 Starting nurse creation activity logging...');
+      console.log('   User ID:', req.user.id);
+      console.log('   User Role:', req.user.role);
+      
+      let currentUser = null;
+      let clinicName = 'Unknown Clinic';
+      
+      // Try to find user based on role
+      if (req.user.role === 'clinic') {
+        currentUser = await Clinic.findById(req.user.id);
+        clinicName = currentUser?.name || currentUser?.fullName || 'Unknown Clinic';
+      } else if (req.user.role === 'doctor') {
+        currentUser = await Doctor.findById(req.user.id);
+        if (currentUser?.clinicId) {
+          const clinic = await Clinic.findById(currentUser.clinicId);
+          clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+        }
+      } else if (req.user.role === 'nurse' || req.user.role === 'head_nurse') {
+        currentUser = await Nurse.findById(req.user.id);
+        if (currentUser?.clinicId) {
+          const clinic = await Clinic.findById(currentUser.clinicId);
+          clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+        }
+      }
+
+      if (currentUser) {
+        const userForLog = {
+          id: currentUser._id,
+          fullName: currentUser.fullName || currentUser.name,
+          email: currentUser.email || currentUser.adminEmail,
+          role: req.user.role,
+          clinicId: req.user.role === 'clinic' ? req.user.id : (currentUser.clinicId || req.user.id)
+        };
+        console.log('📝 Creating nurse_created activity log with clinicId:', userForLog.clinicId);
+        await ActivityLogger.logStaffActivity(
+          'nurse_created',
+          nurse,
+          userForLog,
+          req,
+          clinicName
+        );
+      } else {
+        console.log('❌ Current user not found for nurse creation logging');
+      }
+    } catch (logError) {
+      console.error('❌ Failed to log nurse creation:', logError);
+      console.error('   Error message:', logError.message);
+      console.error('   Error stack:', logError.stack);
+    }
 
     // Return nurse without password hash
     const nurseResponse = {
@@ -472,6 +527,63 @@ router.patch('/:id/activate', auth, async (req, res) => {
       });
     }
 
+    // Log nurse activation activity
+    try {
+      console.log('🔍 Starting nurse activation activity logging...');
+      console.log('   User ID:', req.user.id);
+      console.log('   User Role:', req.user.role);
+      
+      let currentUser = null;
+      let clinicName = 'Unknown Clinic';
+      
+      // Try to find user based on role
+      if (req.user.role === 'clinic') {
+        currentUser = await Clinic.findById(req.user.id);
+        clinicName = currentUser?.name || currentUser?.fullName || 'Unknown Clinic';
+        console.log('   Found clinic user:', currentUser?.name);
+      } else if (req.user.role === 'doctor') {
+        currentUser = await Doctor.findById(req.user.id);
+        if (currentUser?.clinicId) {
+          const clinic = await Clinic.findById(currentUser.clinicId);
+          clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+        }
+        console.log('   Found doctor user:', currentUser?.fullName);
+      } else if (req.user.role === 'nurse' || req.user.role === 'head_nurse') {
+        currentUser = await Nurse.findById(req.user.id);
+        if (currentUser?.clinicId) {
+          const clinic = await Clinic.findById(currentUser.clinicId);
+          clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+        }
+        console.log('   Found nurse user:', currentUser?.fullName);
+      }
+
+      if (currentUser) {
+        const userForLog = {
+          id: currentUser._id,
+          fullName: currentUser.fullName || currentUser.name,
+          email: currentUser.email || currentUser.adminEmail,
+          role: req.user.role,
+          clinicId: req.user.role === 'clinic' ? req.user.id : (currentUser.clinicId || req.user.id)
+        };
+        console.log('   Calling ActivityLogger.logStaffActivity...');
+        console.log('   ClinicId:', userForLog.clinicId);
+        const result = await ActivityLogger.logStaffActivity(
+          'nurse_activated',
+          nurse,
+          userForLog,
+          req,
+          clinicName
+        );
+        console.log('   ✅ Activity log result:', result ? 'Success' : 'Failed');
+      } else {
+        console.log('   ❌ Current user not found!');
+      }
+    } catch (logError) {
+      console.error('❌ Failed to log nurse activation:', logError);
+      console.error('   Error message:', logError.message);
+      console.error('   Error stack:', logError.stack);
+    }
+
     res.json({
       success: true,
       message: 'Nurse activated successfully',
@@ -507,6 +619,63 @@ router.patch('/:id/deactivate', auth, async (req, res) => {
         success: false,
         message: 'Nurse not found'
       });
+    }
+
+    // Log nurse deactivation activity
+    try {
+      console.log('🔍 Starting nurse deactivation activity logging...');
+      console.log('   User ID:', req.user.id);
+      console.log('   User Role:', req.user.role);
+      
+      let currentUser = null;
+      let clinicName = 'Unknown Clinic';
+      
+      // Try to find user based on role
+      if (req.user.role === 'clinic') {
+        currentUser = await Clinic.findById(req.user.id);
+        clinicName = currentUser?.name || currentUser?.fullName || 'Unknown Clinic';
+        console.log('   Found clinic user:', currentUser?.name);
+      } else if (req.user.role === 'doctor') {
+        currentUser = await Doctor.findById(req.user.id);
+        if (currentUser?.clinicId) {
+          const clinic = await Clinic.findById(currentUser.clinicId);
+          clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+        }
+        console.log('   Found doctor user:', currentUser?.fullName);
+      } else if (req.user.role === 'nurse' || req.user.role === 'head_nurse') {
+        currentUser = await Nurse.findById(req.user.id);
+        if (currentUser?.clinicId) {
+          const clinic = await Clinic.findById(currentUser.clinicId);
+          clinicName = clinic?.name || clinic?.fullName || 'Unknown Clinic';
+        }
+        console.log('   Found nurse user:', currentUser?.fullName);
+      }
+
+      if (currentUser) {
+        const userForLog = {
+          id: currentUser._id,
+          fullName: currentUser.fullName || currentUser.name,
+          email: currentUser.email || currentUser.adminEmail,
+          role: req.user.role,
+          clinicId: req.user.role === 'clinic' ? req.user.id : (currentUser.clinicId || req.user.id)
+        };
+        console.log('   Calling ActivityLogger.logStaffActivity...');
+        console.log('   ClinicId:', userForLog.clinicId);
+        const result = await ActivityLogger.logStaffActivity(
+          'nurse_deactivated',
+          nurse,
+          userForLog,
+          req,
+          clinicName
+        );
+        console.log('   ✅ Activity log result:', result ? 'Success' : 'Failed');
+      } else {
+        console.log('   ❌ Current user not found!');
+      }
+    } catch (logError) {
+      console.error('❌ Failed to log nurse deactivation:', logError);
+      console.error('   Error message:', logError.message);
+      console.error('   Error stack:', logError.stack);
     }
 
     res.json({
