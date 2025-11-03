@@ -11,8 +11,22 @@ const Logout = () => {
 
   useEffect(() => {
     const handleLogout = async () => {
-      // Get user info before clearing
-      const currentUser = getCurrentUser();
+      // Get user info from sessionStorage if it was saved before clearing
+      let currentUser = getCurrentUser();
+      
+      // If no user in localStorage (already cleared), try to get from API token
+      if (!currentUser) {
+        try {
+          // Try to get user info from session storage backup if available
+          const backupUser = sessionStorage.getItem('logoutUser');
+          if (backupUser) {
+            currentUser = JSON.parse(backupUser);
+            sessionStorage.removeItem('logoutUser');
+          }
+        } catch (error) {
+          // Silently continue
+        }
+      }
       
       // Create activity log for logout
       if (currentUser) {
@@ -31,7 +45,7 @@ const Logout = () => {
             }
           };
           
-          // Create activity log in MongoDB - DO THIS BEFORE clearing auth
+          // Create activity log in MongoDB
           await activityLogAPI.create(logoutActivityLog);
         } catch (error) {
           // Silently continue with logout even if logging fails
@@ -50,7 +64,7 @@ const Logout = () => {
       // Start fade out
       setFadeOut(true);
       
-      // Clear authentication state
+      // Clear authentication state (in case not already cleared)
       authAPI.clearToken();
       localStorage.removeItem('authToken');
       localStorage.removeItem('authUser');

@@ -31,6 +31,16 @@ const nurseImageStorage = createCloudinaryStorage('healthcare/nurses');
 const patientImageStorage = createCloudinaryStorage('healthcare/patients');
 const patientDocumentStorage = createCloudinaryStorage('healthcare/patient-documents', ['jpg', 'jpeg', 'png', 'pdf']);
 
+// Lab reports storage - supports images and PDFs
+const labReportStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'healthcare/lab-reports',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'pdf'],
+    resource_type: 'auto', // Handles both images and PDFs
+  },
+});
+
 // Multer configurations
 const doctorUpload = multer({
   storage: doctorImageStorage,
@@ -85,6 +95,21 @@ const patientDocumentUpload = multer({
       cb(null, true);
     } else {
       cb(new Error('Only images and PDF files are allowed!'), false);
+    }
+  },
+});
+
+const labReportUpload = multer({
+  storage: labReportStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF, JPG, and PNG files are allowed!'), false);
     }
   },
 });
@@ -178,6 +203,7 @@ module.exports = {
   patientUpload,
   patientDocumentUpload,
   patientCombinedUpload,
+  labReportUpload,
   deleteFromCloudinary,
   extractPublicId,
 };

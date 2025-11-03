@@ -1,6 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const ActivityLog = require('../models/ActivityLog');
+const ActivityLogger = require('../utils/activityLogger');
 const Doctor = require('../models/Doctor');
 const Nurse = require('../models/Nurse');
 const Clinic = require('../models/Clinic');
@@ -73,6 +74,21 @@ router.post('/', auth, async (req, res) => {
       console.log('Could not fetch clinic name:', err.message);
     }
 
+    // Parse user agent if deviceInfo not provided
+    let parsedDeviceInfo = deviceInfo;
+    if (!parsedDeviceInfo) {
+      const userAgent = req.headers['user-agent'] || '';
+      if (userAgent) {
+        parsedDeviceInfo = ActivityLogger.parseUserAgent(userAgent);
+      } else {
+        parsedDeviceInfo = {
+          browser: 'Unknown',
+          os: 'Unknown',
+          device: 'Unknown'
+        };
+      }
+    }
+
     // Create activity log
     const activityLog = new ActivityLog({
       userId: currentUser.id,
@@ -85,10 +101,8 @@ router.post('/', auth, async (req, res) => {
       timestamp: timestamp ? new Date(timestamp) : new Date(),
       notes: description || `${userName || currentUser.name} performed ${activityType}`,
       ipAddress: ipAddress || req.ip,
-      deviceInfo: deviceInfo || {
-        browser: req.headers['user-agent'] || 'Unknown',
-        os: req.headers['sec-ch-ua-platform'] || 'Unknown'
-      }
+      userAgent: req.headers['user-agent'] || '',
+      deviceInfo: parsedDeviceInfo
     });
 
     await activityLog.save();

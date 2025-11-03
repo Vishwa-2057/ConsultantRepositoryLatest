@@ -34,9 +34,14 @@ import {
   Upload,
   ChevronDown,
   ChevronUp,
-  X
+  X,
+  Eye,
+  Download,
+  TestTubeDiagonal
 } from "lucide-react";
 import { patientAPI, prescriptionAPI, appointmentAPI, vitalsAPI, referralAPI, medicalImageAPI } from "@/services/api";
+import sessionManager from "@/utils/sessionManager";
+import { config } from "@/config/env";
 import { toast } from "sonner";
 import { canEditPatients } from "@/utils/roleUtils";
 import { getImageUrl } from '@/utils/imageUtils';
@@ -90,6 +95,8 @@ const PatientDetails = () => {
   const [caseLogs, setCaseLogs] = useState([]);
   const [referrals, setReferrals] = useState([]);
   const [medicalImages, setMedicalImages] = useState([]);
+  const [labReports, setLabReports] = useState([]);
+  const [labReportsLoading, setLabReportsLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [prescriptionsLoading, setPrescriptionsLoading] = useState(false);
   const [caseLogsLoading, setCaseLogsLoading] = useState(false);
@@ -116,6 +123,8 @@ const PatientDetails = () => {
   const [newMedication, setNewMedication] = useState('');
   const [newSurgery, setNewSurgery] = useState('');
   const [savingMedicalHistory, setSavingMedicalHistory] = useState(false);
+  const [selectedLabReport, setSelectedLabReport] = useState(null);
+  const [isLabReportModalOpen, setIsLabReportModalOpen] = useState(false);
 
   useEffect(() => {
     if (patientId) {
@@ -362,12 +371,58 @@ const PatientDetails = () => {
     }
   };
 
-  // Load vitals when investigations tab is accessed
+  // Load vitals and lab reports when investigations tab is accessed
   useEffect(() => {
-    if (activeTab === 'investigations' && patient && vitals.length === 0) {
-      loadVitals();
+    if (activeTab === 'investigations' && patient) {
+      if (vitals.length === 0) {
+        loadVitals();
+      }
+      if (labReports.length === 0) {
+        loadLabReports();
+      }
     }
   }, [activeTab, patient]);
+
+  const loadLabReports = async () => {
+    try {
+      setLabReportsLoading(true);
+      const patientDbId = patient._id || patient.id;
+      const API_BASE_URL = config.API_BASE_URL || 'http://localhost:5000/api';
+      
+      console.log('Loading lab reports for patient:', patientDbId);
+      console.log('API URL:', `${API_BASE_URL}/lab-reports/patient/${patientDbId}`);
+      
+      const token = await sessionManager.getToken();
+      console.log('Token retrieved:', token ? 'Yes' : 'No');
+      
+      const response = await fetch(`${API_BASE_URL}/lab-reports/patient/${patientDbId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      console.log('Response status:', response.status);
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Error response:', errorData);
+        throw new Error(errorData.error || 'Failed to load lab reports');
+      }
+      
+      const data = await response.json();
+      console.log('Lab reports data:', data);
+      console.log('Number of reports:', data.reports?.length || 0);
+      console.log('Reports array:', data.reports);
+      
+      setLabReports(data.reports || []);
+      console.log('Lab reports state updated');
+    } catch (error) {
+      console.error('Error loading lab reports:', error);
+      toast.error(`Failed to load lab reports: ${error.message}`);
+    } finally {
+      setLabReportsLoading(false);
+    }
+  };
 
   const toggleVitalExpansion = (vitalId) => {
     setExpandedVitals(prev => ({
@@ -510,6 +565,71 @@ const PatientDetails = () => {
     } finally {
       setSavingMedicalHistory(false);
     }
+  };
+
+  const handleViewLabReport = async (report) => {
+    try {
+      const API_BASE_URL = config.API_BASE_URL || 'http://localhost:5000/api';
+      const token = await sessionManager.getToken();
+      
+      const response = await fetch(`${API_BASE_URL}/lab-reports/${report._id}/download`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) throw new Error('Failed to load report');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      
+      setSelectedLabReport({
+        ...report,
+        fileUrl: url
+      });
+      setIsLabReportModalOpen(true);
+    } catch (error) {
+      console.error('Error viewing report:', error);
+      toast.error('Failed to view report');
+    }
+  };
+
+  const handleDownloadLabReport = async (report) => {
+    try {
+      const API_BASE_URL = config.API_BASE_URL || 'http://localhost:5000/api';
+      const token = await sessionManager.getToken();
+      
+      const response = await fetch(`${API_BASE_URL}/lab-reports/${report._id}/download`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) throw new Error('Failed to download report');
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = report.fileName || `${report.testName}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      toast.success('Report downloaded successfully');
+    } catch (error) {
+      console.error('Error downloading report:', error);
+      toast.error('Failed to download report');
+    }
+  };
+
+  const handleCloseLabReportModal = () => {
+    if (selectedLabReport?.fileUrl) {
+      window.URL.revokeObjectURL(selectedLabReport.fileUrl);
+    }
+    setSelectedLabReport(null);
+    setIsLabReportModalOpen(false);
   };
 
   if (loading) {
@@ -1376,21 +1496,89 @@ const PatientDetails = () => {
                       })}
                     </div>
                   </div>
-
-                  {/* Placeholder for future lab results */}
-                  <div className="border-t pt-6">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                      <FileText className="w-5 h-5" />
-                      Lab Results & Tests
-                    </h3>
-                    <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
-                      <FileText className="w-8 h-8 mx-auto mb-3 text-gray-300" />
-                      <p className="text-sm">Lab results feature coming soon</p>
-                      <p className="text-xs text-gray-400">Blood tests, imaging, and other investigations will appear here</p>
-                    </div>
-                  </div>
                 </div>
-              ) : (
+              ) : null}
+
+              {/* Lab Reports Section - Always visible */}
+              <div className={vitals.length > 0 ? "border-t pt-6" : ""}>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <TestTubeDiagonal className="w-5 h-5" />
+                  Lab Reports & Tests
+                </h3>
+                {console.log('Rendering lab reports section. Loading:', labReportsLoading, 'Reports count:', labReports.length, 'Reports:', labReports)}
+                {labReportsLoading ? (
+                  <div className="flex justify-center py-8">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                  </div>
+                ) : labReports.length > 0 ? (
+                  <div className="space-y-4">
+                    {labReports.map((report, index) => (
+                      <div key={report._id || index} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-start gap-3 flex-1">
+                            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                              <FileText className="w-5 h-5 text-blue-600" />
+                            </div>
+                            <div className="flex-1">
+                              <h4 className="font-semibold text-gray-900">{report.testName}</h4>
+                              <div className="flex flex-wrap items-center gap-3 mt-2 text-sm text-gray-600">
+                                <div className="flex items-center gap-1">
+                                  <Calendar className="w-3 h-3" />
+                                  <span>Test Date: {new Date(report.testDate).toLocaleDateString('en-GB')}</span>
+                                </div>
+                                {report.labName && (
+                                  <div className="flex items-center gap-1">
+                                    <FileText className="w-3 h-3" />
+                                    <span>{report.labName}</span>
+                                  </div>
+                                )}
+                                <div className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  <span>Uploaded: {new Date(report.uploadedAt).toLocaleDateString('en-GB')}</span>
+                                </div>
+                              </div>
+                              {report.notes && (
+                                <div className="mt-2 text-sm text-gray-700 bg-blue-50 p-2 rounded">
+                                  <span className="font-medium">Notes: </span>{report.notes}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end gap-2 ml-4">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleViewLabReport(report)}
+                              className="flex items-center gap-1"
+                            >
+                              <Eye className="w-4 h-4" />
+                              View
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDownloadLabReport(report)}
+                              className="flex items-center gap-1"
+                            >
+                              <Download className="w-4 h-4" />
+                              Download
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
+                    <TestTubeDiagonal className="w-8 h-8 mx-auto mb-3 text-gray-300" />
+                    <p className="text-sm">No lab reports found</p>
+                    <p className="text-xs text-gray-400">Lab reports will appear here when uploaded</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Empty state when no vitals and no lab reports */}
+              {vitals.length === 0 && labReports.length === 0 && !vitalsLoading && !labReportsLoading && (
                 <div className="text-center py-12 text-gray-500">
                   <Activity className="w-12 h-12 mx-auto mb-4 text-gray-300" />
                   <p>No investigations found</p>
@@ -1994,6 +2182,92 @@ const PatientDetails = () => {
                   onClick={() => window.open(selectedDocument.url, '_blank')}
                 >
                   Open in New Tab
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Lab Report Modal */}
+      <Dialog open={isLabReportModalOpen} onOpenChange={handleCloseLabReportModal}>
+        <DialogContent className="max-w-6xl max-h-[95vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <TestTubeDiagonal className="w-5 h-5" />
+              {selectedLabReport?.testName || 'Lab Report'}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedLabReport && (
+            <div className="space-y-4">
+              {/* Report Details */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm border-b pb-4">
+                <div>
+                  <span className="font-medium text-gray-700">Test Date:</span>
+                  <p className="text-gray-600">{new Date(selectedLabReport.testDate).toLocaleDateString('en-GB')}</p>
+                </div>
+                {selectedLabReport.labName && (
+                  <div>
+                    <span className="font-medium text-gray-700">Lab Name:</span>
+                    <p className="text-gray-600">{selectedLabReport.labName}</p>
+                  </div>
+                )}
+                <div>
+                  <span className="font-medium text-gray-700">Uploaded:</span>
+                  <p className="text-gray-600">{new Date(selectedLabReport.uploadedAt).toLocaleDateString('en-GB')}</p>
+                </div>
+                <div>
+                  <span className="font-medium text-gray-700">Patient:</span>
+                  <p className="text-gray-600">{patient?.fullName || 'Unknown'}</p>
+                </div>
+              </div>
+
+              {selectedLabReport.notes && (
+                <div className="bg-blue-50 p-3 rounded-lg">
+                  <span className="font-medium text-blue-900">Notes: </span>
+                  <span className="text-blue-800">{selectedLabReport.notes}</span>
+                </div>
+              )}
+
+              {/* File Preview */}
+              <div className="relative bg-gray-50 rounded-lg overflow-hidden" style={{ height: '60vh' }}>
+                {selectedLabReport.fileType?.includes('pdf') ? (
+                  <iframe
+                    src={selectedLabReport.fileUrl}
+                    className="w-full h-full"
+                    title={selectedLabReport.testName}
+                  />
+                ) : selectedLabReport.fileType?.includes('image') ? (
+                  <img
+                    src={selectedLabReport.fileUrl}
+                    alt={selectedLabReport.testName}
+                    className="w-full h-full object-contain"
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-center text-gray-500">
+                      <FileText className="w-12 h-12 mx-auto mb-4" />
+                      <p>Preview not available for this file type</p>
+                      <p className="text-sm">Click download to view the file</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="flex justify-end gap-2 pt-4 border-t">
+                <Button
+                  variant="outline"
+                  onClick={() => handleDownloadLabReport(selectedLabReport)}
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Download
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleCloseLabReportModal}
+                >
+                  Close
                 </Button>
               </div>
             </div>

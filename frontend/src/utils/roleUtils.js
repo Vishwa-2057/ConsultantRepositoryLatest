@@ -19,6 +19,7 @@ export const ROLE_PERMISSIONS = {
       'nurses-management',
       'teleconsultation',
       'prescriptions',
+      'lab-reports',
       'referral-system',
       'community-hub',
       'invoice-management',
@@ -39,6 +40,7 @@ export const ROLE_PERMISSIONS = {
       'referral-system',
       'teleconsultation',
       'prescriptions',
+      'lab-reports',
       'community-hub'
     ],
     canViewAllPatients: false,
@@ -51,6 +53,7 @@ export const ROLE_PERMISSIONS = {
       'patient-management',
       'appointment-management',
       'prescriptions',
+      'lab-reports',
       'invoice-management'
     ],
     canViewAllPatients: false,
@@ -63,6 +66,7 @@ export const ROLE_PERMISSIONS = {
       'patient-management',
       'appointment-management',
       'prescriptions',
+      'lab-reports',
       'invoice-management'
     ],
     canViewAllPatients: false,
@@ -75,6 +79,7 @@ export const ROLE_PERMISSIONS = {
       'patient-management',
       'appointment-management',
       'prescriptions',
+      'lab-reports',
       'invoice-management'
     ],
     canViewAllPatients: false,

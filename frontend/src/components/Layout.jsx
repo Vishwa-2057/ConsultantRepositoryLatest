@@ -18,10 +18,25 @@ function LayoutHeader({ getPageTitle, currentUser, currentTime, hideActions, tog
     e.preventDefault();
     setIsLoggingOut(true);
     
+    // Save user info to sessionStorage before clearing for activity log
+    try {
+      const userInfo = localStorage.getItem('authUser');
+      if (userInfo) {
+        sessionStorage.setItem('logoutUser', userInfo);
+      }
+    } catch (error) {
+      // Silently continue
+    }
+    
+    // Clear auth state immediately to hide sidebar
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('authUser');
+    window.dispatchEvent(new Event('auth-changed'));
+    
     // Add a brief delay for the animation to be visible
     setTimeout(() => {
       navigate('/logout');
-    }, 600);
+    }, 300);
   };
   
   return (

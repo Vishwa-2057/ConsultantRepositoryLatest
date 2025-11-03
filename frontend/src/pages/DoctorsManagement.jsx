@@ -1532,11 +1532,11 @@ const DoctorsManagement = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <Label className="text-sm font-medium text-muted-foreground">Created At</Label>
-                      <p className="text-sm">{selectedDoctor.createdAt ? new Date(selectedDoctor.createdAt).toLocaleDateString() : 'Not available'}</p>
+                      <p className="text-sm">{selectedDoctor.createdAt ? new Date(selectedDoctor.createdAt).toLocaleDateString('en-GB') : 'Not available'}</p>
                     </div>
                     <div>
                       <Label className="text-sm font-medium text-muted-foreground">Last Updated</Label>
-                      <p className="text-sm">{selectedDoctor.updatedAt ? new Date(selectedDoctor.updatedAt).toLocaleDateString() : 'Not available'}</p>
+                      <p className="text-sm">{selectedDoctor.updatedAt ? new Date(selectedDoctor.updatedAt).toLocaleDateString('en-GB') : 'Not available'}</p>
                     </div>
                   </div>
                 </CardContent>

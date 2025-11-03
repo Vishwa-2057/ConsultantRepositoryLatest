@@ -29,6 +29,7 @@ import APITest from "./components/APITest.jsx";
 import EmailSettings from "./pages/EmailSettings.jsx";
 import ActivityLogs from "./pages/ActivityLogs.jsx";
 import AuditLogs from "./pages/AuditLogs.jsx";
+import LabReports from "./pages/LabReports.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import PublicRoute from "./components/PublicRoute.jsx";
 
@@ -116,6 +117,7 @@ const App = () => {
               <Route path="/email-settings" element={isAuthed ? <ProtectedRoute routeName="email-settings"><EmailSettings /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/activity-logs" element={isAuthed ? <ProtectedRoute routeName="activity-logs"><ActivityLogs /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/audit-logs" element={isAuthed ? <ProtectedRoute routeName="audit-logs"><AuditLogs /></ProtectedRoute> : <Navigate to="/login" replace />} />
+              <Route path="/lab-reports" element={isAuthed ? <ProtectedRoute routeName="lab-reports"><LabReports /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/compliance" element={isAuthed ? <ProtectedRoute routeName="compliance-alerts"><Dashboard /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/api-test" element={<APITest />} />
               <Route path="/logout" element={<Logout />} />

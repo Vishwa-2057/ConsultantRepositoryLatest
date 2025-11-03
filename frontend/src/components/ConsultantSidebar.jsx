@@ -1,4 +1,4 @@
-import { Calendar, Users, UserCheck, Video, Share2, FileText, Mail, AlertTriangle, Home, LogOut, User, LayoutDashboard, Stethoscope, Heart, ArrowLeftRight, CreditCard, MessageCircle, UserPlus, Pill, Shield, Clock } from "lucide-react";
+import { Calendar, Users, UserCheck, Video, Share2, FileText, Mail, AlertTriangle, Home, LogOut, User, LayoutDashboard, Stethoscope, Heart, ArrowLeftRight, CreditCard, MessageCircle, UserPlus, Pill, Shield, Clock, TestTubeDiagonal } from "lucide-react";
 import LogoImage from "@/assets/Images/Logo.png";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
@@ -25,6 +25,7 @@ const allNavigationItems = [
   { title: "Doctor Management", url: "/doctors", icon: UserCheck, routeName: "doctors-management" },
   { title: "Nurse Management", url: "/nurses", icon: UserPlus, routeName: "nurses-management" },
   { title: "Prescriptions", url: "/prescriptions", icon: Pill, routeName: "prescriptions" },
+  { title: "Lab Reports", url: "/lab-reports", icon: TestTubeDiagonal, routeName: "lab-reports" },
   { title: "Teleconsultation", url: "/teleconsultation", icon: Video, routeName: "teleconsultation" },
   { title: "Referral System", url: "/referrals", icon: Share2, routeName: "referral-system" },
   { title: "Invoice Management", url: "/invoices", icon: FileText, routeName: "invoice-management" },
