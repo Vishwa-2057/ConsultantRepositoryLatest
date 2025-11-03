@@ -4,10 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { invoiceAPI } from "@/services/api";
+import { invoiceAPI, appointmentInvoiceAPI } from "@/services/api";
+import { config } from '@/config/env';
+import sessionManager from '@/utils/sessionManager';
 import InvoiceModal from "@/components/InvoiceModal";
 import InvoiceViewModal from "@/components/InvoiceViewModal";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   CreditCard, 
   FileText, 
@@ -22,7 +26,8 @@ import {
   AlertCircle,
   Eye,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Info
 } from "lucide-react";
 
 const Billing = () => {
@@ -34,7 +39,13 @@ const Billing = () => {
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [paymentLink, setPaymentLink] = useState(null);
+  const [loadingPaymentLink, setLoadingPaymentLink] = useState(false);
+  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+  const [createdInvoice, setCreatedInvoice] = useState(null);
+  const [processingPayment, setProcessingPayment] = useState(false);
   const { toast } = useToast();
+  const API_BASE_URL = config.API_BASE_URL || 'http://localhost:5000/api';
 
   // Cache management functions
   const clearBillingCache = () => {
@@ -68,6 +79,8 @@ const Billing = () => {
     }
     return [];
   });
+  const [appointmentInvoices, setAppointmentInvoices] = useState([]);
+  const [activeTab, setActiveTab] = useState('regular');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -222,10 +235,6 @@ const Billing = () => {
     setError(null);
     try {
       const filters = {};
-      // Note: New invoice model doesn't have status field
-      // We'll filter on frontend based on date ranges if needed
-      // The backend supports date and patientId filters; search by text is not supported.
-      // We'll keep simple client-side search on the rendered list for now.
 
       const response = await invoiceAPI.getAll(currentPage, pageSize, filters);
       const list = response.invoices || [];
@@ -245,7 +254,7 @@ const Billing = () => {
         tax: inv.tax || 0,
         shipping: inv.shipping || 0,
         remarks: inv.remarks,
-        status: inv.status, // Include status field
+        status: inv.status,
         createdAt: inv.createdAt,
         service: inv.lineItems?.[0]?.description || "No description",
       }));
@@ -269,6 +278,38 @@ const Billing = () => {
     }
   }, [currentPage, pageSize, statusFilter]);
 
+  const fetchAppointmentInvoices = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const filters = {};
+      if (statusFilter !== 'all') {
+        filters.status = statusFilter;
+      }
+
+      const response = await appointmentInvoiceAPI.getAll(currentPage, pageSize, filters);
+      const list = response.invoices || [];
+
+      setAppointmentInvoices(list);
+      if (response.pagination) {
+        setTotalPages(response.pagination.pages);
+        setTotalInvoices(response.pagination.total);
+      } else {
+        setTotalPages(1);
+        setTotalInvoices(list.length);
+      }
+    } catch (err) {
+      console.error('Failed to load appointment invoices:', err);
+      setError('Failed to load appointment invoices. Please try again.');
+      setAppointmentInvoices([]);
+      setTotalPages(1);
+      setTotalInvoices(0);
+    } finally {
+      setLoading(false);
+    }
+  }, [currentPage, pageSize, statusFilter]);
+
+
   useEffect(() => {
     document.title = "Smart Healthcare";
   }, []);
@@ -283,9 +324,13 @@ const Billing = () => {
   }, [pageSize, isInitialLoad]);
 
   useEffect(() => {
-    fetchInvoices();
+    if (activeTab === 'regular') {
+      fetchInvoices();
+    } else if (activeTab === 'appointment') {
+      fetchAppointmentInvoices();
+    }
     fetchRevenueStats();
-  }, [fetchInvoices, fetchRevenueStats]);
+  }, [activeTab, fetchInvoices, fetchAppointmentInvoices, fetchRevenueStats]);
 
   // Clear cache when user changes (detect by checking if auth token changes)
   useEffect(() => {
@@ -352,6 +397,26 @@ const Billing = () => {
   }, [fetchApprovals]);
 
   // Approve / Reject handlers
+  const handleApproveAppointmentInvoice = async (invoiceId) => {
+    try {
+      await appointmentInvoiceAPI.approve(invoiceId);
+      toast({
+        title: "Success",
+        description: "Appointment invoice approved successfully.",
+      });
+      fetchAppointmentInvoices();
+      fetchRevenueStats();
+    } catch (err) {
+      console.error('Failed to approve appointment invoice:', err);
+      toast({
+        title: "Error",
+        description: "Failed to approve appointment invoice.",
+        variant: "destructive",
+      });
+    }
+  };
+
+
   const handleApproveInvoice = async (approval) => {
     try {
       await invoiceAPI.approve(approval._id);
@@ -452,6 +517,10 @@ const Billing = () => {
       description: `Successfully created invoice ${invoiceData.invoiceNo} for ${patientName} - ₹${totalAmount}`,
       variant: "default",
     });
+    
+    // Store created invoice and show payment dialog
+    setCreatedInvoice(invoiceData);
+    setIsPaymentDialogOpen(true);
     
     // Refresh the invoices list and statistics
     fetchInvoices();
@@ -679,6 +748,260 @@ const Billing = () => {
     }
   };
 
+  const generateInvoicePaymentLink = async (invoiceId, amount) => {
+    try {
+      setLoadingPaymentLink(true);
+      const token = await sessionManager.getToken();
+      
+      const orderResponse = await fetch(`${API_BASE_URL}/payments/create-invoice-order`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          invoiceId: invoiceId,
+          amount: amount
+        })
+      });
+
+      if (!orderResponse.ok) {
+        const errorData = await orderResponse.json();
+        if (orderResponse.status === 503) {
+          toast({
+            title: "Error",
+            description: "Payment gateway not configured. Please set up Razorpay keys.",
+            variant: "destructive"
+          });
+          return null;
+        }
+        throw new Error(errorData.message || 'Failed to generate payment link');
+      }
+
+      const orderData = await orderResponse.json();
+      const baseUrl = window.location.origin;
+      const link = `${baseUrl}/invoice-payment?order_id=${orderData.order.id}&invoice_id=${invoiceId}`;
+      
+      setPaymentLink(link);
+      return link;
+    } catch (error) {
+      console.error('Error generating payment link:', error);
+      toast({
+        title: "Error",
+        description: "Failed to generate payment link",
+        variant: "destructive"
+      });
+      return null;
+    } finally {
+      setLoadingPaymentLink(false);
+    }
+  };
+
+  const handleCopyPaymentLink = async (invoiceId, amount) => {
+    let link = paymentLink;
+    
+    if (!link) {
+      link = await generateInvoicePaymentLink(invoiceId, amount);
+    }
+    
+    if (link) {
+      try {
+        await navigator.clipboard.writeText(link);
+        toast({
+          title: "Success",
+          description: "Payment link copied to clipboard!",
+        });
+      } catch (error) {
+        console.error('Failed to copy link:', error);
+        toast({
+          title: "Error",
+          description: "Failed to copy link",
+          variant: "destructive"
+        });
+      }
+    }
+  };
+
+  const handleSharePaymentLink = async (invoiceId, amount) => {
+    let link = paymentLink;
+    
+    if (!link) {
+      link = await generateInvoicePaymentLink(invoiceId, amount);
+    }
+    
+    if (link && navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Invoice Payment',
+          text: 'Complete your invoice payment using this link',
+          url: link
+        });
+        toast({
+          title: "Success",
+          description: "Payment link shared successfully!",
+        });
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          console.error('Error sharing link:', error);
+          toast({
+            title: "Error",
+            description: "Failed to share link",
+            variant: "destructive"
+          });
+        }
+      }
+    } else if (link) {
+      // Fallback to copy if share is not supported
+      handleCopyPaymentLink(invoiceId, amount);
+    }
+  };
+
+  const handleInvoicePayment = async () => {
+    if (!createdInvoice) {
+      toast({
+        title: "Error",
+        description: "Invoice information not available",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      setProcessingPayment(true);
+
+      // Create Razorpay order
+      const token = await sessionManager.getToken();
+      const orderResponse = await fetch(`${API_BASE_URL}/payments/create-invoice-order`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          invoiceId: createdInvoice._id,
+          amount: createdInvoice.total
+        })
+      });
+
+      if (!orderResponse.ok) {
+        const errorData = await orderResponse.json();
+        if (orderResponse.status === 503) {
+          toast({
+            title: "Error",
+            description: "Payment gateway not configured. Please set up Razorpay keys.",
+            variant: "destructive"
+          });
+          setProcessingPayment(false);
+          return;
+        }
+        throw new Error(errorData.message || 'Failed to create payment order');
+      }
+
+      const orderData = await orderResponse.json();
+
+      // Load Razorpay script
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
+      document.body.appendChild(script);
+
+      script.onload = () => {
+        const options = {
+          key: process.env.REACT_APP_RAZORPAY_KEY_ID || 'rzp_test_dummy',
+          amount: orderData.order.amount,
+          currency: orderData.order.currency,
+          name: 'Healthcare Invoice Payment',
+          description: `Payment for Invoice #${createdInvoice.invoiceNo}`,
+          order_id: orderData.order.id,
+          handler: async function (response) {
+            try {
+              // Verify payment
+              const verifyResponse = await fetch(`${API_BASE_URL}/payments/verify-invoice`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                  invoiceId: createdInvoice._id
+                })
+              });
+
+              if (!verifyResponse.ok) {
+                throw new Error('Payment verification failed');
+              }
+
+              toast({
+                title: "Success",
+                description: "Payment successful! Invoice approved.",
+              });
+              setIsPaymentDialogOpen(false);
+              fetchInvoices();
+              fetchRevenueStats();
+            } catch (error) {
+              console.error('Payment verification error:', error);
+              toast({
+                title: "Error",
+                description: "Payment verification failed",
+                variant: "destructive"
+              });
+            } finally {
+              setProcessingPayment(false);
+            }
+          },
+          prefill: {
+            name: createdInvoice.patientName || '',
+            email: createdInvoice.email || '',
+            contact: createdInvoice.phone || ''
+          },
+          theme: {
+            color: '#3B82F6'
+          },
+          modal: {
+            ondismiss: function() {
+              setProcessingPayment(false);
+              toast({
+                title: "Info",
+                description: "Payment cancelled",
+              });
+            }
+          }
+        };
+
+        const rzp = new window.Razorpay(options);
+        rzp.open();
+      };
+
+      script.onerror = () => {
+        setProcessingPayment(false);
+        toast({
+          title: "Error",
+          description: "Failed to load payment gateway",
+          variant: "destructive"
+        });
+      };
+    } catch (error) {
+      console.error('Payment error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to initiate payment",
+        variant: "destructive"
+      });
+      setProcessingPayment(false);
+    }
+  };
+
+  const handleSkipInvoicePayment = () => {
+    setIsPaymentDialogOpen(false);
+    toast({
+      title: "Info",
+      description: "Invoice created. Payment can be made later.",
+    });
+  };
+
   return (
     <div className="p-6 space-y-6">
       {/* Search, Stats and Actions - Single Line */}
@@ -709,7 +1032,11 @@ const Billing = () => {
               <CheckCircle className="w-4 h-4 text-green-600" />
             </div>
             <span className="text-sm text-green-600 font-medium">
-              Approved: {revenueStats.approvedCount || 0}
+              Approved: {activeTab === 'regular' 
+                ? (revenueStats.approvedCount || 0) 
+                : activeTab === 'appointment'
+                ? (appointmentInvoices.filter(inv => inv.status === 'approved' || inv.status === 'paid').length || 0)
+                : (appointmentInvoices.filter(inv => inv.status === 'approved' || inv.status === 'paid').length || 0)}
             </span>
           </div>
           <div className="flex items-center space-x-2">
@@ -717,7 +1044,11 @@ const Billing = () => {
               <Clock className="w-4 h-4 text-yellow-600" />
             </div>
             <span className="text-sm text-yellow-600 font-medium">
-              Not Approved: {filteredInvoices.filter(inv => getInvoiceStatus(inv) === 'Rejected').length || 0}
+              Not Approved: {activeTab === 'regular' 
+                ? (filteredInvoices.filter(inv => getInvoiceStatus(inv) === 'Rejected').length || 0)
+                : activeTab === 'appointment'
+                ? (appointmentInvoices.filter(inv => inv.status === 'unapproved').length || 0)
+                : (appointmentInvoices.filter(inv => inv.status === 'unapproved').length || 0)}
             </span>
           </div>
         </div>
@@ -745,17 +1076,27 @@ const Billing = () => {
         </div>
       </div>
 
-      {/* Invoices List */}
+      {/* Invoices List with Tabs */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100">
         <div className="px-6 py-4 border-b border-gray-100">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <h2 className="text-xl font-semibold text-gray-900">Invoices</h2>
-              <div className="flex items-center space-x-2">
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <div className="flex items-center justify-between mb-4">
+              <TabsList className="grid w-[400px] grid-cols-2">
+                <TabsTrigger value="regular">Regular Invoices</TabsTrigger>
+                <TabsTrigger value="appointment">Appointment Invoices</TabsTrigger>
+              </TabsList>
+              <div className="flex items-center space-x-3">
                 <Badge variant="secondary" className="px-3 py-1 text-sm font-medium bg-blue-100 text-blue-700 border-0">
-                  {filteredInvoices.length}
+                  {activeTab === 'regular' ? filteredInvoices.length : appointmentInvoices.length}
                 </Badge>
               </div>
+            </div>
+          </Tabs>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <h2 className="text-xl font-semibold text-gray-900">
+                {activeTab === 'regular' ? 'Regular Invoices' : 'Appointment Invoices'}
+              </h2>
             </div>
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-lg border">
@@ -793,15 +1134,19 @@ const Billing = () => {
             <div className="flex items-center justify-center h-32">
               <p className="text-red-600">{error}</p>
             </div>
-          ) : filteredInvoices.length === 0 ? (
+          ) : activeTab === 'regular' && filteredInvoices.length === 0 ? (
             <div className="flex items-center justify-center h-32">
               <p className="text-muted-foreground">
                 {searchTerm ? "No invoices found matching your search." : "No invoices found."}
               </p>
             </div>
+          ) : activeTab === 'appointment' && appointmentInvoices.length === 0 ? (
+            <div className="flex items-center justify-center h-32">
+              <p className="text-muted-foreground">No appointment invoices found.</p>
+            </div>
           ) : (
             <div className="space-y-2">
-                  {filteredInvoices.map((invoice) => {
+                  {activeTab === 'regular' && filteredInvoices.map((invoice) => {
                     const StatusIcon = getStatusIcon(getInvoiceStatus(invoice));
                     return (
                       <div key={invoice._id} className="p-4 rounded-lg bg-gray-50 hover:bg-gray-100 transition-all duration-200 border-0">
@@ -887,6 +1232,186 @@ const Billing = () => {
                       </div>
                     );
                   })}
+                  {activeTab === 'appointment' && appointmentInvoices.map((invoice) => (
+                    <div key={invoice._id} className="p-4 rounded-lg bg-gray-50 hover:bg-gray-100 transition-all duration-200 border-0">
+                      <div className="grid grid-cols-12 gap-4 items-center">
+                        {/* Left section - Patient info */}
+                        <div className="col-span-5 flex items-center space-x-4">
+                          <div className="w-12 h-12 bg-gradient-primary rounded-full flex items-center justify-center">
+                            <FileText className="w-6 h-6 text-white" />
+                          </div>
+                          <div>
+                            <h3 className="font-semibold text-foreground">{invoice.patientId?.fullName || 'N/A'}</h3>
+                            <p className="text-sm text-muted-foreground">
+                              #{invoice.invoiceNumber} • {invoice.appointmentDetails?.appointmentType || 'Appointment'}
+                            </p>
+                            <div className="flex items-center space-x-4 mt-1 text-sm text-muted-foreground">
+                              <span className="flex items-center">
+                                <Calendar className="w-4 h-4 mr-1" />
+                                {invoice.appointmentDetails?.appointmentDate ? new Date(invoice.appointmentDetails.appointmentDate).toLocaleDateString('en-GB') : 'N/A'}
+                              </span>
+                              <span className="flex items-center">
+                                <User className="w-4 h-4 mr-1" />
+                                Dr. {invoice.doctorId?.fullName || 'N/A'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        {/* Middle section - Amount and Status */}
+                        <div className="col-span-4 text-center">
+                          <p className="text-lg font-bold text-foreground">₹{Number(invoice.amount || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                          <Badge variant={invoice.status === 'paid' ? 'default' : invoice.status === 'approved' ? 'secondary' : 'outline'} className="mt-1">
+                            {invoice.status === 'paid' && <CheckCircle className="w-3 h-3 mr-1" />}
+                            {invoice.status === 'approved' && <CheckCircle className="w-3 h-3 mr-1" />}
+                            {invoice.status === 'unapproved' && <Clock className="w-3 h-3 mr-1" />}
+                            {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
+                          </Badge>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Payment: {invoice.paymentMethod === 'cash' ? 'Cash' : invoice.paymentMethod === 'online' ? 'Online' : 'Pending'}
+                          </p>
+                        </div>
+                        
+                        {/* Right section - Actions */}
+                        <div className="col-span-3 flex justify-end items-center space-x-2">
+                          {invoice.status === 'unapproved' && (
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => handleApproveAppointmentInvoice(invoice._id)}
+                              title="Approve Invoice"
+                              className="text-green-600 border-green-600 hover:bg-green-50"
+                            >
+                              <CheckCircle className="w-4 h-4 mr-1" />
+                              Approve
+                            </Button>
+                          )}
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => {
+                              // Transform appointment invoice to match regular invoice structure for the modal
+                              const transformedInvoice = {
+                                _id: invoice._id,
+                                invoiceNo: invoice.invoiceNumber,
+                                patientName: invoice.patientId?.fullName || 'N/A',
+                                phone: invoice.patientId?.phone || '',
+                                email: invoice.patientId?.email || '',
+                                address: invoice.patientId?.address || '',
+                                date: invoice.appointmentDetails?.appointmentDate ? new Date(invoice.appointmentDetails.appointmentDate).toLocaleDateString('en-GB') : new Date(invoice.createdAt).toLocaleDateString('en-GB'),
+                                total: invoice.amount,
+                                status: invoice.status,
+                                createdAt: invoice.createdAt,
+                                lineItems: [{
+                                  description: `${invoice.appointmentDetails?.appointmentType || 'Appointment'} - Dr. ${invoice.doctorId?.fullName || 'N/A'}`,
+                                  quantity: 1,
+                                  price: invoice.amount,
+                                  total: invoice.amount
+                                }],
+                                discount: 0,
+                                tax: 0,
+                                shipping: 0,
+                                remarks: `Payment Method: ${invoice.paymentMethod === 'cash' ? 'Cash' : invoice.paymentMethod === 'online' ? 'Online' : 'Pending'}\nAppointment Time: ${invoice.appointmentDetails?.appointmentTime || 'N/A'}\nDuration: ${invoice.appointmentDetails?.duration || 30} minutes`
+                              };
+                              setSelectedInvoice(transformedInvoice);
+                              setIsViewModalOpen(true);
+                            }}
+                            title="View Invoice Details"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {activeTab === 'teleconsultation' && teleconsultationInvoices.map((invoice) => (
+                    <div key={invoice._id} className="p-4 rounded-lg bg-gray-50 hover:bg-gray-100 transition-all duration-200 border-0">
+                      <div className="grid grid-cols-12 gap-4 items-center">
+                        <div className="col-span-5 flex items-center space-x-4">
+                          <div className="w-12 h-12 bg-gradient-primary rounded-full flex items-center justify-center">
+                            <FileText className="w-6 h-6 text-white" />
+                          </div>
+                          <div>
+                            <h3 className="font-semibold text-foreground">{invoice.patientId?.fullName || 'N/A'}</h3>
+                            <p className="text-sm text-muted-foreground">
+                              #{invoice.invoiceNumber} • Teleconsultation
+                            </p>
+                            <div className="flex items-center space-x-4 mt-1 text-sm text-muted-foreground">
+                              <span className="flex items-center">
+                                <Calendar className="w-4 h-4 mr-1" />
+                                {invoice.teleconsultationDetails?.scheduledDate ? new Date(invoice.teleconsultationDetails.scheduledDate).toLocaleDateString('en-GB') : 'N/A'}
+                              </span>
+                              <span className="flex items-center">
+                                <User className="w-4 h-4 mr-1" />
+                                Dr. {invoice.doctorId?.fullName || 'N/A'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="col-span-4 text-center">
+                          <p className="text-lg font-bold text-foreground">₹{Number(invoice.amount || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</p>
+                          <Badge variant={invoice.status === 'paid' ? 'default' : invoice.status === 'approved' ? 'secondary' : 'outline'} className="mt-1">
+                            {invoice.status === 'paid' && <CheckCircle className="w-3 h-3 mr-1" />}
+                            {invoice.status === 'approved' && <CheckCircle className="w-3 h-3 mr-1" />}
+                            {invoice.status === 'unapproved' && <Clock className="w-3 h-3 mr-1" />}
+                            {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
+                          </Badge>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Payment: {invoice.paymentMethod === 'cash' ? 'Cash' : invoice.paymentMethod === 'online' ? 'Online' : 'Pending'}
+                          </p>
+                        </div>
+                        
+                        <div className="col-span-3 flex justify-end items-center space-x-2">
+                          {invoice.status === 'unapproved' && (
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => handleApproveTeleconsultationInvoice(invoice._id)}
+                              title="Approve Invoice"
+                              className="text-green-600 border-green-600 hover:bg-green-50"
+                            >
+                              <CheckCircle className="w-4 h-4 mr-1" />
+                              Approve
+                            </Button>
+                          )}
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => {
+                              const transformedInvoice = {
+                                _id: invoice._id,
+                                invoiceNo: invoice.invoiceNumber,
+                                patientName: invoice.patientId?.fullName || 'N/A',
+                                phone: invoice.patientId?.phone || '',
+                                email: invoice.patientId?.email || '',
+                                address: invoice.patientId?.address || '',
+                                date: invoice.teleconsultationDetails?.scheduledDate ? new Date(invoice.teleconsultationDetails.scheduledDate).toLocaleDateString('en-GB') : new Date(invoice.createdAt).toLocaleDateString('en-GB'),
+                                total: invoice.amount,
+                                status: invoice.status,
+                                createdAt: invoice.createdAt,
+                                lineItems: [{
+                                  description: `Teleconsultation - Dr. ${invoice.doctorId?.fullName || 'N/A'}`,
+                                  quantity: 1,
+                                  price: invoice.amount,
+                                  total: invoice.amount
+                                }],
+                                discount: 0,
+                                tax: 0,
+                                shipping: 0,
+                                remarks: `Payment Method: ${invoice.paymentMethod === 'cash' ? 'Cash' : invoice.paymentMethod === 'online' ? 'Online' : 'Pending'}\nScheduled Time: ${invoice.teleconsultationDetails?.scheduledTime || 'N/A'}\nDuration: ${invoice.teleconsultationDetails?.duration || 30} minutes\nMeeting ID: ${invoice.teleconsultationDetails?.meetingId || 'N/A'}\nAppointment Time: ${invoice.appointmentDetails?.appointmentTime || 'N/A'}\nDuration: ${invoice.appointmentDetails?.duration || 30} minutes`
+                              };
+                              setSelectedInvoice(transformedInvoice);
+                              setIsViewModalOpen(true);
+                            }}
+                            title="View Invoice Details"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
             </div>
           )}
         </div>
@@ -977,7 +1502,94 @@ const Billing = () => {
         isOpen={isViewModalOpen}
         onClose={handleViewModalClose}
         invoice={selectedInvoice}
+        onCopyPaymentLink={handleCopyPaymentLink}
+        onSharePaymentLink={handleSharePaymentLink}
+        paymentLink={paymentLink}
+        loadingPaymentLink={loadingPaymentLink}
       />
+
+      {/* Payment Dialog */}
+      <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-green-600" />
+              Invoice Created Successfully
+            </DialogTitle>
+            <DialogDescription>
+              Complete payment to approve this invoice
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {createdInvoice && (
+              <>
+                <div className="p-4 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm font-medium text-muted-foreground">Invoice No:</span>
+                      <span className="text-sm font-semibold">#{createdInvoice.invoiceNo}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm font-medium text-muted-foreground">Patient:</span>
+                      <span className="text-sm font-semibold">{createdInvoice.patientName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm font-medium text-muted-foreground">Date:</span>
+                      <span className="text-sm font-semibold">{createdInvoice.date}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg">
+                  <div className="flex justify-between items-center">
+                    <span className="text-base font-semibold text-green-900 dark:text-green-100">
+                      Total Amount:
+                    </span>
+                    <span className="text-2xl font-bold text-green-900 dark:text-green-100">
+                      ₹{Number(createdInvoice.total || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
+                  <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-amber-800 dark:text-amber-200">
+                    Invoice is in "Unapproved" status. Complete the payment to approve it.
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+
+          <DialogFooter className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={handleSkipInvoicePayment}
+              disabled={processingPayment}
+            >
+              Pay Later
+            </Button>
+            <Button
+              onClick={handleInvoicePayment}
+              disabled={processingPayment}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {processingPayment ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Pay Now
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -2,14 +2,17 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import DoctorScheduleManager from "@/components/DoctorScheduleManager";
 import { doctorAPI } from "@/services/api";
 import { useToast } from "@/hooks/use-toast";
-import { Clock, User, Loader2, Check, ChevronsUpDown } from "lucide-react";
+import { Clock, User, Loader2, Check, ChevronsUpDown, DollarSign, Save } from "lucide-react";
 import { getCurrentUser } from "@/utils/roleUtils";
 import { cn } from "@/lib/utils";
+import { config } from "@/config/env";
+import sessionManager from "@/utils/sessionManager";
 
 const SlotManagement = () => {
   const { toast } = useToast();
@@ -18,10 +21,20 @@ const SlotManagement = () => {
   const [selectedDoctor, setSelectedDoctor] = useState(null);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
+  const [appointmentFees, setAppointmentFees] = useState(500);
+  const [savingFees, setSavingFees] = useState(false);
+  const [loadingFees, setLoadingFees] = useState(false);
+  const API_BASE_URL = config.API_BASE_URL || 'http://localhost:5000/api';
 
   useEffect(() => {
     loadDoctors();
   }, []);
+
+  useEffect(() => {
+    if (selectedDoctor) {
+      loadDoctorFees(selectedDoctor._id);
+    }
+  }, [selectedDoctor]);
 
   const loadDoctors = async () => {
     try {
@@ -58,6 +71,63 @@ const SlotManagement = () => {
     }
   };
 
+  const loadDoctorFees = async (doctorId) => {
+    try {
+      setLoadingFees(true);
+      const token = await sessionManager.getToken();
+      const response = await fetch(`${API_BASE_URL}/doctor-fees/${doctorId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setAppointmentFees(data.fees?.appointmentFees || 500);
+      }
+    } catch (error) {
+      console.error('Error loading doctor fees:', error);
+      setAppointmentFees(500); // Set default on error
+    } finally {
+      setLoadingFees(false);
+    }
+  };
+
+  const saveDoctorFees = async () => {
+    if (!selectedDoctor) return;
+    
+    try {
+      setSavingFees(true);
+      const token = await sessionManager.getToken();
+      const response = await fetch(`${API_BASE_URL}/doctor-fees/${selectedDoctor._id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ appointmentFees: parseFloat(appointmentFees) || 0 })
+      });
+      
+      if (response.ok) {
+        toast({
+          title: "Success",
+          description: "Appointment fees saved successfully",
+        });
+      } else {
+        throw new Error('Failed to save fees');
+      }
+    } catch (error) {
+      console.error('Error saving doctor fees:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save appointment fees",
+        variant: "destructive"
+      });
+    } finally {
+      setSavingFees(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -68,29 +138,17 @@ const SlotManagement = () => {
 
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-            <Clock className="w-8 h-8 text-blue-600 dark:text-blue-400" />
-            Doctor Availability Management
-          </h1>
-          <p className="text-gray-600 dark:text-gray-300 mt-2">
-            Manage doctor schedules, weekly availability, and exceptions
-          </p>
-        </div>
-      </div>
 
       {/* Doctor Selection */}
       {doctors.length > 0 && (
-        <Card>
+        <Card className="border-gray-100 dark:border-gray-800 shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <User className="w-5 h-5" />
               Select Doctor
             </CardTitle>
             <CardDescription>
-              Choose a doctor to manage their availability schedule
+              Choose a doctor to manage their availability schedule and fees
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -104,12 +162,12 @@ const SlotManagement = () => {
                     aria-expanded={open}
                     className="w-full justify-between mt-2"
                   >
-                    {selectedDoctor
-                      ? `Dr. ${selectedDoctor.fullName} - ${selectedDoctor.specialty}`
-                      : "Select a doctor..."}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
+                      {selectedDoctor
+                        ? `Dr. ${selectedDoctor.fullName} - ${selectedDoctor.specialty}`
+                        : "Select a doctor..."}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
                 <PopoverContent className="w-[500px] p-0" onWheel={(e) => e.stopPropagation()}>
                   <Command>
                     <CommandInput placeholder="Search doctors..." />
@@ -150,35 +208,71 @@ const SlotManagement = () => {
       {/* Schedule Manager */}
       {selectedDoctor ? (
         <div>
-          <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-blue-600 dark:bg-blue-500 flex items-center justify-center text-white font-semibold text-lg">
-                {selectedDoctor.fullName.charAt(0)}
+          <Card className="mb-4 border-gray-100 dark:border-gray-800 shadow-sm">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center text-white font-semibold text-lg">
+                    {selectedDoctor.fullName.charAt(0)}
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900 dark:text-white">
+                      Dr. {selectedDoctor.fullName}
+                    </h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      {selectedDoctor.specialty} • {selectedDoctor.email}
+                    </p>
+                  </div>
+                </div>
+                
+                {/* Appointment Fees Section */}
+                <div className="flex items-center gap-3">
+                  <div className="flex flex-col">
+                    <Label className="text-xs text-gray-600 dark:text-gray-400 mb-1">
+                      Appointment Fees (₹)
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="50"
+                        value={appointmentFees}
+                        onChange={(e) => setAppointmentFees(e.target.value)}
+                        disabled={loadingFees || savingFees}
+                        className="w-32"
+                        placeholder="0"
+                      />
+                      <Button
+                        onClick={saveDoctorFees}
+                        disabled={savingFees || loadingFees}
+                        size="sm"
+                      >
+                        {savingFees ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Save className="w-4 h-4" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div>
-                <h3 className="font-semibold text-gray-900 dark:text-white">
-                  Dr. {selectedDoctor.fullName}
-                </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-300">
-                  {selectedDoctor.specialty} • {selectedDoctor.email}
-                </p>
-              </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
-          <DoctorScheduleManager
-            doctorId={selectedDoctor._id}
-            clinicId={selectedDoctor.clinicId || currentUser?.clinicId || currentUser?.id}
-          />
-        </div>
+        <DoctorScheduleManager
+          doctorId={selectedDoctor._id}
+          clinicId={selectedDoctor.clinicId || currentUser?.clinicId || currentUser?.id}
+        />
+      </div>
       ) : (
-        <Card>
+        <Card className="border-gray-100 dark:border-gray-800 shadow-sm">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <User className="w-16 h-16 text-gray-400 mb-4" />
             <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
               No Doctor Selected
             </h3>
-            <p className="text-gray-600 dark:text-gray-300 text-center max-w-md">
+            <p className="text-gray-600 dark:text-gray-400 text-center max-w-md">
               {doctors.length === 0
                 ? "No doctors found in the system. Please add doctors first."
                 : "Please select a doctor to manage their availability schedule."}

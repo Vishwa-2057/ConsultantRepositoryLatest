@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,12 +8,14 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import { Calendar, Clock, Video, User, Settings, Check, ChevronsUpDown, AlertCircle } from 'lucide-react';
+import { Calendar, Clock, Video, User, Settings, Check, ChevronsUpDown, AlertCircle, CheckCircle, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { patientAPI, appointmentAPI, teleconsultationAPI, doctorAPI, doctorAvailabilityAPI } from '@/services/api';
 import { toast } from 'sonner';
 import { getCurrentUser, isDoctor } from '@/utils/roleUtils';
 import { getAvailableTimeSlots } from '@/utils/availabilityUtils';
+import { config } from '@/config/env';
+import sessionManager from '@/utils/sessionManager';
 // import TimeSlotPicker from '@/components/TimeSlotPicker'; // Removed - using manual date/time selection
 
 const ScheduleTeleconsultationModal = ({ isOpen, onClose, onSuccess, selectedPatient = null, onSwitchToAppointment }) => {
@@ -24,6 +26,13 @@ const ScheduleTeleconsultationModal = ({ isOpen, onClose, onSuccess, selectedPat
   const [availableSlots, setAvailableSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [slotDuration, setSlotDuration] = useState(30);
+  const [doctorFees, setDoctorFees] = useState(null);
+  const [loadingFees, setLoadingFees] = useState(false);
+  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+  const [createdAppointment, setCreatedAppointment] = useState(null);
+  const [processingPayment, setProcessingPayment] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState('online');
+  const API_BASE_URL = config.API_BASE_URL || 'http://localhost:5000/api';
   
   // Get current user from localStorage
   const user = getCurrentUser();
@@ -94,6 +103,15 @@ const ScheduleTeleconsultationModal = ({ isOpen, onClose, onSuccess, selectedPat
     }
   }, [doctorId, scheduledDate]);
 
+  // Load doctor fees when doctor is selected
+  useEffect(() => {
+    if (doctorId) {
+      loadDoctorFees(doctorId);
+    } else {
+      setDoctorFees(null);
+    }
+  }, [doctorId]);
+
   const loadAvailableSlots = async () => {
     try {
       setLoadingSlots(true);
@@ -139,6 +157,28 @@ const ScheduleTeleconsultationModal = ({ isOpen, onClose, onSuccess, selectedPat
     } catch (error) {
       console.error('Error loading doctors:', error);
       toast.error('Failed to load doctors');
+    }
+  };
+
+  const loadDoctorFees = async (doctorId) => {
+    try {
+      setLoadingFees(true);
+      const token = await sessionManager.getToken();
+      const response = await fetch(`${API_BASE_URL}/doctor-fees/${doctorId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setDoctorFees(data.fees);
+      }
+    } catch (error) {
+      console.error('Error loading doctor fees:', error);
+      setDoctorFees(null);
+    } finally {
+      setLoadingFees(false);
     }
   };
 
@@ -235,16 +275,13 @@ const ScheduleTeleconsultationModal = ({ isOpen, onClose, onSuccess, selectedPat
       
       toast.success('Teleconsultation scheduled successfully!');
       
-      if (onSuccess) {
-        onSuccess(response.teleconsultation);
-      }
+      // Store created appointment and show payment dialog
+      setCreatedAppointment(appointment);
       
-      onClose();
-      
-      // Reload the page to refresh the data
+      // Use setTimeout to ensure the modal closes before payment dialog opens
       setTimeout(() => {
-        window.location.reload();
-      }, 1000);
+        setIsPaymentDialogOpen(true);
+      }, 100);
     } catch (error) {
       console.error('Error scheduling teleconsultation:', error);
       toast.error(error.message || 'Failed to schedule teleconsultation');
@@ -253,11 +290,201 @@ const ScheduleTeleconsultationModal = ({ isOpen, onClose, onSuccess, selectedPat
     }
   };
 
+  const handlePayment = async () => {
+    if (!createdAppointment || !doctorFees) {
+      toast.error('Payment information not available');
+      return;
+    }
+
+    try {
+      setProcessingPayment(true);
+
+      // Create Razorpay order
+      const token = await sessionManager.getToken();
+      const orderResponse = await fetch(`${API_BASE_URL}/payments/create-order`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          appointmentId: createdAppointment._id,
+          amount: doctorFees.appointmentFees || 500
+        })
+      });
+
+      if (!orderResponse.ok) {
+        const errorData = await orderResponse.json();
+        if (orderResponse.status === 503) {
+          toast.error('Payment gateway not configured. Please set up Razorpay keys.');
+          console.error('Razorpay configuration error:', errorData.message);
+          setProcessingPayment(false);
+          return;
+        }
+        throw new Error(errorData.message || 'Failed to create payment order');
+      }
+
+      const orderData = await orderResponse.json();
+
+      // Load Razorpay script
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
+      document.body.appendChild(script);
+
+      script.onload = () => {
+        const options = {
+          key: process.env.REACT_APP_RAZORPAY_KEY_ID || 'rzp_test_dummy',
+          amount: orderData.order.amount,
+          currency: orderData.order.currency,
+          name: 'Healthcare Teleconsultation',
+          description: `Teleconsultation with Dr. ${createdAppointment.doctorId?.fullName || 'Doctor'}`,
+          order_id: orderData.order.id,
+          handler: async function (response) {
+            try {
+              // Verify payment
+              const verifyResponse = await fetch(`${API_BASE_URL}/payments/verify`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                  appointmentId: createdAppointment._id
+                })
+              });
+
+              if (!verifyResponse.ok) {
+                throw new Error('Payment verification failed');
+              }
+
+              toast.success('Payment successful! Teleconsultation confirmed.');
+              setIsPaymentDialogOpen(false);
+              onClose();
+              if (onSuccess) {
+                onSuccess();
+              }
+              // Reload the page to refresh the data
+              setTimeout(() => {
+                window.location.reload();
+              }, 1000);
+            } catch (error) {
+              console.error('Payment verification error:', error);
+              toast.error('Payment verification failed');
+            } finally {
+              setProcessingPayment(false);
+            }
+          },
+          prefill: {
+            name: createdAppointment.patientId?.fullName || '',
+            email: createdAppointment.patientId?.email || '',
+            contact: createdAppointment.patientId?.phone || ''
+          },
+          theme: {
+            color: '#3B82F6'
+          },
+          modal: {
+            ondismiss: function() {
+              setProcessingPayment(false);
+              toast.info('Payment cancelled');
+            }
+          }
+        };
+
+        const rzp = new window.Razorpay(options);
+        rzp.open();
+      };
+
+      script.onerror = () => {
+        setProcessingPayment(false);
+        toast.error('Failed to load payment gateway');
+      };
+    } catch (error) {
+      console.error('Payment error:', error);
+      toast.error('Failed to initiate payment');
+      setProcessingPayment(false);
+    }
+  };
+
+  const handleSkipPayment = () => {
+    setIsPaymentDialogOpen(false);
+    setPaymentMethod('online');
+    onClose();
+    if (onSuccess) {
+      onSuccess();
+    }
+    // Reload the page to refresh the data
+    setTimeout(() => {
+      window.location.reload();
+    }, 1000);
+    toast.info('Teleconsultation created. Payment can be made later.');
+  };
+
+  const handleCashPayment = async () => {
+    if (!createdAppointment) {
+      toast.error('Appointment information not available');
+      return;
+    }
+
+    try {
+      setProcessingPayment(true);
+      const token = await sessionManager.getToken();
+
+      // Find the appointment invoice and set payment method to cash and status to approved
+      const invoicesResponse = await fetch(`${API_BASE_URL}/appointment-invoices?appointmentId=${createdAppointment._id}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (invoicesResponse.ok) {
+        const invoicesData = await invoicesResponse.json();
+        if (invoicesData.invoices && invoicesData.invoices.length > 0) {
+          const invoice = invoicesData.invoices[0];
+          
+          // Update payment method to cash and status to approved
+          await fetch(`${API_BASE_URL}/appointment-invoices/${invoice._id}`, {
+            method: 'PATCH',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+              paymentMethod: 'cash',
+              status: 'approved'
+            })
+          });
+        }
+      }
+
+      setIsPaymentDialogOpen(false);
+      setPaymentMethod('online');
+      onClose();
+      if (onSuccess) {
+        onSuccess();
+      }
+      // Reload the page to refresh the data
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+      toast.success('Teleconsultation confirmed. Payment will be collected in cash.');
+    } catch (error) {
+      console.error('Error processing cash payment:', error);
+      toast.error('Failed to process cash payment');
+    } finally {
+      setProcessingPayment(false);
+    }
+  };
+
   const selectedPatientData = selectedPatient || patients.find(p => p._id === formData.patientId);
   const selectedDoctorData = doctors.find(d => d._id === formData.doctorId);
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <>
+    <Dialog open={isOpen && !isPaymentDialogOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         {/* Loading Overlay */}
         {loading && (
@@ -584,6 +811,161 @@ const ScheduleTeleconsultationModal = ({ isOpen, onClose, onSuccess, selectedPat
         </form>
       </DialogContent>
     </Dialog>
+
+    {/* Payment Dialog */}
+    <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <CheckCircle className="w-5 h-5 text-green-600" />
+            Teleconsultation Scheduled Successfully
+          </DialogTitle>
+          <DialogDescription>
+            Complete payment to confirm your teleconsultation
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          {createdAppointment && (
+            <>
+              <div className="p-4 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-sm font-medium text-muted-foreground">Doctor:</span>
+                    <span className="text-sm font-semibold">Dr. {createdAppointment.doctorId?.fullName || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm font-medium text-muted-foreground">Date:</span>
+                    <span className="text-sm font-semibold">
+                      {createdAppointment.date ? new Date(createdAppointment.date).toLocaleDateString('en-GB') : 'N/A'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm font-medium text-muted-foreground">Time:</span>
+                    <span className="text-sm font-semibold">{createdAppointment.time || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm font-medium text-muted-foreground">Type:</span>
+                    <span className="text-sm font-semibold flex items-center gap-1">
+                      <Video className="w-3 h-3" />
+                      Teleconsultation
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg">
+                <div className="flex justify-between items-center">
+                  <span className="text-base font-semibold text-green-900 dark:text-green-100">
+                    Consultation Fee:
+                  </span>
+                  <span className="text-2xl font-bold text-green-900 dark:text-green-100">
+                    ₹{doctorFees?.appointmentFees || 500}
+                  </span>
+                </div>
+              </div>
+
+              {/* Payment Method Selection */}
+              <div className="space-y-3">
+                <Label className="text-sm font-semibold">Select Payment Method</Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setPaymentMethod('online')}
+                    className={cn(
+                      "p-4 border-2 rounded-lg transition-all duration-200 hover:shadow-md",
+                      paymentMethod === 'online'
+                        ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
+                        : "border-gray-200 dark:border-gray-700 hover:border-blue-300"
+                    )}
+                  >
+                    <div className="flex flex-col items-center gap-2">
+                      <div className={cn(
+                        "w-10 h-10 rounded-full flex items-center justify-center",
+                        paymentMethod === 'online' ? "bg-blue-500" : "bg-gray-200 dark:bg-gray-700"
+                      )}>
+                        <svg className={cn("w-5 h-5", paymentMethod === 'online' ? "text-white" : "text-gray-600")} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                        </svg>
+                      </div>
+                      <span className="text-sm font-medium">Card / UPI</span>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setPaymentMethod('cash')}
+                    className={cn(
+                      "p-4 border-2 rounded-lg transition-all duration-200 hover:shadow-md",
+                      paymentMethod === 'cash'
+                        ? "border-green-500 bg-green-50 dark:bg-green-950/30"
+                        : "border-gray-200 dark:border-gray-700 hover:border-green-300"
+                    )}
+                  >
+                    <div className="flex flex-col items-center gap-2">
+                      <div className={cn(
+                        "w-10 h-10 rounded-full flex items-center justify-center",
+                        paymentMethod === 'cash' ? "bg-green-500" : "bg-gray-200 dark:bg-gray-700"
+                      )}>
+                        <svg className={cn("w-5 h-5", paymentMethod === 'cash' ? "text-white" : "text-gray-600")} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                      </div>
+                      <span className="text-sm font-medium">Cash</span>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
+                <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-amber-800 dark:text-amber-200">
+                  {paymentMethod === 'online' 
+                    ? 'Your teleconsultation is in "Processing" status. Complete the payment to confirm.'
+                    : 'Teleconsultation will be confirmed. Payment will be collected in cash at the clinic.'}
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+
+        <DialogFooter className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={handleSkipPayment}
+            disabled={processingPayment}
+          >
+            Pay Later
+          </Button>
+          {paymentMethod === 'online' ? (
+            <Button
+              onClick={handlePayment}
+              disabled={processingPayment}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {processingPayment ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Pay Online
+                </>
+              )}
+            </Button>
+          ) : (
+            <Button
+              onClick={handleCashPayment}
+              disabled={processingPayment}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              <CheckCircle className="w-4 h-4 mr-2" />
+              Confirm Cash Payment
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 };
 

@@ -37,6 +37,10 @@ const teleconsultationRoutes = require('./routes/teleconsultations');
 const doctorAvailabilityRoutes = require('./routes/doctorAvailability');
 const scheduleExceptionRoutes = require('./routes/scheduleExceptions');
 const labReportRoutes = require('./routes/labReports');
+const doctorFeesRoutes = require('./routes/doctorFees');
+const paymentRoutes = require('./routes/payments');
+const carouselRoutes = require('./routes/carousel');
+const appointmentInvoiceRoutes = require('./routes/appointmentInvoices');
 
 // Middleware
 app.use(helmet());
@@ -270,6 +274,10 @@ app.use('/api/teleconsultations', teleconsultationRoutes);
 app.use('/api/doctor-availability', doctorAvailabilityRoutes);
 app.use('/api/schedule-exceptions', scheduleExceptionRoutes);
 app.use('/api/lab-reports', labReportRoutes);
+app.use('/api/doctor-fees', doctorFeesRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/carousel', carouselRoutes);
+app.use('/api/appointment-invoices', appointmentInvoiceRoutes);
 
 app.get("/", (req, res) => {
   res.send("Backend is running ✅");

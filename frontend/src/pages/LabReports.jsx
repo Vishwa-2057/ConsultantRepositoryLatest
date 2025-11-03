@@ -59,13 +59,14 @@ const LabReports = () => {
 
   useEffect(() => {
     loadPatients();
+    loadAllLabReports(); // Load all reports by default
   }, []);
 
   useEffect(() => {
     if (selectedPatients.length > 0) {
-      loadLabReportsForMultiplePatients();
+      loadLabReportsForSinglePatient();
     } else {
-      setLabReports([]);
+      loadAllLabReports(); // Show all reports when no patient is selected
     }
   }, [selectedPatients]);
 
@@ -110,35 +111,59 @@ const LabReports = () => {
     }
   };
 
-  const loadLabReportsForMultiplePatients = async () => {
+  const loadAllLabReports = async () => {
     setLoading(true);
     try {
       const token = await sessionManager.getToken();
-      
-      // Fetch reports for all selected patients
-      const reportPromises = selectedPatients.map(patient =>
-        fetch(`${API_BASE_URL}/lab-reports/patient/${patient._id}`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        }).then(res => res.json())
-      );
-      
-      const results = await Promise.all(reportPromises);
-      
-      // Combine all reports and add patient info to each report
-      const allReports = results.flatMap((data, index) => {
-        const reports = data.reports || [];
-        return reports.map(report => ({
-          ...report,
-          patientInfo: selectedPatients[index]
-        }));
+      const response = await fetch(`${API_BASE_URL}/lab-reports`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
       });
       
-      // Sort by test date (most recent first)
-      allReports.sort((a, b) => new Date(b.testDate) - new Date(a.testDate));
+      if (!response.ok) throw new Error('Failed to load lab reports');
       
-      setLabReports(allReports);
+      const data = await response.json();
+      const reports = data.reports || [];
+      
+      // Sort by test date (most recent first)
+      reports.sort((a, b) => new Date(b.testDate) - new Date(a.testDate));
+      
+      setLabReports(reports);
+    } catch (error) {
+      console.error('Failed to load lab reports:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load lab reports",
+        variant: "destructive",
+      });
+      setLabReports([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadLabReportsForSinglePatient = async () => {
+    setLoading(true);
+    try {
+      const token = await sessionManager.getToken();
+      const patientId = selectedPatients[0]._id;
+      
+      const response = await fetch(`${API_BASE_URL}/lab-reports/patient/${patientId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) throw new Error('Failed to load lab reports');
+      
+      const data = await response.json();
+      const reports = data.reports || [];
+      
+      // Sort by test date (most recent first)
+      reports.sort((a, b) => new Date(b.testDate) - new Date(a.testDate));
+      
+      setLabReports(reports);
     } catch (error) {
       console.error('Failed to load lab reports:', error);
       toast({
@@ -190,14 +215,6 @@ const LabReports = () => {
       return;
     }
 
-    if (selectedPatients.length > 1) {
-      toast({
-        title: "Multiple Patients Selected",
-        description: "Please select only one patient to upload a report",
-        variant: "destructive",
-      });
-      return;
-    }
 
     const selectedPatient = selectedPatients[0];
 
@@ -245,7 +262,7 @@ const LabReports = () => {
         file: null
       });
       
-      loadLabReportsForMultiplePatients();
+      loadAllLabReports();
     } catch (error) {
       console.error('Failed to upload lab report:', error);
       toast({
@@ -339,7 +356,7 @@ const LabReports = () => {
         description: "Lab report deleted successfully",
       });
 
-      loadLabReportsForMultiplePatients();
+      loadAllLabReports();
       setIsDeleteDialogOpen(false);
       setReportToDelete(null);
     } catch (error) {
@@ -362,27 +379,32 @@ const LabReports = () => {
 
   return (
     <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Lab Reports</h1>
-          <p className="text-muted-foreground">Upload and manage patient lab test results</p>
-        </div>
-        <Button
-          onClick={() => setIsUploadModalOpen(true)}
-          disabled={selectedPatients.length === 0}
-          className="flex items-center gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Upload Report
-        </Button>
-      </div>
-
       {/* Patient Selection */}
       <Card>
         <CardHeader>
-          <CardTitle>Select Patients</CardTitle>
-          <CardDescription>Choose one or more patients to view and manage their lab reports</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Select Patient</CardTitle>
+              <CardDescription>Choose a patient to view and manage their lab reports</CardDescription>
+            </div>
+            <Button
+              onClick={() => {
+                if (selectedPatients.length === 0) {
+                  toast({
+                    title: "No Patient Selected",
+                    description: "Please select a patient first to upload a report",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+                setIsUploadModalOpen(true);
+              }}
+              className="flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Upload Report
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="flex gap-4">
@@ -396,8 +418,8 @@ const LabReports = () => {
                     className="w-full justify-between"
                   >
                     {selectedPatients.length > 0 
-                      ? `${selectedPatients.length} patient${selectedPatients.length > 1 ? 's' : ''} selected` 
-                      : "Select patients..."}
+                      ? selectedPatients[0].fullName
+                      : "Select a patient..."}
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
@@ -418,12 +440,10 @@ const LabReports = () => {
                               key={patient._id}
                               value={`${patient.fullName} ${patient.phone} ${patient.email || ''}`}
                               onSelect={() => {
-                                if (isSelected) {
-                                  setSelectedPatients(selectedPatients.filter(p => p._id !== patient._id));
-                                } else {
-                                  setSelectedPatients([...selectedPatients, patient]);
-                                }
+                                // Single select only
+                                setSelectedPatients([patient]);
                                 setSearchTerm("");
+                                setPatientComboboxOpen(false);
                               }}
                             >
                               <Check
@@ -460,43 +480,20 @@ const LabReports = () => {
             )}
           </div>
 
-          {selectedPatients.length > 0 && (
-            <div className="mt-4 space-y-2">
-              <Label className="text-sm font-medium">Selected Patients:</Label>
-              <div className="flex flex-wrap gap-2">
-                {selectedPatients.map((patient) => (
-                  <Badge
-                    key={patient._id}
-                    variant="secondary"
-                    className="flex items-center gap-2 px-3 py-1.5"
-                  >
-                    <User className="w-3 h-3" />
-                    <span>{patient.fullName}</span>
-                    <button
-                      onClick={() => {
-                        setSelectedPatients(selectedPatients.filter(p => p._id !== patient._id));
-                      }}
-                      className="ml-1 hover:text-destructive"
-                    >
-                      ×
-                    </button>
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
         </CardContent>
       </Card>
 
       {/* Lab Reports List */}
-      {selectedPatients.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Lab Reports</CardTitle>
-            <CardDescription>
-              {labReports.length} report{labReports.length !== 1 ? 's' : ''} found for {selectedPatients.length} patient{selectedPatients.length > 1 ? 's' : ''}
-            </CardDescription>
-          </CardHeader>
+      <Card>
+        <CardHeader>
+          <CardTitle>Lab Reports</CardTitle>
+          <CardDescription>
+            {selectedPatients.length > 0 
+              ? `${labReports.length} report${labReports.length !== 1 ? 's' : ''} found for ${selectedPatients[0]?.fullName}`
+              : `${labReports.length} total report${labReports.length !== 1 ? 's' : ''} from all patients`
+            }
+          </CardDescription>
+        </CardHeader>
           <CardContent>
             {loading ? (
               <div className="flex justify-center py-8">
@@ -516,9 +513,12 @@ const LabReports = () => {
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <h4 className="font-semibold">{report.testName}</h4>
-                          {selectedPatients.length > 1 && report.patientInfo && (
-                            <Badge variant="outline" className="text-xs">
-                              {report.patientInfo.fullName}
+                          <Badge variant="outline" className="text-xs">
+                            {report.patientId?.fullName || 'Unknown Patient'}
+                          </Badge>
+                          {report.patientId?.uhid && (
+                            <Badge variant="secondary" className="text-xs">
+                              UHID: {report.patientId.uhid}
                             </Badge>
                           )}
                         </div>
@@ -579,7 +579,6 @@ const LabReports = () => {
             )}
           </CardContent>
         </Card>
-      )}
 
       {/* Upload Modal */}
       <Dialog open={isUploadModalOpen} onOpenChange={setIsUploadModalOpen}>
@@ -587,7 +586,7 @@ const LabReports = () => {
           <DialogHeader>
             <DialogTitle>Upload Lab Report</DialogTitle>
             <DialogDescription>
-              Upload lab test results for {selectedPatients.length === 1 ? selectedPatients[0]?.fullName : `${selectedPatients.length} patients`}
+              Upload lab test results for {selectedPatients[0]?.fullName}
             </DialogDescription>
           </DialogHeader>
 

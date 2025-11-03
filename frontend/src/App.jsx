@@ -43,16 +43,9 @@ const App = () => {
   useEffect(() => {
     const initializeAuth = async () => {
       try {
-        // Skip token check if on login/register pages
-        if (window.location.pathname === '/login' || 
-            window.location.pathname === '/register' || 
-            window.location.pathname.includes('/superadmin/register')) {
-          setToken(null);
-          setIsLoading(false);
-          return;
-        }
-        
-        const currentToken = await sessionManager.getToken();
+        // Always check for token, even on login/register pages
+        // This allows PublicRoute to redirect authenticated users
+        const currentToken = await sessionManager.getToken(true); // Skip login check
         setToken(currentToken);
       } catch (error) {
         console.error('Failed to initialize auth:', error);

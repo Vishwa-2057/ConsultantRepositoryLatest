@@ -5,8 +5,10 @@ const mongoose = require('mongoose');
 const Appointment = require('../models/Appointment');
 const Patient = require('../models/Patient');
 const Doctor = require('../models/Doctor');
-const Nurse = require('../models/Nurse');
 const Clinic = require('../models/Clinic');
+const Nurse = require('../models/Nurse');
+const AppointmentInvoice = require('../models/AppointmentInvoice');
+const DoctorFees = require('../models/DoctorFees');
 const auth = require('../middleware/auth');
 const ActivityLogger = require('../utils/activityLogger');
 
@@ -119,11 +121,11 @@ router.get('/', auth, async (req, res) => {
     }
     
     if (patientId) {
-      query.patientId = patientId;
+      query.patientId = new mongoose.Types.ObjectId(patientId);
     }
     
     if (doctorId) {
-      query.doctorId = doctorId;
+      query.doctorId = new mongoose.Types.ObjectId(doctorId);
     }
     
     if (provider) {
@@ -582,6 +584,34 @@ router.post('/', auth, validateAppointment, async (req, res) => {
     const populatedAppointment = await Appointment.findById(appointment._id)
       .populate('patientId', 'fullName phone email')
       .populate('doctorId', 'fullName specialty phone');
+
+    // Create appointment invoice
+    try {
+      // Get doctor fees
+      const doctorFees = await DoctorFees.findOne({ doctorId: doctor._id });
+      const appointmentFee = doctorFees?.appointmentFees || 500; // Default to 500 if not set
+
+      const appointmentInvoice = new AppointmentInvoice({
+        appointmentId: appointment._id,
+        patientId: patient._id,
+        doctorId: doctor._id,
+        clinicId: clinicId,
+        amount: appointmentFee,
+        paymentMethod: 'pending',
+        appointmentDetails: {
+          appointmentType: appointment.appointmentType,
+          appointmentDate: appointment.date,
+          appointmentTime: appointment.time,
+          duration: appointment.duration || 30
+        }
+      });
+
+      await appointmentInvoice.save();
+      console.log('Appointment invoice created:', appointmentInvoice.invoiceNumber);
+    } catch (invoiceError) {
+      console.error('Failed to create appointment invoice:', invoiceError);
+      // Don't fail the appointment creation if invoice creation fails
+    }
 
     // Log appointment creation activity
     try {

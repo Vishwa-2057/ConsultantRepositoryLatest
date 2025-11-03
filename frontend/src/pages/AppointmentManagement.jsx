@@ -10,7 +10,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar, Clock, User, Phone, MapPin, AlertCircle, CheckCircle, XCircle, Plus, Search, Filter, Edit, CalendarDays, Users, TrendingUp, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FileText, Calendar as CalendarIcon, Info, Video, MessageCircle, Check, ChevronsUpDown } from 'lucide-react';
+import { Calendar, Clock, User, Phone, MapPin, AlertCircle, CheckCircle, XCircle, Plus, Search, Filter, Edit, CalendarDays, Users, TrendingUp, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FileText, Calendar as CalendarIcon, Info, Video, MessageCircle, Check, ChevronsUpDown, Link as LinkIcon, Share2, Copy } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import { toast } from 'sonner';
 import { appointmentAPI, patientAPI, doctorAPI, doctorAvailabilityAPI } from '@/services/api';
@@ -20,6 +20,8 @@ import RescheduleAppointmentModal from '@/components/RescheduleAppointmentModal'
 import AppointmentConflictDialog from '@/components/AppointmentConflictDialog';
 import ScheduleTeleconsultationModal from '@/components/ScheduleTeleconsultationModal';
 import { getCurrentUser } from '@/utils/roleUtils';
+import { config } from '@/config/env';
+import sessionManager from '@/utils/sessionManager';
 // import TimeSlotPicker from '@/components/TimeSlotPicker'; // Removed - using manual date/time selection
 
 const AppointmentManagement = () => {
@@ -66,6 +68,16 @@ const AppointmentManagement = () => {
   const [availableSlots, setAvailableSlots] = useState([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [slotDuration, setSlotDuration] = useState(30);
+  const [doctorFees, setDoctorFees] = useState(null);
+  const [loadingFees, setLoadingFees] = useState(false);
+  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+  const [createdAppointment, setCreatedAppointment] = useState(null);
+  const [processingPayment, setProcessingPayment] = useState(false);
+  const [paymentLink, setPaymentLink] = useState(null);
+  const [loadingPaymentLink, setLoadingPaymentLink] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState('online'); // 'online' or 'cash'
+  const [appointmentInvoices, setAppointmentInvoices] = useState({});
+  const API_BASE_URL = config.API_BASE_URL || 'http://localhost:5000/api';
   const [formData, setFormData] = useState({
     patientId: '',
     doctorId: '',
@@ -233,6 +245,33 @@ const AppointmentManagement = () => {
     }
   };
 
+  const loadAppointmentInvoices = async () => {
+    try {
+      const token = await sessionManager.getToken();
+      
+      // Load appointment invoices (includes teleconsultation invoices)
+      const appointmentResponse = await fetch(`${API_BASE_URL}/appointment-invoices?limit=1000`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (appointmentResponse.ok) {
+        const data = await appointmentResponse.json();
+        const invoicesMap = {};
+        data.invoices.forEach(invoice => {
+          if (invoice.appointmentId?._id || invoice.appointmentId) {
+            const appointmentId = invoice.appointmentId._id || invoice.appointmentId;
+            invoicesMap[appointmentId] = invoice;
+          }
+        });
+        setAppointmentInvoices(invoicesMap);
+      }
+    } catch (error) {
+      console.error('Error loading invoices:', error);
+    }
+  };
+
   // Save itemsPerPage to localStorage when it changes (skip initial load)
   useEffect(() => {
     if (isInitialLoad) {
@@ -250,11 +289,13 @@ const AppointmentManagement = () => {
     console.log('About to call loadAppointments from initial useEffect');
     loadAppointments();
     loadStats();
+    loadAppointmentInvoices();
   }, []);
 
   useEffect(() => {
     loadAppointments();
     loadStats();
+    loadAppointmentInvoices();
   }, [statusFilter, typeFilter, priorityFilter, dateFilter]);
 
   // Reset to first page when filters change
@@ -273,6 +314,45 @@ const AppointmentManagement = () => {
       setAvailableSlots([]);
     }
   }, [doctorId, date]);
+
+  // Load doctor fees when doctor is selected
+  useEffect(() => {
+    if (doctorId) {
+      loadDoctorFees(doctorId);
+    } else {
+      setDoctorFees(null);
+    }
+  }, [doctorId]);
+
+  // Load doctor fees when viewing an appointment
+  useEffect(() => {
+    if (selectedAppointment?.doctorId?._id) {
+      loadDoctorFees(selectedAppointment.doctorId._id);
+      setPaymentLink(null); // Reset payment link when viewing a new appointment
+    }
+  }, [selectedAppointment]);
+
+  const loadDoctorFees = async (doctorId) => {
+    try {
+      setLoadingFees(true);
+      const token = await sessionManager.getToken();
+      const response = await fetch(`${API_BASE_URL}/doctor-fees/${doctorId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setDoctorFees(data.fees);
+      }
+    } catch (error) {
+      console.error('Error loading doctor fees:', error);
+      setDoctorFees(null);
+    } finally {
+      setLoadingFees(false);
+    }
+  };
 
   const loadAvailableSlots = async () => {
     try {
@@ -337,11 +417,18 @@ const AppointmentManagement = () => {
       // Slot booking removed - using manual date/time selection
       
       toast.success('Appointment created successfully');
-      setIsCreateModalOpen(false);
       setIsConflictDialogOpen(false);
-      resetForm();
-      loadAppointments();
-      loadStats();
+      
+      // Store created appointment and show payment dialog
+      setCreatedAppointment(response.appointment || response);
+      
+      // Close create modal first, then open payment dialog
+      setIsCreateModalOpen(false);
+      
+      // Use setTimeout to ensure the create modal closes before payment dialog opens
+      setTimeout(() => {
+        setIsPaymentDialogOpen(true);
+      }, 100);
     } catch (error) {
       console.error('Error creating appointment:', error);
       
@@ -446,6 +533,261 @@ const AppointmentManagement = () => {
     setConflictData(null);
   };
 
+  const handlePayment = async () => {
+    if (!createdAppointment || !doctorFees) {
+      toast.error('Payment information not available');
+      return;
+    }
+
+    try {
+      setProcessingPayment(true);
+
+      // Create Razorpay order
+      const token = await sessionManager.getToken();
+      const orderResponse = await fetch(`${API_BASE_URL}/payments/create-order`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          appointmentId: createdAppointment._id,
+          amount: doctorFees.appointmentFees || 500
+        })
+      });
+
+      if (!orderResponse.ok) {
+        const errorData = await orderResponse.json();
+        if (orderResponse.status === 503) {
+          toast.error('Payment gateway not configured. Please set up Razorpay keys.');
+          console.error('Razorpay configuration error:', errorData.message);
+          setProcessingPayment(false);
+          return;
+        }
+        throw new Error(errorData.message || 'Failed to create payment order');
+      }
+
+      const orderData = await orderResponse.json();
+
+      // Load Razorpay script
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
+      document.body.appendChild(script);
+
+      script.onload = () => {
+        const options = {
+          key: process.env.REACT_APP_RAZORPAY_KEY_ID || 'rzp_test_dummy',
+          amount: orderData.order.amount,
+          currency: orderData.order.currency,
+          name: 'Healthcare Consultation',
+          description: `Appointment with Dr. ${createdAppointment.doctorId?.fullName || 'Doctor'}`,
+          order_id: orderData.order.id,
+          handler: async function (response) {
+            try {
+              // Verify payment
+              const verifyResponse = await fetch(`${API_BASE_URL}/payments/verify`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                  appointmentId: createdAppointment._id
+                })
+              });
+
+              if (!verifyResponse.ok) {
+                throw new Error('Payment verification failed');
+              }
+
+              toast.success('Payment successful! Appointment confirmed.');
+              setIsPaymentDialogOpen(false);
+              resetForm();
+              loadAppointments();
+              loadStats();
+            } catch (error) {
+              console.error('Payment verification error:', error);
+              toast.error('Payment verification failed');
+            } finally {
+              setProcessingPayment(false);
+            }
+          },
+          prefill: {
+            name: createdAppointment.patientId?.fullName || '',
+            email: createdAppointment.patientId?.email || '',
+            contact: createdAppointment.patientId?.phone || ''
+          },
+          theme: {
+            color: '#3B82F6'
+          },
+          modal: {
+            ondismiss: function() {
+              setProcessingPayment(false);
+              toast.info('Payment cancelled');
+            }
+          }
+        };
+
+        const rzp = new window.Razorpay(options);
+        rzp.open();
+      };
+
+      script.onerror = () => {
+        setProcessingPayment(false);
+        toast.error('Failed to load payment gateway');
+      };
+    } catch (error) {
+      console.error('Payment error:', error);
+      toast.error('Failed to initiate payment');
+      setProcessingPayment(false);
+    }
+  };
+
+  const handleSkipPayment = () => {
+    setIsPaymentDialogOpen(false);
+    setPaymentMethod('online'); // Reset to default
+    resetForm();
+    loadAppointments();
+    loadStats();
+    toast.info('Appointment created. Payment can be made later.');
+  };
+
+  const handleCashPayment = async () => {
+    if (!createdAppointment) {
+      toast.error('Appointment information not available');
+      return;
+    }
+
+    try {
+      setProcessingPayment(true);
+      const token = await sessionManager.getToken();
+
+      // Find the appointment invoice and set payment method to cash (keep status as unapproved)
+      const invoicesResponse = await fetch(`${API_BASE_URL}/appointment-invoices?appointmentId=${createdAppointment._id}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (invoicesResponse.ok) {
+        const invoicesData = await invoicesResponse.json();
+        if (invoicesData.invoices && invoicesData.invoices.length > 0) {
+          const invoice = invoicesData.invoices[0];
+          
+          // Update payment method to cash (status remains unapproved)
+          await fetch(`${API_BASE_URL}/appointment-invoices/${invoice._id}`, {
+            method: 'PATCH',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ paymentMethod: 'cash' })
+          });
+        }
+      }
+
+      setIsPaymentDialogOpen(false);
+      setPaymentMethod('online'); // Reset to default
+      resetForm();
+      loadAppointments();
+      loadStats();
+      toast.success('Appointment confirmed. Payment will be collected in cash.');
+    } catch (error) {
+      console.error('Error processing cash payment:', error);
+      toast.error('Failed to process cash payment');
+    } finally {
+      setProcessingPayment(false);
+    }
+  };
+
+  const generatePaymentLink = async (appointmentId) => {
+    try {
+      setLoadingPaymentLink(true);
+      const token = await sessionManager.getToken();
+      
+      // Create payment order
+      const orderResponse = await fetch(`${API_BASE_URL}/payments/create-order`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          appointmentId: appointmentId,
+          amount: doctorFees?.appointmentFees || 500
+        })
+      });
+
+      if (!orderResponse.ok) {
+        const errorData = await orderResponse.json();
+        throw new Error(errorData.message || 'Failed to generate payment link');
+      }
+
+      const orderData = await orderResponse.json();
+      
+      // Generate shareable link (you can customize this URL structure)
+      const baseUrl = window.location.origin;
+      const link = `${baseUrl}/payment?order_id=${orderData.order.id}&appointment_id=${appointmentId}`;
+      
+      setPaymentLink(link);
+      return link;
+    } catch (error) {
+      console.error('Error generating payment link:', error);
+      toast.error('Failed to generate payment link');
+      return null;
+    } finally {
+      setLoadingPaymentLink(false);
+    }
+  };
+
+  const handleCopyPaymentLink = async (appointmentId) => {
+    let link = paymentLink;
+    
+    if (!link) {
+      link = await generatePaymentLink(appointmentId);
+    }
+    
+    if (link) {
+      try {
+        await navigator.clipboard.writeText(link);
+        toast.success('Payment link copied to clipboard!');
+      } catch (error) {
+        console.error('Failed to copy link:', error);
+        toast.error('Failed to copy link');
+      }
+    }
+  };
+
+  const handleSharePaymentLink = async (appointmentId) => {
+    let link = paymentLink;
+    
+    if (!link) {
+      link = await generatePaymentLink(appointmentId);
+    }
+    
+    if (link && navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Appointment Payment',
+          text: 'Complete your appointment payment using this link',
+          url: link
+        });
+        toast.success('Payment link shared successfully!');
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          console.error('Error sharing link:', error);
+          toast.error('Failed to share link');
+        }
+      }
+    } else if (link) {
+      // Fallback to copy if share is not supported
+      handleCopyPaymentLink(appointmentId);
+    }
+  };
 
   const resetForm = () => {
     const userId = currentUser?.id || currentUser?._id;
@@ -779,6 +1121,34 @@ const AppointmentManagement = () => {
                           </p>
                           <p className="text-sm text-primary/80">
                             {doctors.find(d => d._id === formData.doctorId)?.specialty || ''}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Display Doctor Fees */}
+                {formData.doctorId && (
+                  <div>
+                    <Label>Appointment Fees</Label>
+                    <div className="p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-md">
+                      <div className="flex items-center gap-2">
+                        <Info className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                        <div>
+                          {loadingFees ? (
+                            <p className="text-sm text-muted-foreground">Loading fees...</p>
+                          ) : doctorFees ? (
+                            <p className="font-semibold text-blue-900 dark:text-blue-100">
+                              ₹{doctorFees.appointmentFees || 500}
+                            </p>
+                          ) : (
+                            <p className="font-semibold text-blue-900 dark:text-blue-100">
+                              ₹500 (Default)
+                            </p>
+                          )}
+                          <p className="text-xs text-blue-700 dark:text-blue-300">
+                            Consultation fee
                           </p>
                         </div>
                       </div>
@@ -1243,7 +1613,13 @@ const AppointmentManagement = () => {
                       >
                         Reschedule
                       </Button>
-                      <Select onValueChange={(value) => handleUpdateStatus(appointment._id, value)}>
+                      <Select 
+                        onValueChange={(value) => handleUpdateStatus(appointment._id, value)}
+                        disabled={
+                          appointment.status === 'Processing' && 
+                          (!appointmentInvoices[appointment._id] || appointmentInvoices[appointment._id].status !== 'approved')
+                        }
+                      >
                         <SelectTrigger className="w-32">
                           <SelectValue placeholder="Status" />
                         </SelectTrigger>
@@ -1348,12 +1724,12 @@ const AppointmentManagement = () => {
 
       {/* View Appointment Modal */}
       <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Appointment Details</DialogTitle>
           </DialogHeader>
           {selectedAppointment && (
-            <div className="space-y-6">
+            <div className="space-y-6 overflow-y-auto pr-2">
               <div className="grid grid-cols-2 gap-6">
                 <div>
                   <h3 className="font-semibold text-foreground mb-3">Patient Information</h3>
@@ -1445,6 +1821,83 @@ const AppointmentManagement = () => {
                   <p className="text-sm text-foreground">{selectedAppointment.instructions || 'N/A'}</p>
                 </div>
               )}
+
+              {/* Payment Link Section - Show if appointment is not confirmed */}
+              {selectedAppointment && (selectedAppointment.status === 'Processing' || selectedAppointment.status === 'Scheduled') && (
+                <div className="border-t pt-4">
+                  <h3 className="font-semibold text-foreground mb-2 flex items-center gap-2 text-sm">
+                    <LinkIcon className="w-4 h-4" />
+                    Payment Link
+                  </h3>
+                  <div className="space-y-2">
+                    <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <Info className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                          <p className="text-xs text-amber-800 dark:text-amber-200 truncate">
+                            This appointment requires payment confirmation.
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="text-xs text-amber-700 border-amber-300 flex-shrink-0">
+                          {selectedAppointment.status}
+                        </Badge>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between">
+                        <span className="text-xs font-semibold text-amber-900 dark:text-amber-100">
+                          Amount: ₹{doctorFees?.appointmentFees || 500}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => handleCopyPaymentLink(selectedAppointment._id)}
+                        disabled={loadingPaymentLink}
+                        variant="outline"
+                        size="sm"
+                        className="flex-1"
+                      >
+                        {loadingPaymentLink ? (
+                          <>
+                            <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin mr-1.5" />
+                            <span className="text-xs">Generating...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5 mr-1.5" />
+                            <span className="text-xs">Copy Link</span>
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        onClick={() => handleSharePaymentLink(selectedAppointment._id)}
+                        disabled={loadingPaymentLink}
+                        size="sm"
+                        className="flex-1"
+                      >
+                        {loadingPaymentLink ? (
+                          <>
+                            <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1.5" />
+                            <span className="text-xs">Generating...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Share2 className="w-3.5 h-3.5 mr-1.5" />
+                            <span className="text-xs">Share Link</span>
+                          </>
+                        )}
+                      </Button>
+                    </div>
+
+                    {paymentLink && (
+                      <div className="p-2 bg-muted rounded-md">
+                        <p className="text-xs text-muted-foreground mb-1">Payment Link:</p>
+                        <p className="text-xs font-mono break-all leading-tight">{paymentLink}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>
@@ -1487,6 +1940,153 @@ const AppointmentManagement = () => {
           setIsCreateModalOpen(true);
         }}
       />
+
+      {/* Payment Dialog */}
+      <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-green-600" />
+              Appointment Created Successfully
+            </DialogTitle>
+            <DialogDescription>
+              Complete payment to confirm your appointment
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {createdAppointment && (
+              <>
+                <div className="p-4 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-sm font-medium text-muted-foreground">Doctor:</span>
+                      <span className="text-sm font-semibold">Dr. {createdAppointment.doctorId?.fullName || 'N/A'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm font-medium text-muted-foreground">Date:</span>
+                      <span className="text-sm font-semibold">
+                        {createdAppointment.date ? new Date(createdAppointment.date).toLocaleDateString('en-GB') : 'N/A'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-sm font-medium text-muted-foreground">Time:</span>
+                      <span className="text-sm font-semibold">{createdAppointment.time || 'N/A'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg">
+                  <div className="flex justify-between items-center">
+                    <span className="text-base font-semibold text-green-900 dark:text-green-100">
+                      Consultation Fee:
+                    </span>
+                    <span className="text-2xl font-bold text-green-900 dark:text-green-100">
+                      ₹{doctorFees?.appointmentFees || 500}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Payment Method Selection */}
+                <div className="space-y-3">
+                  <Label className="text-sm font-semibold">Select Payment Method</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => setPaymentMethod('online')}
+                      className={cn(
+                        "p-4 border-2 rounded-lg transition-all duration-200 hover:shadow-md",
+                        paymentMethod === 'online'
+                          ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
+                          : "border-gray-200 dark:border-gray-700 hover:border-blue-300"
+                      )}
+                    >
+                      <div className="flex flex-col items-center gap-2">
+                        <div className={cn(
+                          "w-10 h-10 rounded-full flex items-center justify-center",
+                          paymentMethod === 'online' ? "bg-blue-500" : "bg-gray-200 dark:bg-gray-700"
+                        )}>
+                          <svg className={cn("w-5 h-5", paymentMethod === 'online' ? "text-white" : "text-gray-600")} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                          </svg>
+                        </div>
+                        <span className="text-sm font-medium">Card / UPI</span>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => setPaymentMethod('cash')}
+                      className={cn(
+                        "p-4 border-2 rounded-lg transition-all duration-200 hover:shadow-md",
+                        paymentMethod === 'cash'
+                          ? "border-green-500 bg-green-50 dark:bg-green-950/30"
+                          : "border-gray-200 dark:border-gray-700 hover:border-green-300"
+                      )}
+                    >
+                      <div className="flex flex-col items-center gap-2">
+                        <div className={cn(
+                          "w-10 h-10 rounded-full flex items-center justify-center",
+                          paymentMethod === 'cash' ? "bg-green-500" : "bg-gray-200 dark:bg-gray-700"
+                        )}>
+                          <svg className={cn("w-5 h-5", paymentMethod === 'cash' ? "text-white" : "text-gray-600")} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                          </svg>
+                        </div>
+                        <span className="text-sm font-medium">Cash</span>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
+                  <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                  <p className="text-xs text-amber-800 dark:text-amber-200">
+                    {paymentMethod === 'online' 
+                      ? 'Your appointment is in "Processing" status. Complete the payment to confirm your appointment.'
+                      : 'Appointment will be confirmed. Payment will be collected in cash at the clinic.'}
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+
+          <DialogFooter className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={handleSkipPayment}
+              disabled={processingPayment}
+            >
+              Pay Later
+            </Button>
+            {paymentMethod === 'online' ? (
+              <Button
+                onClick={handlePayment}
+                disabled={processingPayment}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {processingPayment ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Pay Online
+                  </>
+                )}
+              </Button>
+            ) : (
+              <Button
+                onClick={handleCashPayment}
+                disabled={processingPayment}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                <CheckCircle className="w-4 h-4 mr-2" />
+                Confirm Cash Payment
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

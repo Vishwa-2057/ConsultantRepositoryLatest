@@ -1,0 +1,60 @@
+🚀 QUICK RAZORPAY SETUP FOR TESTING
+====================================
+
+The payment feature requires Razorpay test keys. Follow these steps:
+
+STEP 1: Get Razorpay Test Keys (FREE)
+--------------------------------------
+1. Go to: https://dashboard.razorpay.com/signup
+2. Sign up for a free account
+3. After login, click on "Settings" → "API Keys"
+4. Make sure you're in "Test Mode" (toggle at top-left)
+5. Click "Generate Test Keys"
+6. Copy both:
+   - Key ID (starts with rzp_test_...)
+   - Key Secret (keep this secret!)
+
+STEP 2: Add Keys to Backend
+----------------------------
+1. Open: backend/.env file
+2. Add these lines:
+
+RAZORPAY_KEY_ID=rzp_test_paste_your_key_id_here
+RAZORPAY_KEY_SECRET=paste_your_secret_key_here
+
+3. Save the file
+
+STEP 3: Add Key to Frontend
+----------------------------
+1. Open: frontend/.env file (create if doesn't exist)
+2. Add this line:
+
+REACT_APP_RAZORPAY_KEY_ID=rzp_test_paste_your_key_id_here
+
+3. Save the file
+
+STEP 4: Restart Servers
+-----------------------
+1. Stop backend server (Ctrl+C)
+2. Start backend: npm start (or node server.js)
+3. Stop frontend (Ctrl+C)
+4. Start frontend: npm start
+
+STEP 5: Test Payment
+--------------------
+1. Create an appointment
+2. Click "Pay Now" in the payment dialog
+3. Use test card: 4111 1111 1111 1111
+4. CVV: 123
+5. Expiry: Any future date (e.g., 12/25)
+6. Click Pay
+
+✅ Done! The appointment status will change to "Confirmed"
+
+IMPORTANT NOTES:
+- Test mode is FREE - no real money is charged
+- Test keys start with "rzp_test_"
+- Never commit .env files to Git
+- For production, use Live keys (rzp_live_...)
+
+Need help? Check RAZORPAY_SETUP.md for detailed guide.

@@ -83,7 +83,7 @@ export function ConsultantSidebar({ mobile = false }) {
         </div>
 
         {/* Navigation */}
-        <SidebarGroup className={`flex-1 px-3 ${mobile ? 'py-8' : 'py-6'} min-h-0 overflow-x-hidden overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 scrollbar-track-transparent`}>
+        <SidebarGroup className={`flex-1 px-3 ${mobile ? 'py-8' : 'py-6'} min-h-0 overflow-x-hidden overflow-y-auto scrollbar-thin scrollbar-thumb-gray-100 dark:scrollbar-thumb-gray-900 scrollbar-track-transparent hover:scrollbar-thumb-gray-50 dark:hover:scrollbar-thumb-gray-800`}>
           <SidebarGroupLabel className={`text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 px-2 ${collapsed ? "sr-only" : ""}`}>
             Navigation
           </SidebarGroupLabel>

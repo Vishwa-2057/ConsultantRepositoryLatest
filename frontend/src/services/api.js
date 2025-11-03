@@ -519,6 +519,96 @@ export const invoiceAPI = {
   },
 };
 
+// Appointment Invoice API functions
+export const appointmentInvoiceAPI = {
+  // Get all appointment invoices
+  getAll: async (page = 1, limit = 10, filters = {}) => {
+    const queryParams = new URLSearchParams({
+      page: page.toString(),
+      limit: limit.toString(),
+      ...filters
+    });
+    return apiRequest(`/appointment-invoices?${queryParams}`);
+  },
+
+  // Get appointment invoice by ID
+  getById: async (id) => {
+    return apiRequest(`/appointment-invoices/${id}`);
+  },
+
+  // Approve appointment invoice
+  approve: async (id) => {
+    return apiRequest(`/appointment-invoices/${id}/approve`, {
+      method: 'PATCH',
+    });
+  },
+
+  // Update appointment invoice
+  update: async (id, data) => {
+    return apiRequest(`/appointment-invoices/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Cancel appointment invoice
+  cancel: async (id) => {
+    return apiRequest(`/appointment-invoices/${id}/cancel`, {
+      method: 'PATCH',
+    });
+  },
+
+  // Get appointment invoice statistics
+  getStats: async () => {
+    return apiRequest('/appointment-invoices/stats/summary');
+  },
+};
+
+// Teleconsultation Invoice API functions
+export const teleconsultationInvoiceAPI = {
+  // Get all teleconsultation invoices
+  getAll: async (page = 1, limit = 10, filters = {}) => {
+    const queryParams = new URLSearchParams({
+      page: page.toString(),
+      limit: limit.toString(),
+      ...filters
+    });
+    return apiRequest(`/teleconsultation-invoices?${queryParams}`);
+  },
+
+  // Get teleconsultation invoice by ID
+  getById: async (id) => {
+    return apiRequest(`/teleconsultation-invoices/${id}`);
+  },
+
+  // Approve teleconsultation invoice
+  approve: async (id) => {
+    return apiRequest(`/teleconsultation-invoices/${id}/approve`, {
+      method: 'PATCH',
+    });
+  },
+
+  // Update teleconsultation invoice
+  update: async (id, data) => {
+    return apiRequest(`/teleconsultation-invoices/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // Cancel teleconsultation invoice
+  cancel: async (id) => {
+    return apiRequest(`/teleconsultation-invoices/${id}/cancel`, {
+      method: 'PATCH',
+    });
+  },
+
+  // Get teleconsultation invoice statistics
+  getStats: async () => {
+    return apiRequest('/teleconsultation-invoices/stats/summary');
+  },
+};
+
 // Activity Log API functions
 export const activityLogAPI = {
   // Get all activity logs with pagination and filters
@@ -1701,6 +1791,8 @@ export default {
   consultationAPI,
   referralAPI,
   invoiceAPI,
+  appointmentInvoiceAPI,
+  teleconsultationInvoiceAPI,
   activityLogAPI,
   postAPI,
   authAPI,

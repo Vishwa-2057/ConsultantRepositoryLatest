@@ -61,8 +61,8 @@ const appointmentSchema = new mongoose.Schema({
   // Status and Priority
   status: {
     type: String,
-    enum: ['Scheduled', 'Confirmed', 'Completed', 'Cancelled', 'No Show'],
-    default: 'Scheduled'
+    enum: ['Processing', 'Scheduled', 'Confirmed', 'Completed', 'Cancelled', 'No Show'],
+    default: 'Processing'
   },
   priority: {
     type: String,

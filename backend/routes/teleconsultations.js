@@ -1,15 +1,18 @@
 const express = require('express');
+const router = express.Router();
 const { body, validationResult } = require('express-validator');
+const mongoose = require('mongoose');
 const Teleconsultation = require('../models/Teleconsultation');
 const Appointment = require('../models/Appointment');
 const Patient = require('../models/Patient');
 const Doctor = require('../models/Doctor');
 const Clinic = require('../models/Clinic');
 const Nurse = require('../models/Nurse');
+const TeleconsultationInvoice = require('../models/TeleconsultationInvoice');
+const DoctorFees = require('../models/DoctorFees');
 const jitsiService = require('../services/jitsiService');
 const auth = require('../middleware/auth');
 const ActivityLogger = require('../utils/activityLogger');
-const router = express.Router();
 
 // Validation middleware for teleconsultation creation
 const validateTeleconsultation = [
@@ -62,11 +65,11 @@ router.get('/', auth, async (req, res) => {
     }
     
     if (patientId) {
-      query.patientId = patientId;
+      query.patientId = new mongoose.Types.ObjectId(patientId);
     }
     
     if (doctorId) {
-      query.doctorId = doctorId;
+      query.doctorId = new mongoose.Types.ObjectId(doctorId);
     }
     
     if (date) {
@@ -307,6 +310,32 @@ router.post('/', auth, validateTeleconsultation, async (req, res) => {
     console.log('Saving teleconsultation to database...');
     await teleconsultation.save();
     console.log('Teleconsultation saved successfully with ID:', teleconsultation._id);
+
+    // Create teleconsultation invoice
+    try {
+      const doctorFees = await DoctorFees.findOne({ doctorId: appointment.doctorId._id });
+      const teleconsultationFee = doctorFees?.teleconsultationFees || 500;
+
+      const teleconsultationInvoice = new TeleconsultationInvoice({
+        teleconsultationId: teleconsultation._id,
+        patientId: appointment.patientId._id,
+        doctorId: appointment.doctorId._id,
+        clinicId: appointment.clinicId,
+        amount: teleconsultationFee,
+        paymentMethod: 'pending',
+        teleconsultationDetails: {
+          scheduledDate: parsedDate,
+          scheduledTime,
+          duration,
+          meetingId: meeting.meetingId
+        }
+      });
+
+      await teleconsultationInvoice.save();
+      console.log('Teleconsultation invoice created:', teleconsultationInvoice.invoiceNumber);
+    } catch (invoiceError) {
+      console.error('Failed to create teleconsultation invoice:', invoiceError);
+    }
 
     // Populate the response
     const populatedTeleconsultation = await Teleconsultation.findById(teleconsultation._id)

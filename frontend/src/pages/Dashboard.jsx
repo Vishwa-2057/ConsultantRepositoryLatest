@@ -26,7 +26,8 @@ import {
   MapPin,
   Check,
   UserCheck,
-  Shield
+  Shield,
+  Loader2
 } from "lucide-react";
 import AppointmentModal from "@/components/AppointmentModal";
 import AppointmentViewModal from '../components/AppointmentViewModal';
@@ -35,6 +36,7 @@ import ActivityLogsModal from '../components/ActivityLogsModal';
 import Carousel from "@/components/Carousel";
 import { getCurrentUser, isDoctor, isNurse, isHeadNurse, isSupervisor, isClinic } from "@/utils/roleUtils";
 import SnakeGame from "@/components/SnakeGame";
+import sessionManager from "@/utils/sessionManager";
 
 // Import lab images
 import labPhoto1 from "@/assets/Images/labphoto1.jpg";
@@ -95,27 +97,116 @@ const Dashboard = () => {
   
   const { toast } = useToast();
 
-  // Carousel images data
-  const carouselImages = [
-    {
-      src: labPhoto1,
-      alt: "Modern Laboratory Equipment",
-      caption: "State-of-the-Art Laboratory",
-      description: "Advanced diagnostic equipment for accurate results"
-    },
-    {
-      src: labPhoto2,
-      alt: "Medical Research Facility",
-      caption: "Research & Development",
-      description: "Cutting-edge research for better healthcare solutions"
-    },
-    {
-      src: labPhoto3,
-      alt: "Healthcare Technology",
-      caption: "Digital Healthcare",
-      description: "Innovative technology improving patient care"
-    }
-  ];
+  // Carousel images data with state
+  const [carouselImages, setCarouselImages] = useState([]);
+  const [loadingCarousel, setLoadingCarousel] = useState(true);
+  
+  const [isCarouselEditOpen, setIsCarouselEditOpen] = useState(false);
+  const [editingImageIndex, setEditingImageIndex] = useState(null);
+  const [editCaption, setEditCaption] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [isCarouselAddOpen, setIsCarouselAddOpen] = useState(false);
+  const [newImageFile, setNewImageFile] = useState(null);
+  const [newImagePreview, setNewImagePreview] = useState("");
+  const [newImageCaption, setNewImageCaption] = useState("");
+  const [newImageDescription, setNewImageDescription] = useState("");
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  // Load carousel images from database
+  useEffect(() => {
+    const loadCarouselImages = async () => {
+      try {
+        const token = await sessionManager.getToken();
+        if (!token) {
+          // Use default images if not logged in
+          setCarouselImages([
+            {
+              src: labPhoto1,
+              alt: "Modern Laboratory Equipment",
+              caption: "State-of-the-Art Laboratory",
+              description: "Advanced diagnostic equipment for accurate results"
+            },
+            {
+              src: labPhoto2,
+              alt: "Medical Research Facility",
+              caption: "Research & Development",
+              description: "Cutting-edge research for better healthcare solutions"
+            },
+            {
+              src: labPhoto3,
+              alt: "Healthcare Technology",
+              caption: "Digital Healthcare",
+              description: "Innovative technology improving patient care"
+            }
+          ]);
+          setLoadingCarousel(false);
+          return;
+        }
+
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/carousel`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.images && data.images.length > 0) {
+            setCarouselImages(data.images);
+          } else {
+            // Use default images if no custom images
+            setCarouselImages([
+              {
+                src: labPhoto1,
+                alt: "Modern Laboratory Equipment",
+                caption: "State-of-the-Art Laboratory",
+                description: "Advanced diagnostic equipment for accurate results"
+              },
+              {
+                src: labPhoto2,
+                alt: "Medical Research Facility",
+                caption: "Research & Development",
+                description: "Cutting-edge research for better healthcare solutions"
+              },
+              {
+                src: labPhoto3,
+                alt: "Healthcare Technology",
+                caption: "Digital Healthcare",
+                description: "Innovative technology improving patient care"
+              }
+            ]);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading carousel images:', error);
+        // Use default images on error
+        setCarouselImages([
+          {
+            src: labPhoto1,
+            alt: "Modern Laboratory Equipment",
+            caption: "State-of-the-Art Laboratory",
+            description: "Advanced diagnostic equipment for accurate results"
+          },
+          {
+            src: labPhoto2,
+            alt: "Medical Research Facility",
+            caption: "Research & Development",
+            description: "Cutting-edge research for better healthcare solutions"
+          },
+          {
+            src: labPhoto3,
+            alt: "Healthcare Technology",
+            caption: "Digital Healthcare",
+            description: "Innovative technology improving patient care"
+          }
+        ]);
+      } finally {
+        setLoadingCarousel(false);
+      }
+    };
+
+    loadCarouselImages();
+  }, []);
 
   // Load appointments from API when component mounts
   useEffect(() => {
@@ -674,39 +765,245 @@ const Dashboard = () => {
     setIsAppointmentViewModalOpen(false);
   };
 
-  const handleViewComplianceAlerts = () => {
-    setIsComplianceAlertModalOpen(true);
+  const handleCloseComplianceModal = () => {
+    setIsComplianceAlertModalOpen(false);
   };
 
-  const handleComplianceAlertModalClose = () => {
-    setIsComplianceAlertModalOpen(false);
+  // Carousel management handlers
+  const handleEditCarouselImage = (index) => {
+    console.log('Edit clicked for index:', index);
+    console.log('Current carousel images:', carouselImages);
+    setEditingImageIndex(index);
+    setEditCaption(carouselImages[index]?.caption || "");
+    setEditDescription(carouselImages[index]?.description || "");
+    setIsCarouselEditOpen(true);
+  };
+
+  const handleDeleteCarouselImage = async (index) => {
+    console.log('Delete clicked for index:', index);
+    if (carouselImages.length <= 1) {
+      toast({
+        title: "Cannot Delete",
+        description: "At least one image must remain in the carousel",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const imageToDelete = carouselImages[index];
+    if (!imageToDelete.id) {
+      // Default image, just remove from state
+      const newImages = carouselImages.filter((_, i) => i !== index);
+      setCarouselImages(newImages);
+      toast({
+        title: "Success",
+        description: "Image removed from carousel"
+      });
+      return;
+    }
+
+    try {
+      const token = await sessionManager.getToken();
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/carousel/${imageToDelete.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete image');
+      }
+
+      const newImages = carouselImages.filter((_, i) => i !== index);
+      setCarouselImages(newImages);
+      toast({
+        title: "Success",
+        description: "Carousel image deleted successfully"
+      });
+    } catch (error) {
+      console.error('Error deleting carousel image:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete image",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleAddCarouselImage = () => {
+    setNewImageFile(null);
+    setNewImagePreview("");
+    setNewImageCaption("");
+    setNewImageDescription("");
+    setIsCarouselAddOpen(true);
+  };
+
+  const handleImageFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setNewImageFile(file);
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setNewImagePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveNewCarouselImage = async () => {
+    if (!newImageFile) {
+      toast({
+        title: "Error",
+        description: "Please select an image file",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setUploadingImage(true);
+
+    try {
+      // Get token from sessionManager
+      const token = await sessionManager.getToken();
+      if (!token) {
+        throw new Error('No authentication token found. Please log in again.');
+      }
+
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append('image', newImageFile);
+      formData.append('caption', newImageCaption);
+      formData.append('description', newImageDescription);
+
+      console.log('Uploading image:', newImageFile.name);
+      console.log('Token exists:', !!token);
+
+      // Upload to backend
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/carousel/upload`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+
+      const data = await response.json();
+      console.log('Upload response:', data);
+
+      if (!response.ok) {
+        throw new Error(data.error || data.message || 'Failed to upload image');
+      }
+
+      // Add new image to carousel from server response
+      setCarouselImages([...carouselImages, data.image]);
+      setIsCarouselAddOpen(false);
+      toast({
+        title: "Success",
+        description: "Carousel image uploaded successfully!"
+      });
+    } catch (error) {
+      console.error('Error uploading carousel image:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to upload image",
+        variant: "destructive"
+      });
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleSaveCarouselEdit = async () => {
+    const imageToUpdate = carouselImages[editingImageIndex];
+    
+    if (!imageToUpdate.id) {
+      // Default image, just update in state
+      const updatedImages = [...carouselImages];
+      updatedImages[editingImageIndex] = {
+        ...updatedImages[editingImageIndex],
+        caption: editCaption,
+        description: editDescription
+      };
+      setCarouselImages(updatedImages);
+      setIsCarouselEditOpen(false);
+      toast({
+        title: "Success",
+        description: "Carousel image updated"
+      });
+      return;
+    }
+
+    try {
+      const token = await sessionManager.getToken();
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/carousel/${imageToUpdate.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          caption: editCaption,
+          description: editDescription
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update image');
+      }
+
+      const data = await response.json();
+      const updatedImages = [...carouselImages];
+      updatedImages[editingImageIndex] = data.image;
+      setCarouselImages(updatedImages);
+      setIsCarouselEditOpen(false);
+      toast({
+        title: "Success",
+        description: "Carousel image updated successfully"
+      });
+    } catch (error) {
+      console.error('Error updating carousel image:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update image",
+        variant: "destructive"
+      });
+    }
   };
 
   return (
     <div className="p-3 sm:p-4 lg:p-6 space-y-4 sm:space-y-6">
-      
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <p className="text-sm sm:text-base text-muted-foreground">Welcome back, {currentUser?.name || currentUser?.fullName || 'User'}. Here's your overview.</p>
-        </div>
-        {isClinic() && (
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => setIsActivityLogsModalOpen(true)}
-            className="flex items-center gap-2 gradient-button-outline self-start sm:self-auto"
-          >
-            <Activity className="w-4 h-4" />
-            <span className="hidden sm:inline">Check Logs</span>
-            <span className="sm:hidden">Logs</span>
-          </Button>
-        )}
+    
+    {/* Header */}
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div>
+        <p className="text-sm sm:text-base text-muted-foreground">Welcome back, {currentUser?.name || currentUser?.fullName || 'User'}. Here's your overview.</p>
       </div>
+      {isClinic() && (
+        <Button 
+          variant="outline" 
+          size="sm"
+          onClick={() => setIsActivityLogsModalOpen(true)}
+          className="flex items-center gap-2 gradient-button-outline self-start sm:self-auto"
+        >
+          <Activity className="w-4 h-4" />
+          <span className="hidden sm:inline">Check Logs</span>
+          <span className="sm:hidden">Logs</span>
+        </Button>
+      )}
+    </div>
 
       {/* Carousel Section */}
       <div className="mb-4 sm:mb-6">
-        <Carousel images={carouselImages} autoPlay={true} interval={4000} />
+        <Carousel 
+          images={carouselImages} 
+          autoPlay={true} 
+          interval={4000}
+          onEdit={isClinic() ? handleEditCarouselImage : undefined}
+          onDelete={isClinic() ? handleDeleteCarouselImage : undefined}
+          onAdd={isClinic() ? handleAddCarouselImage : undefined}
+        />
       </div>
 
       {/* Main Content Grid - Charts and Stats */}
@@ -890,7 +1187,7 @@ const Dashboard = () => {
       {/* Compliance Alert Modal */}
       <ComplianceAlertModal
         isOpen={isComplianceAlertModalOpen}
-        onClose={handleComplianceAlertModalClose}
+        onClose={handleCloseComplianceModal}
       />
 
       {/* Add Compliance Alert Modal */}
@@ -973,6 +1270,124 @@ const Dashboard = () => {
         isOpen={isActivityLogsModalOpen}
         onClose={() => setIsActivityLogsModalOpen(false)}
       />
+
+      {/* Carousel Edit Dialog */}
+      <Dialog open={isCarouselEditOpen} onOpenChange={setIsCarouselEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Carousel Image</DialogTitle>
+            <DialogDescription>
+              Update the caption and description for this carousel image
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Caption</label>
+              <input
+                type="text"
+                value={editCaption}
+                onChange={(e) => setEditCaption(e.target.value)}
+                className="w-full px-3 py-2 border rounded-md bg-background text-foreground"
+                placeholder="Enter caption"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Description</label>
+              <textarea
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                className="w-full px-3 py-2 border rounded-md bg-background text-foreground"
+                rows={3}
+                placeholder="Enter description"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCarouselEditOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveCarouselEdit}>
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Carousel Add Image Dialog */}
+      <Dialog open={isCarouselAddOpen} onOpenChange={setIsCarouselAddOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Add Carousel Image</DialogTitle>
+            <DialogDescription>
+              Upload a new image to the carousel with caption and description
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Image File *</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageFileChange}
+                className="w-full px-3 py-2 border rounded-md bg-background text-foreground file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+              />
+              <p className="text-xs text-muted-foreground">
+                Select an image file (jpg, png, webp, etc.) - Max 5MB
+              </p>
+            </div>
+            
+            {/* Image Preview */}
+            {newImagePreview && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Preview</label>
+                <div className="border rounded-md overflow-hidden">
+                  <img 
+                    src={newImagePreview} 
+                    alt="Preview" 
+                    className="w-full h-48 object-cover"
+                  />
+                </div>
+              </div>
+            )}
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Caption</label>
+              <input
+                type="text"
+                value={newImageCaption}
+                onChange={(e) => setNewImageCaption(e.target.value)}
+                className="w-full px-3 py-2 border rounded-md bg-background text-foreground"
+                placeholder="Enter caption"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Description</label>
+              <textarea
+                value={newImageDescription}
+                onChange={(e) => setNewImageDescription(e.target.value)}
+                className="w-full px-3 py-2 border rounded-md bg-background text-foreground"
+                rows={3}
+                placeholder="Enter description"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCarouselAddOpen(false)} disabled={uploadingImage}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveNewCarouselImage} disabled={uploadingImage || !newImageFile}>
+              {uploadingImage ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Uploading...
+                </>
+              ) : (
+                'Add Image'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Snake Game Easter Egg */}
       <SnakeGame isOpen={isSnakeGameOpen} onClose={() => setIsSnakeGameOpen(false)} />

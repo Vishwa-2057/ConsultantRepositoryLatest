@@ -434,7 +434,7 @@ const PatientManagement = () => {
                 <div className="col-span-2">
                   <span className="text-xs font-semibold text-gray-600 uppercase">Assigned Doctors</span>
                 </div>
-                <div className="col-span-3 text-right">
+                <div className="col-span-3 text-center">
                   <span className="text-xs font-semibold text-gray-600 uppercase">Actions</span>
                 </div>
               </div>

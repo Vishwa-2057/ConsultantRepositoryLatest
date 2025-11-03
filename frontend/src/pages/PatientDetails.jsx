@@ -37,9 +37,10 @@ import {
   X,
   Eye,
   Download,
-  TestTubeDiagonal
+  TestTubeDiagonal,
+  Video
 } from "lucide-react";
-import { patientAPI, prescriptionAPI, appointmentAPI, vitalsAPI, referralAPI, medicalImageAPI } from "@/services/api";
+import { patientAPI, prescriptionAPI, appointmentAPI, vitalsAPI, referralAPI, medicalImageAPI, teleconsultationAPI } from "@/services/api";
 import sessionManager from "@/utils/sessionManager";
 import { config } from "@/config/env";
 import { toast } from "sonner";
@@ -190,12 +191,17 @@ const PatientDetails = () => {
       setCaseLogsLoading(true);
       const patientDbId = patient._id || patient.id;
       
+      console.log('Loading case logs for patient:', patientDbId);
+      
       // Load data from multiple sources
-      const [prescriptionsRes, appointmentsRes, vitalsRes] = await Promise.allSettled([
+      const [prescriptionsRes, appointmentsRes, vitalsRes, teleconsultationsRes] = await Promise.allSettled([
         prescriptionAPI.getByPatient(patientDbId),
         appointmentAPI.getAll(1, 100, { patientId: patientDbId }),
-        vitalsAPI.getByPatient ? vitalsAPI.getByPatient(patientDbId) : Promise.resolve([])
+        vitalsAPI.getByPatient ? vitalsAPI.getByPatient(patientDbId) : Promise.resolve([]),
+        teleconsultationAPI.getAll(1, 100, { patientId: patientDbId })
       ]);
+
+      console.log('Appointments response:', appointmentsRes);
 
       // Process prescriptions
       const prescriptionsData = prescriptionsRes.status === 'fulfilled' 
@@ -206,10 +212,17 @@ const PatientDetails = () => {
       const appointmentsData = appointmentsRes.status === 'fulfilled'
         ? (appointmentsRes.value.appointments || appointmentsRes.value.data || appointmentsRes.value || [])
         : [];
+      
+      console.log('Processed appointments data:', appointmentsData);
 
       // Process vitals
       const vitalsData = vitalsRes.status === 'fulfilled'
         ? (vitalsRes.value.vitals || vitalsRes.value.data || vitalsRes.value || [])
+        : [];
+
+      // Process teleconsultations
+      const teleconsultationsData = teleconsultationsRes.status === 'fulfilled'
+        ? (teleconsultationsRes.value.teleconsultations || teleconsultationsRes.value.data || teleconsultationsRes.value || [])
         : [];
 
       // Create timeline entries
@@ -269,6 +282,29 @@ const PatientDetails = () => {
           icon: 'activity',
           color: 'purple',
           details: {}
+        });
+      });
+
+      // Add teleconsultation entries
+      teleconsultationsData.forEach(teleconsult => {
+        timelineEntries.push({
+          id: `teleconsult-${teleconsult._id}`,
+          type: 'teleconsultation',
+          title: 'Teleconsultation',
+          description: `Video consultation with Dr. ${teleconsult.doctorName || 'Unknown Doctor'} - ${teleconsult.status}`,
+          doctor: teleconsult.doctorName || 'Unknown Doctor',
+          timestamp: teleconsult.createdAt || teleconsult.scheduledDate,
+          icon: 'video',
+          color: teleconsult.status === 'Completed' ? 'green' : 
+                 teleconsult.status === 'Cancelled' || teleconsult.status === 'No Show' ? 'red' : 
+                 teleconsult.status === 'In Progress' || teleconsult.status === 'Started' ? 'blue' : 'orange',
+          details: {
+            scheduledDate: teleconsult.scheduledDate,
+            scheduledTime: teleconsult.scheduledTime,
+            duration: teleconsult.duration,
+            status: teleconsult.status,
+            meetingId: teleconsult.meetingId
+          }
         });
       });
 
@@ -950,7 +986,8 @@ const PatientDetails = () => {
                   {caseLogs.map((log, index) => {
                     const IconComponent = log.icon === 'pill' ? Pill : 
                                         log.icon === 'calendar' ? CalendarDays : 
-                                        log.icon === 'activity' ? Activity : FileText;
+                                        log.icon === 'activity' ? Activity : 
+                                        log.icon === 'video' ? Video : FileText;
                     
                     const colorClasses = {
                       blue: 'bg-blue-100 text-blue-600',

@@ -196,6 +196,23 @@ const patientCombinedUpload = multer({
   },
 });
 
+// Carousel image storage
+const carouselImageStorage = createCloudinaryStorage('healthcare/carousel', ['jpg', 'jpeg', 'png', 'gif', 'webp']);
+
+const carouselUpload = multer({
+  storage: carouselImageStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed!'), false);
+    }
+  },
+});
+
 module.exports = {
   cloudinary,
   doctorUpload,
@@ -204,6 +221,7 @@ module.exports = {
   patientDocumentUpload,
   patientCombinedUpload,
   labReportUpload,
+  carouselUpload,
   deleteFromCloudinary,
   extractPublicId,
 };

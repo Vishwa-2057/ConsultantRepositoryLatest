@@ -101,7 +101,7 @@ labReportSchema.statics.getClinicReports = async function(clinicId, options = {}
   const skip = (page - 1) * limit;
 
   return this.find(query)
-    .populate('patientId', 'fullName phone email')
+    .populate('patientId', 'fullName phone email uhid')
     .populate('uploadedBy', 'fullName email')
     .sort({ uploadedAt: -1 })
     .skip(skip)
