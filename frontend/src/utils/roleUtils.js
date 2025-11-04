@@ -5,7 +5,10 @@ export const USER_ROLES = {
   DOCTOR: 'doctor',
   NURSE: 'nurse',
   HEAD_NURSE: 'head_nurse',
-  SUPERVISOR: 'supervisor'
+  SUPERVISOR: 'supervisor',
+  PHARMACIST: 'pharmacist',
+  HEAD_PHARMACIST: 'head_pharmacist',
+  PHARMACY_MANAGER: 'pharmacy_manager'
 };
 
 export const ROLE_PERMISSIONS = {
@@ -17,6 +20,7 @@ export const ROLE_PERMISSIONS = {
       'slot-management',
       'doctors-management',
       'nurses-management',
+      'pharmacists-management',
       'teleconsultation',
       'prescriptions',
       'lab-reports',
@@ -85,6 +89,36 @@ export const ROLE_PERMISSIONS = {
     canViewAllPatients: false,
     canManageDoctors: false,
     canManageSystem: false
+  },
+  [USER_ROLES.PHARMACIST]: {
+    canAccess: [
+      'pharmacist-dashboard',
+      'inventory-management',
+      'pharmacist-prescriptions'
+    ],
+    canViewAllPatients: false,
+    canManageDoctors: false,
+    canManageSystem: false
+  },
+  [USER_ROLES.HEAD_PHARMACIST]: {
+    canAccess: [
+      'pharmacist-dashboard',
+      'inventory-management',
+      'pharmacist-prescriptions'
+    ],
+    canViewAllPatients: false,
+    canManageDoctors: false,
+    canManageSystem: false
+  },
+  [USER_ROLES.PHARMACY_MANAGER]: {
+    canAccess: [
+      'pharmacist-dashboard',
+      'inventory-management',
+      'pharmacist-prescriptions'
+    ],
+    canViewAllPatients: false,
+    canManageDoctors: false,
+    canManageSystem: false
   }
 };
 
@@ -133,6 +167,11 @@ export const isHeadNurse = () => {
 // Check if user is supervisor
 export const isSupervisor = () => {
   return hasRole(USER_ROLES.SUPERVISOR);
+};
+
+// Check if user is pharmacist
+export const isPharmacist = () => {
+  return hasRole(USER_ROLES.PHARMACIST) || hasRole(USER_ROLES.HEAD_PHARMACIST) || hasRole(USER_ROLES.PHARMACY_MANAGER);
 };
 
 // Check if user can access a specific route/feature

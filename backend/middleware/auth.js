@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const tokenManager = require('../utils/tokenManager');
 const Doctor = require('../models/Doctor');
 const Nurse = require('../models/Nurse');
+const Pharmacist = require('../models/Pharmacist');
 const Clinic = require('../models/Clinic');
 
 module.exports = async function auth(req, res, next) {
@@ -31,6 +32,9 @@ module.exports = async function auth(req, res, next) {
       user = await Nurse.findById(payload.id);
     }
     if (!user) {
+      user = await Pharmacist.findById(payload.id);
+    }
+    if (!user) {
       user = await Clinic.findById(payload.id);
       // Check if clinic is still active
       if (user && !user.isActive) {
@@ -50,6 +54,7 @@ module.exports = async function auth(req, res, next) {
 
     // Attach user to request
     req.user = {
+      _id: user._id,
       id: user._id,
       email: user.email || user.adminEmail,
       role: user.role || payload.role,

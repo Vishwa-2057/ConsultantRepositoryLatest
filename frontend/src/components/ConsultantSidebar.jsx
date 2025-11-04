@@ -1,4 +1,4 @@
-import { Calendar, Users, UserCheck, Video, Share2, FileText, Mail, AlertTriangle, Home, LogOut, User, LayoutDashboard, Stethoscope, Heart, ArrowLeftRight, CreditCard, MessageCircle, UserPlus, Pill, Shield, Clock, TestTubeDiagonal } from "lucide-react";
+import { Calendar, Users, UserCheck, Video, Share2, FileText, Mail, AlertTriangle, Home, LogOut, User, LayoutDashboard, Stethoscope, Heart, ArrowLeftRight, CreditCard, MessageCircle, UserPlus, Pill, Shield, Clock, TestTubeDiagonal, FlaskConical, Package } from "lucide-react";
 import LogoImage from "@/assets/Images/Logo.png";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
@@ -15,7 +15,7 @@ import {
   SidebarMenuItem, 
   useSidebar 
 } from "@/components/ui/sidebar";
-import { canAccessRoute, isClinic, isDoctor, getCurrentUser } from "@/utils/roleUtils";
+import { canAccessRoute, isClinic, isDoctor, isPharmacist, getCurrentUser } from "@/utils/roleUtils";
 
 const allNavigationItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard, routeName: "dashboard" },
@@ -24,12 +24,19 @@ const allNavigationItems = [
   { title: "Slot Management", url: "/slot-management", icon: Clock, routeName: "slot-management" },
   { title: "Doctor Management", url: "/doctors", icon: UserCheck, routeName: "doctors-management" },
   { title: "Nurse Management", url: "/nurses", icon: UserPlus, routeName: "nurses-management" },
+  { title: "Pharmacist Management", url: "/pharmacists", icon: FlaskConical, routeName: "pharmacists-management" },
   { title: "Prescriptions", url: "/prescriptions", icon: Pill, routeName: "prescriptions" },
   { title: "Lab Reports", url: "/lab-reports", icon: TestTubeDiagonal, routeName: "lab-reports" },
   { title: "Teleconsultation", url: "/teleconsultation", icon: Video, routeName: "teleconsultation" },
   { title: "Referral System", url: "/referrals", icon: Share2, routeName: "referral-system" },
   { title: "Invoice Management", url: "/invoices", icon: FileText, routeName: "invoice-management" },
   { title: "Community Hub", url: "/community", icon: MessageCircle, routeName: "community-hub" },
+];
+
+const pharmacistNavigationItems = [
+  { title: "Dashboard", url: "/pharmacist-dashboard", icon: LayoutDashboard, routeName: "pharmacist-dashboard" },
+  { title: "Inventory Management", url: "/inventory-management", icon: Package, routeName: "inventory-management" },
+  { title: "Prescriptions", url: "/pharmacist-prescriptions", icon: FileText, routeName: "pharmacist-prescriptions" },
 ];
 
 export function ConsultantSidebar({ mobile = false }) {
@@ -40,12 +47,14 @@ export function ConsultantSidebar({ mobile = false }) {
   const authUser = getCurrentUser();
   
   // Filter navigation items based on user role
-  const navigationItems = allNavigationItems.filter(item => 
-    canAccessRoute(item.routeName)
-  );
+  const navigationItems = isPharmacist() 
+    ? pharmacistNavigationItems.filter(item => canAccessRoute(item.routeName))
+    : allNavigationItems.filter(item => canAccessRoute(item.routeName));
 
   const isActive = (path) => {
-    if (path === "/") return currentPath === "/";
+    if (path === "/" || path === "/pharmacist-dashboard") {
+      return currentPath === path;
+    }
     return currentPath.startsWith(path);
   };
 

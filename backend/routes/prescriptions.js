@@ -50,6 +50,10 @@ router.get('/', auth, async (req, res) => {
       ];
     } else if (req.user.role === 'clinic') {
       query.clinicId = req.user.id;
+    } else if (req.user.role === 'pharmacist' || req.user.role === 'head_pharmacist' || req.user.role === 'pharmacy_manager') {
+      // Pharmacists only see prescriptions allotted to them
+      query.allottedPharmacist = req.user.id;
+      query.clinicId = req.user.clinicId;
     }
     
     if (patientId) {
@@ -407,6 +411,10 @@ router.get('/stats/summary', auth, async (req, res) => {
       baseQuery.doctorId = req.user.id;
     } else if (req.user.role === 'clinic') {
       baseQuery.clinicId = req.user.id;
+    } else if (req.user.role === 'pharmacist' || req.user.role === 'head_pharmacist' || req.user.role === 'pharmacy_manager') {
+      // Pharmacists only see prescriptions allotted to them
+      baseQuery.allottedPharmacist = req.user.id;
+      baseQuery.clinicId = req.user.clinicId;
     }
     
     const totalPrescriptions = await Prescription.countDocuments(baseQuery);
@@ -420,7 +428,7 @@ router.get('/stats/summary', auth, async (req, res) => {
       .limit(5)
       .populate('patientId', 'fullName')
       .populate('doctorId', 'fullName')
-      .select('prescriptionNumber diagnosis status createdAt');
+      .select('prescriptionNumber diagnosis status createdAt medications');
 
     res.json({
       totalPrescriptions,
@@ -471,6 +479,275 @@ router.get('/patient/:patientId', auth, async (req, res) => {
       return res.status(400).json({ error: 'Invalid patient ID' });
     }
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PATCH /api/prescriptions/:id/allot - Allot prescription to pharmacist
+router.patch('/:id/allot', auth, async (req, res) => {
+  try {
+    const { pharmacistId } = req.body;
+    
+    // Only clinic admins can allot prescriptions
+    if (req.user.role !== 'clinic') {
+      return res.status(403).json({ 
+        success: false,
+        error: 'Only clinic administrators can allot prescriptions to pharmacists' 
+      });
+    }
+    
+    if (!pharmacistId) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Pharmacist ID is required' 
+      });
+    }
+    
+    const prescription = await Prescription.findOneAndUpdate(
+      { _id: req.params.id, clinicId: req.user.id },
+      { 
+        allottedPharmacist: pharmacistId,
+        allottedAt: new Date()
+      },
+      { new: true }
+    )
+    .populate('patientId', 'fullName')
+    .populate('doctorId', 'fullName')
+    .populate('allottedPharmacist', 'fullName email');
+    
+    if (!prescription) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Prescription not found' 
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: 'Prescription allotted successfully',
+      data: prescription
+    });
+  } catch (error) {
+    console.error('Error allotting prescription:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Internal server error' 
+    });
+  }
+});
+
+// POST /api/prescriptions/:id/dispense - Dispense medication from inventory
+router.post('/:id/dispense', auth, async (req, res) => {
+  try {
+    const { medicationIndex, inventoryId, quantity, notes } = req.body;
+    
+    // Only pharmacists can dispense medications
+    if (!['pharmacist', 'head_pharmacist', 'pharmacy_manager'].includes(req.user.role)) {
+      return res.status(403).json({ 
+        success: false,
+        error: 'Only pharmacists can dispense medications' 
+      });
+    }
+    
+    // Validate required fields
+    if (medicationIndex === undefined || !inventoryId || !quantity) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Medication index, inventory ID, and quantity are required' 
+      });
+    }
+    
+    // Find prescription
+    const prescription = await Prescription.findOne({
+      _id: req.params.id,
+      allottedPharmacist: req.user.id
+    });
+    
+    if (!prescription) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Prescription not found or not allotted to you' 
+      });
+    }
+    
+    // Check if medication index is valid
+    if (medicationIndex < 0 || medicationIndex >= prescription.medications.length) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Invalid medication index' 
+      });
+    }
+    
+    // Check if medication is already dispensed
+    if (prescription.medications[medicationIndex].dispensed) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'This medication has already been dispensed' 
+      });
+    }
+    
+    // Find inventory item
+    const Inventory = require('../models/Inventory');
+    const inventoryItem = await Inventory.findOne({
+      _id: inventoryId,
+      clinicId: req.user.clinicId,
+      isActive: true
+    });
+    
+    if (!inventoryItem) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Inventory item not found' 
+      });
+    }
+    
+    // Check if inventory has enough stock
+    if (inventoryItem.quantity < quantity) {
+      return res.status(400).json({ 
+        success: false,
+        error: `Insufficient stock. Available: ${inventoryItem.quantity}, Required: ${quantity}` 
+      });
+    }
+    
+    // Check if inventory item is expired
+    if (inventoryItem.expiryDate < new Date()) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'Cannot dispense expired medication' 
+      });
+    }
+    
+    // Update inventory stock
+    inventoryItem.quantity -= quantity;
+    await inventoryItem.save();
+    
+    // Update prescription medication
+    prescription.medications[medicationIndex].dispensed = true;
+    prescription.medications[medicationIndex].dispensedInventoryId = inventoryId;
+    prescription.medications[medicationIndex].dispensedQuantity = quantity;
+    prescription.medications[medicationIndex].dispensedBy = req.user.id;
+    prescription.medications[medicationIndex].dispensedAt = new Date();
+    
+    // Add dispensing notes if provided
+    if (notes) {
+      prescription.dispensingNotes = prescription.dispensingNotes 
+        ? `${prescription.dispensingNotes}\n${notes}` 
+        : notes;
+    }
+    
+    // Check if all medications are dispensed
+    const allDispensed = prescription.medications.every(med => med.dispensed);
+    if (allDispensed) {
+      prescription.fullyDispensed = true;
+      prescription.status = 'Completed';
+    }
+    
+    prescription.updatedAt = new Date();
+    await prescription.save();
+    
+    // Populate the prescription for response
+    await prescription.populate('patientId', 'fullName uhid');
+    await prescription.populate('doctorId', 'fullName');
+    await prescription.populate('medications.dispensedInventoryId', 'medicationName batchNumber');
+    
+    res.json({
+      success: true,
+      message: 'Medication dispensed successfully',
+      data: {
+        prescription,
+        inventoryUpdated: {
+          id: inventoryItem._id,
+          medicationName: inventoryItem.medicationName,
+          remainingStock: inventoryItem.quantity
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error dispensing medication:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
+// GET /api/prescriptions/:id/matching-inventory - Get matching inventory items for prescription medications
+router.get('/:id/matching-inventory', auth, async (req, res) => {
+  try {
+    // Only pharmacists can access this
+    if (!['pharmacist', 'head_pharmacist', 'pharmacy_manager'].includes(req.user.role)) {
+      return res.status(403).json({ 
+        success: false,
+        error: 'Only pharmacists can access inventory matching' 
+      });
+    }
+    
+    // Find prescription
+    const prescription = await Prescription.findOne({
+      _id: req.params.id,
+      allottedPharmacist: req.user.id
+    });
+    
+    if (!prescription) {
+      return res.status(404).json({ 
+        success: false,
+        error: 'Prescription not found or not allotted to you' 
+      });
+    }
+    
+    // Find matching inventory items for each medication
+    const Inventory = require('../models/Inventory');
+    const matchingInventory = [];
+    
+    for (let i = 0; i < prescription.medications.length; i++) {
+      const medication = prescription.medications[i];
+      
+      // Skip if already dispensed
+      if (medication.dispensed) {
+        matchingInventory.push({
+          medicationIndex: i,
+          medicationName: medication.name,
+          dispensed: true,
+          matches: []
+        });
+        continue;
+      }
+      
+      // Search for matching inventory items
+      const matches = await Inventory.find({
+        clinicId: req.user.clinicId,
+        isActive: true,
+        quantity: { $gt: 0 },
+        expiryDate: { $gte: new Date() },
+        $or: [
+          { medicationName: { $regex: medication.name, $options: 'i' } },
+          { genericName: { $regex: medication.name, $options: 'i' } }
+        ]
+      })
+      .select('medicationName genericName batchNumber strength quantity expiryDate unitPrice sellingPrice category')
+      .sort({ expiryDate: 1 }) // Sort by expiry date (FIFO)
+      .limit(10);
+      
+      matchingInventory.push({
+        medicationIndex: i,
+        medicationName: medication.name,
+        dosage: medication.dosage,
+        dispensed: false,
+        matches: matches
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: matchingInventory
+    });
+  } catch (error) {
+    console.error('Error finding matching inventory:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Internal server error',
+      details: error.message
+    });
   }
 });
 

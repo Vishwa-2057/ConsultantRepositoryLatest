@@ -10,6 +10,10 @@ import PatientDetails from "./pages/PatientDetails.jsx";
 import AppointmentManagement from "./pages/AppointmentManagement.jsx";
 import DoctorsManagement from "./pages/DoctorsManagement.jsx";
 import NursesManagement from "./pages/NursesManagement.jsx";
+import PharmacistsManagement from "./pages/PharmacistsManagement.jsx";
+import PharmacistDashboard from "./pages/PharmacistDashboard.jsx";
+import InventoryManagement from "./pages/InventoryManagement.jsx";
+import PharmacistPrescriptions from "./pages/PharmacistPrescriptions.jsx";
 import Login from "./pages/Login.jsx";
 import Register from "./pages/Register.jsx";
 import SuperAdminRegister from "./pages/SuperAdminRegister.jsx";
@@ -93,13 +97,17 @@ const App = () => {
               <Route path="/login" element={<PublicRoute isAuthed={isAuthed}><Login /></PublicRoute>} />
               <Route path="/register" element={<PublicRoute isAuthed={isAuthed}><Register /></PublicRoute>} />
               <Route path="/superadmin/register" element={<PublicRoute isAuthed={isAuthed}><SuperAdminRegister /></PublicRoute>} />
-              <Route path="/" element={isAuthed ? <ProtectedRoute routeName="dashboard"><Dashboard /></ProtectedRoute> : <Navigate to="/login" replace />} />
+              <Route path="/" element={isAuthed ? <ProtectedRoute routeName="dashboard" pharmacistRedirect="/pharmacist-dashboard"><Dashboard /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/patients" element={isAuthed ? <ProtectedRoute routeName="patient-management"><PatientManagement /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/patients/:patientId" element={isAuthed ? <ProtectedRoute routeName="patient-management"><PatientDetails /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/appointments" element={isAuthed ? <ProtectedRoute routeName="appointment-management"><AppointmentManagement /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/slot-management" element={isAuthed ? <ProtectedRoute routeName="slot-management"><SlotManagement /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/doctors" element={isAuthed ? <ProtectedRoute routeName="doctors-management"><DoctorsManagement /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/nurses" element={isAuthed ? <ProtectedRoute routeName="nurses-management"><NursesManagement /></ProtectedRoute> : <Navigate to="/login" replace />} />
+              <Route path="/pharmacists" element={isAuthed ? <ProtectedRoute routeName="pharmacists-management"><PharmacistsManagement /></ProtectedRoute> : <Navigate to="/login" replace />} />
+              <Route path="/pharmacist-dashboard" element={isAuthed ? <ProtectedRoute routeName="pharmacist-dashboard"><PharmacistDashboard /></ProtectedRoute> : <Navigate to="/login" replace />} />
+              <Route path="/inventory-management" element={isAuthed ? <ProtectedRoute routeName="inventory-management"><InventoryManagement /></ProtectedRoute> : <Navigate to="/login" replace />} />
+              <Route path="/pharmacist-prescriptions" element={isAuthed ? <ProtectedRoute routeName="pharmacist-prescriptions"><PharmacistPrescriptions /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/teleconsultation" element={isAuthed ? <ProtectedRoute routeName="teleconsultation"><Teleconsultation /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/prescriptions" element={isAuthed ? <ProtectedRoute routeName="prescriptions"><Prescriptions /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/referrals" element={isAuthed ? <ProtectedRoute routeName="referral-system"><ReferralSystem /></ProtectedRoute> : <Navigate to="/login" replace />} />

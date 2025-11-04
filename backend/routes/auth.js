@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Doctor = require('../models/Doctor');
 const Nurse = require('../models/Nurse');
+const Pharmacist = require('../models/Pharmacist');
 const Clinic = require('../models/Clinic');
 const OTP = require('../models/OTP');
 const emailService = require('../services/emailService');
@@ -129,7 +130,22 @@ router.post('/login-step1', loginValidation, async (req, res) => {
       }
     }
     
-    // If not found in Doctor or Nurse, try Clinic collection
+    // If not found in Doctor or Nurse, try Pharmacist collection
+    if (!user) {
+      user = await Pharmacist.findOne({ email });
+      if (user) {
+        userType = 'pharmacist';
+        console.log(`  - Found user in Pharmacist collection`);
+        
+        // Check if pharmacist is active
+        if (user.isActive === false) {
+          console.log(`  - Pharmacist is inactive, rejecting login`);
+          return res.status(403).json({ error: 'Your account has been deactivated. Please contact your clinic administrator.' });
+        }
+      }
+    }
+    
+    // If not found in Doctor, Nurse, or Pharmacist, try Clinic collection
     if (!user) {
       console.log(`  - Searching in Clinic collection for email: ${email}`);
       user = await Clinic.findOne({ 
@@ -392,7 +408,22 @@ router.post('/developer-login', loginValidation, async (req, res) => {
       }
     }
     
-    // If not found in Doctor or Nurse, try Clinic collection
+    // If not found in Doctor or Nurse, try Pharmacist collection
+    if (!user) {
+      user = await Pharmacist.findOne({ email });
+      if (user) {
+        userType = 'pharmacist';
+        console.log(`  - Found user in Pharmacist collection`);
+        
+        // Check if pharmacist is active
+        if (user.isActive === false) {
+          console.log(`  - Pharmacist is inactive, rejecting login`);
+          return res.status(403).json({ error: 'Your account has been deactivated. Please contact your clinic administrator.' });
+        }
+      }
+    }
+    
+    // If not found in Doctor, Nurse, or Pharmacist, try Clinic collection
     if (!user) {
       console.log(`  - Searching in Clinic collection for email: ${email}`);
       user = await Clinic.findOne({ 

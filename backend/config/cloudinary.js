@@ -28,6 +28,7 @@ const createCloudinaryStorage = (folder, allowedFormats = ['jpg', 'jpeg', 'png',
 // Different storage configurations for different use cases
 const doctorImageStorage = createCloudinaryStorage('healthcare/doctors');
 const nurseImageStorage = createCloudinaryStorage('healthcare/nurses');
+const pharmacistImageStorage = createCloudinaryStorage('healthcare/pharmacists');
 const patientImageStorage = createCloudinaryStorage('healthcare/patients');
 const patientDocumentStorage = createCloudinaryStorage('healthcare/patient-documents', ['jpg', 'jpeg', 'png', 'pdf']);
 
@@ -58,6 +59,20 @@ const doctorUpload = multer({
 
 const nurseUpload = multer({
   storage: nurseImageStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed!'), false);
+    }
+  },
+});
+
+const pharmacistUpload = multer({
+  storage: pharmacistImageStorage,
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB limit
   },
@@ -217,6 +232,7 @@ module.exports = {
   cloudinary,
   doctorUpload,
   nurseUpload,
+  pharmacistUpload,
   patientUpload,
   patientDocumentUpload,
   patientCombinedUpload,

@@ -34,7 +34,7 @@ import {
   ChevronLeft
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { prescriptionAPI } from "@/services/api";
+import { prescriptionAPI, pharmacistAPI } from "@/services/api";
 import { isClinic, isDoctor, getCurrentUser } from "@/utils/roleUtils";
 import PrescriptionModal from "@/components/PrescriptionModal";
 
@@ -59,6 +59,10 @@ const Prescriptions = () => {
     return saved ? parseInt(saved) : 10;
   });
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [isAllotModalOpen, setIsAllotModalOpen] = useState(false);
+  const [allotPrescription, setAllotPrescription] = useState(null);
+  const [pharmacists, setPharmacists] = useState([]);
+  const [selectedPharmacist, setSelectedPharmacist] = useState("");
 
   const { toast } = useToast();
 
@@ -174,7 +178,21 @@ const Prescriptions = () => {
 
   useEffect(() => {
     loadPrescriptions();
+    if (isClinic()) {
+      loadPharmacists();
+    }
   }, [currentPage, pageSize, searchTerm]);
+
+  const loadPharmacists = async () => {
+    try {
+      const response = await pharmacistAPI.getAll(1, 100, {}, true);
+      if (response.success) {
+        setPharmacists(response.data || []);
+      }
+    } catch (error) {
+      console.error('Error loading pharmacists:', error);
+    }
+  };
 
   // Reset to page 1 when search term changes
   useEffect(() => {
@@ -279,6 +297,46 @@ const Prescriptions = () => {
       toast({
         title: "Error",
         description: "Failed to complete prescription",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleAllotClick = (prescription, e) => {
+    e.stopPropagation();
+    setAllotPrescription(prescription);
+    setSelectedPharmacist("");
+    setIsAllotModalOpen(true);
+  };
+
+  const handleAllotSubmit = async () => {
+    if (!selectedPharmacist) {
+      toast({
+        title: "Error",
+        description: "Please select a pharmacist",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      const response = await prescriptionAPI.allotToPharmacist(allotPrescription._id, selectedPharmacist);
+      
+      if (response && response.success) {
+        toast({
+          title: "Success",
+          description: "Prescription allotted to pharmacist successfully",
+        });
+        setIsAllotModalOpen(false);
+        setAllotPrescription(null);
+        setSelectedPharmacist("");
+        loadPrescriptions();
+      }
+    } catch (error) {
+      console.error('Error allotting prescription:', error);
+      toast({
+        title: "Error",
+        description: "Failed to allot prescription",
         variant: "destructive"
       });
     }
@@ -463,6 +521,20 @@ const Prescriptions = () => {
                         </span>
                       </div>
                     </div>
+
+                    {/* Allot Button - Only for clinic */}
+                    {isClinic() && (
+                      <div className="w-24 flex-shrink-0">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={(e) => handleAllotClick(prescription, e)}
+                          className="text-xs"
+                        >
+                          {prescription.allottedPharmacist ? 'Re-allot' : 'Allot'}
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -551,6 +623,52 @@ const Prescriptions = () => {
         onSubmit={handleModalSubmit}
         prescription={selectedPrescription}
       />
+
+      {/* Allot Pharmacist Modal */}
+      <Dialog open={isAllotModalOpen} onOpenChange={setIsAllotModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Allot Prescription to Pharmacist</DialogTitle>
+            <DialogDescription>
+              Select a pharmacist to allot this prescription
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>Prescription</Label>
+              <p className="text-sm text-gray-600">
+                #{allotPrescription?.prescriptionNumber} - {allotPrescription?.patientId?.fullName}
+              </p>
+            </div>
+
+            <div>
+              <Label htmlFor="pharmacist">Select Pharmacist</Label>
+              <Select value={selectedPharmacist} onValueChange={setSelectedPharmacist}>
+                <SelectTrigger id="pharmacist">
+                  <SelectValue placeholder="Choose a pharmacist" />
+                </SelectTrigger>
+                <SelectContent>
+                  {pharmacists.map((pharmacist) => (
+                    <SelectItem key={pharmacist._id} value={pharmacist._id}>
+                      {pharmacist.fullName} - {pharmacist.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAllotModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleAllotSubmit}>
+              Allot Prescription
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Prescription Expanded View Modal */}
       <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>

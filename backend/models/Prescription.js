@@ -25,6 +25,29 @@ const medicationSchema = new mongoose.Schema({
     type: String,
     trim: true,
     default: ''
+  },
+  // Dispensing information
+  dispensed: {
+    type: Boolean,
+    default: false
+  },
+  dispensedInventoryId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Inventory',
+    default: null
+  },
+  dispensedQuantity: {
+    type: Number,
+    default: 0
+  },
+  dispensedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Pharmacist',
+    default: null
+  },
+  dispensedAt: {
+    type: Date,
+    default: null
   }
 });
 
@@ -48,6 +71,17 @@ const prescriptionSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Clinic',
     required: [true, 'Clinic ID is required']
+  },
+  
+  // Pharmacist Assignment
+  allottedPharmacist: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Pharmacist',
+    default: null
+  },
+  
+  allottedAt: {
+    type: Date
   },
   
   // Prescription Details
@@ -91,6 +125,17 @@ const prescriptionSchema = new mongoose.Schema({
   },
   
   followUpInstructions: {
+    type: String,
+    trim: true
+  },
+  
+  // Dispensing Status
+  fullyDispensed: {
+    type: Boolean,
+    default: false
+  },
+  
+  dispensingNotes: {
     type: String,
     trim: true
   },

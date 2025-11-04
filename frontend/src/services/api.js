@@ -302,14 +302,23 @@ export const appointmentAPI = {
 
 // Consultation API functions
 export const consultationAPI = {
-  // Get all consultations
+  // Get all prescriptions
   getAll: async (page = 1, limit = 10, filters = {}) => {
     const queryParams = new URLSearchParams({
       page: page.toString(),
       limit: limit.toString(),
       ...filters
     });
-    return apiRequest(`/consultations?${queryParams}`);
+    
+    return apiRequest(`/prescriptions?${queryParams}`);
+  },
+
+  // Allot prescription to pharmacist
+  allotToPharmacist: async (prescriptionId, pharmacistId) => {
+    return apiRequest(`/prescriptions/${prescriptionId}/allot`, {
+      method: 'PATCH',
+      body: JSON.stringify({ pharmacistId }),
+    });
   },
 
   // Get consultation by ID
@@ -1187,6 +1196,197 @@ export const nurseAPI = {
   },
 };
 
+// Pharmacist API functions
+export const pharmacistAPI = {
+  // Get all pharmacists
+  getAll: async (page = 1, limit = 100, filters = {}, activeOnly = false) => {
+    // Build query parameters
+    const queryParams = new URLSearchParams({
+      page: page.toString(),
+      limit: limit.toString(),
+      ...(activeOnly ? { activeOnly: 'true' } : {}),
+      ...filters
+    });
+    
+    return apiRequest(`/pharmacists?${queryParams}`);
+  },
+
+  // Get pharmacist by ID
+  getById: async (id) => {
+    return apiRequest(`/pharmacists/${id}`);
+  },
+
+  // Upload pharmacist profile image
+  uploadImage: async (imageFile) => {
+    const formData = new FormData();
+    formData.append('profileImage', imageFile);
+    
+    // Get current token with automatic refresh if needed
+    const currentToken = await sessionManager.checkTokenRefresh();
+    const url = `${API_BASE_URL}/pharmacists/upload-image`;
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        ...(currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {}),
+        // Don't set Content-Type for FormData - browser will set it with boundary
+      },
+      body: formData,
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      let message = `HTTP error! status: ${response.status}`;
+      if (errorData) {
+        const backendMsg = errorData.message || errorData.error;
+        message = backendMsg || message;
+      }
+      const error = new Error(message);
+      error.response = response;
+      error.data = errorData;
+      throw error;
+    }
+    
+    return await response.json();
+  },
+
+  // Create new pharmacist with pre-uploaded image
+  createWithImage: async (pharmacistData) => {
+    return apiRequest('/pharmacists/create-with-image', {
+      method: 'POST',
+      body: JSON.stringify(pharmacistData),
+    });
+  },
+
+  // Create new pharmacist (legacy method with file upload)
+  create: async (pharmacistData) => {
+    // Handle FormData differently (for file uploads)
+    if (pharmacistData instanceof FormData) {
+      const currentToken = await sessionManager.getToken();
+      const url = `${API_BASE_URL}/pharmacists`;
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          ...(currentToken ? { 'Authorization': `Bearer ${currentToken}` } : {}),
+          // Don't set Content-Type for FormData - browser will set it with boundary
+        },
+        body: pharmacistData,
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        let message = `HTTP error! status: ${response.status}`;
+        if (errorData) {
+          const backendMsg = errorData.message || errorData.error;
+          const details = Array.isArray(errorData.details)
+            ? errorData.details.map(d => d.msg || d).join('; ')
+            : (typeof errorData.details === 'string' ? errorData.details : undefined);
+          message = [backendMsg, details].filter(Boolean).join(' - ') || message;
+        }
+        const error = new Error(message);
+        error.response = response;
+        error.data = errorData;
+        throw error;
+      }
+      
+      return await response.json();
+    }
+    
+    // Handle regular JSON data - use the new endpoint
+    return this.createWithImage(pharmacistData);
+  },
+
+  // Update pharmacist
+  update: async (id, pharmacistData) => {
+    return apiRequest(`/pharmacists/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(pharmacistData),
+    });
+  },
+
+  // Delete pharmacist (soft delete)
+  delete: async (id) => {
+    return apiRequest(`/pharmacists/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // Activate pharmacist
+  activate: async (id) => {
+    return apiRequest(`/pharmacists/${id}/activate`, {
+      method: 'PATCH',
+    });
+  },
+
+  // Deactivate pharmacist
+  deactivate: async (id) => {
+    return apiRequest(`/pharmacists/${id}/deactivate`, {
+      method: 'PATCH',
+    });
+  },
+
+  // Search pharmacists by name or specialization
+  search: async (query) => {
+    return apiRequest(`/pharmacists/search?q=${encodeURIComponent(query)}`);
+  },
+};
+
+// Inventory API functions
+export const inventoryAPI = {
+  // Get all inventory items
+  getAll: async (page = 1, limit = 50, filters = {}) => {
+    const queryParams = new URLSearchParams({
+      page: page.toString(),
+      limit: limit.toString(),
+      ...filters
+    });
+    
+    return apiRequest(`/inventory?${queryParams}`);
+  },
+
+  // Get inventory statistics
+  getStats: async () => {
+    return apiRequest('/inventory/stats');
+  },
+
+  // Get inventory item by ID
+  getById: async (id) => {
+    return apiRequest(`/inventory/${id}`);
+  },
+
+  // Create new inventory item
+  create: async (itemData) => {
+    return apiRequest('/inventory', {
+      method: 'POST',
+      body: JSON.stringify(itemData),
+    });
+  },
+
+  // Update inventory item
+  update: async (id, itemData) => {
+    return apiRequest(`/inventory/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(itemData),
+    });
+  },
+
+  // Update stock quantity
+  updateStock: async (id, quantity) => {
+    return apiRequest(`/inventory/${id}/stock`, {
+      method: 'PATCH',
+      body: JSON.stringify({ quantity }),
+    });
+  },
+
+  // Delete inventory item
+  delete: async (id) => {
+    return apiRequest(`/inventory/${id}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
 // Clinic API functions
 export const clinicAPI = {
   // Login clinic
@@ -1418,6 +1618,14 @@ export const prescriptionAPI = {
     }
   },
 
+  // Allot prescription to pharmacist
+  allotToPharmacist: async (prescriptionId, pharmacistId) => {
+    return apiRequest(`/prescriptions/${prescriptionId}/allot`, {
+      method: 'PATCH',
+      body: JSON.stringify({ pharmacistId }),
+    });
+  },
+
   // Create new prescription
   create: async (prescriptionData) => {
     return apiRequest('/prescriptions', {
@@ -1456,6 +1664,19 @@ export const prescriptionAPI = {
     return apiRequest(`/prescriptions/${id}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status }),
+    });
+  },
+
+  // Get matching inventory for prescription medications
+  getMatchingInventory: async (prescriptionId) => {
+    return apiRequest(`/prescriptions/${prescriptionId}/matching-inventory`);
+  },
+
+  // Dispense medication from inventory
+  dispenseMedication: async (prescriptionId, medicationIndex, inventoryId, quantity, notes = '') => {
+    return apiRequest(`/prescriptions/${prescriptionId}/dispense`, {
+      method: 'POST',
+      body: JSON.stringify({ medicationIndex, inventoryId, quantity, notes }),
     });
   }
 };
@@ -1799,6 +2020,8 @@ export default {
   complianceAlertAPI,
   doctorAPI,
   nurseAPI,
+  pharmacistAPI,
+  inventoryAPI,
   clinicAPI,
   prescriptionAPI,
   vitalsAPI,
