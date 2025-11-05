@@ -28,7 +28,7 @@ module.exports = {
     },
     frontend: {
       type: 'browser',
-      baseURL: process.env.FRONTEND_URL || 'http://localhost:8080',
+      baseURL: process.env.FRONTEND_URL || 'http://localhost:8000',
       timeout: 60000,
       retries: 1,
       browser: {
@@ -45,7 +45,7 @@ module.exports = {
   // Playwright configuration for E2E tests
   playwright: {
     use: {
-      baseURL: process.env.FRONTEND_URL || 'http://localhost:8080',
+      baseURL: process.env.FRONTEND_URL || 'http://localhost:8000',
       trace: 'on-first-retry',
       screenshot: 'only-on-failure',
       video: 'retain-on-failure',

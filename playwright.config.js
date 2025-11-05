@@ -28,7 +28,7 @@ module.exports = defineConfig({
   // Shared settings for all projects
   use: {
     // Base URL for navigation
-    baseURL: process.env.FRONTEND_URL || 'http://localhost:8080',
+    baseURL: process.env.FRONTEND_URL || 'http://localhost:8000',
     
     // Collect trace when retrying failed tests
     trace: 'on-first-retry',

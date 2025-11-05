@@ -450,10 +450,10 @@ router.patch('/:id/approve', auth, async (req, res) => {
       return res.status(404).json({ error: 'Invoice not found' });
     }
 
-    // Check if invoice is in a state that can be approved
-    if (invoice.status !== 'Sent') {
+    // Check if invoice is already approved
+    if (invoice.status === 'Approved') {
       return res.status(400).json({ 
-        error: `Invoice cannot be approved. Current status: ${invoice.status}` 
+        error: 'Invoice is already approved' 
       });
     }
 

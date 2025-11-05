@@ -473,6 +473,7 @@ const Billing = () => {
     switch (status) {
       case "Approved": return "success";
       case "Rejected": return "destructive";
+      case "Unapproved": return "outline";
       default: return "secondary";
     }
   };
@@ -481,6 +482,7 @@ const Billing = () => {
     switch (status) {
       case "Approved": return CheckCircle;
       case "Rejected": return AlertCircle;
+      case "Unapproved": return Clock;
       default: return FileText;
     }
   };
@@ -1199,7 +1201,7 @@ const Billing = () => {
                           
                           {/* Right section - Actions */}
                           <div className="col-span-3 flex justify-end items-center space-x-2">
-                              {getInvoiceStatus(invoice) === 'Rejected' && (
+                              {(getInvoiceStatus(invoice) === 'Rejected' || getInvoiceStatus(invoice) === 'Unapproved') && (
                                 <Button 
                                   variant="outline" 
                                   size="sm"

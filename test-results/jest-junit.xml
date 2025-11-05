@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="jest tests" tests="9" failures="0" errors="0" time="2.684">
+  <testsuite name="Health Check API" errors="0" failures="0" skipped="0" timestamp="2025-11-05T05:36:43" time="0.658" tests="9">
+    <testcase classname="Health Check API › GET /health" name="should return server health status" time="0.129">
+    </testcase>
+    <testcase classname="Health Check API › GET /health" name="should respond within acceptable time" time="0.035">
+    </testcase>
+    <testcase classname="Health Check API › Server Configuration" name="should have CORS enabled" time="0.025">
+    </testcase>
+    <testcase classname="Health Check API › Server Configuration" name="should have security headers" time="0.01">
+    </testcase>
+    <testcase classname="Health Check API › Server Configuration" name="should handle JSON content type" time="0.035">
+    </testcase>
+    <testcase classname="Health Check API › Error Handling" name="should return 404 for non-existent routes" time="0.016">
+    </testcase>
+    <testcase classname="Health Check API › Error Handling" name="should handle malformed JSON" time="0.053">
+    </testcase>
+    <testcase classname="Health Check API › Error Handling" name="should handle missing content-type" time="0.018">
+    </testcase>
+    <testcase classname="Health Check API › Rate Limiting" name="should accept reasonable number of requests" time="0.126">
+    </testcase>
+  </testsuite>
+</testsuites>

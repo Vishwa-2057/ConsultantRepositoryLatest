@@ -14,7 +14,7 @@
     "test:connection": "node test-connection.js",
     "setup": "npm run install:all && npm run test:connection",
     "test": "npm run test:api && npm run test:e2e",
-    "test:api": "jest --config=jest.config.js --testPathPattern=tests/api",
+    "test:api": "jest --config=jest.config.js --testPathPatterns=tests/api",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
@@ -42,7 +42,9 @@
     "concurrently": "^8.2.2",
     "jest-html-reporter": "^4.3.0",
     "jest-junit": "^16.0.0",
-    "playwright": "^1.56.1"
+    "mongoose": "^8.19.3",
+    "playwright": "^1.56.1",
+    "supertest": "^7.1.4"
   },
   "dependencies": {
     "cors": "^2.8.5",
