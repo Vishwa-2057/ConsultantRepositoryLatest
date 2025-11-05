@@ -118,7 +118,7 @@ export function ConsultantSidebar({ mobile = false }) {
             </div>
             {!collapsed && (
               <div className="overflow-hidden">
-                <h2 className={`font-semibold text-foreground ${mobile ? 'text-xl' : 'text-lg'} tracking-tight whitespace-nowrap`}>{clinicName}</h2>
+                <h2 className={`font-semibold text-foreground ${mobile ? 'text-xl' : 'text-lg'} tracking-tight whitespace-nowrap`}>SMAART Healthcare</h2>
               </div>
             )}
           </div>
