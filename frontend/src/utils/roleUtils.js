@@ -210,7 +210,7 @@ export const getCurrentUserId = () => {
   return user?._id || user?.id || null;
 };
 
-// Check if user can edit patient information (only clinic admins)
+// Check if user can edit patient information (clinic admins, doctors, nurses, and head nurses)
 export const canEditPatients = () => {
-  return isClinic();
+  return isClinic() || isDoctor() || isNurse() || isHeadNurse() || isSupervisor();
 };

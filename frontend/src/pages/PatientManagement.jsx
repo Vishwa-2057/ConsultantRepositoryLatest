@@ -52,7 +52,7 @@ const PatientManagement = () => {
   const [totalCount, setTotalCount] = useState(0);
   const [pageSize, setPageSize] = useState(() => {
     const saved = localStorage.getItem('patientManagement_pageSize');
-    return saved ? parseInt(saved) : 5;
+    return saved ? parseInt(saved) : 20;
   });
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -428,8 +428,11 @@ const PatientManagement = () => {
                 <div className="col-span-1">
                   <span className="text-xs font-semibold text-gray-600 uppercase">Blood</span>
                 </div>
-                <div className="col-span-2">
+                <div className="col-span-1">
                   <span className="text-xs font-semibold text-gray-600 uppercase">Phone</span>
+                </div>
+                <div className="col-span-1">
+                  <span className="text-xs font-semibold text-gray-600 uppercase">Checked In</span>
                 </div>
                 <div className="col-span-2">
                   <span className="text-xs font-semibold text-gray-600 uppercase">Assigned Doctors</span>
@@ -497,14 +500,30 @@ const PatientManagement = () => {
                     </div>
                     
                     {/* Column 6: Phone */}
-                    <div className="col-span-2">
+                    <div className="col-span-1">
                       <div className="flex items-center space-x-1 text-sm text-muted-foreground">
                         <Phone className="w-3 h-3" />
-                        <span>{patient.phone || 'No phone'}</span>
+                        <span className="truncate">{patient.phone || 'No phone'}</span>
                       </div>
                     </div>
                     
-                    {/* Column 7-8: Assigned Doctors */}
+                    {/* Column 7: Checked In Date */}
+                    <div className="col-span-1">
+                      <div className="flex items-center space-x-1 text-sm text-muted-foreground">
+                        <Calendar className="w-3 h-3" />
+                        <span className="truncate">
+                          {patient.createdAt ? (() => {
+                            const date = new Date(patient.createdAt);
+                            const day = String(date.getDate()).padStart(2, '0');
+                            const month = String(date.getMonth() + 1).padStart(2, '0');
+                            const year = String(date.getFullYear()).slice(-2);
+                            return `${day}-${month}-${year}`;
+                          })() : '-'}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    {/* Column 8-9: Assigned Doctors */}
                     <div className="col-span-2">
                       {patient.assignedDoctors && patient.assignedDoctors.length > 0 ? (
                         <div className="flex items-center space-x-1 text-sm text-muted-foreground">
@@ -522,28 +541,28 @@ const PatientManagement = () => {
                     <div className="col-span-3 flex items-center justify-end space-x-2">
                       <div style={{paddingRight:"50px"}}>
                       <Button 
-                        variant="ghost" 
+                        variant="outline" 
                         size="sm"
                         onClick={(e) => {
                           e.stopPropagation();
                           handleVitalsHistory(patient);
                         }}
                         title="View Vitals History"
-                        className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                        className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-600"
                       >
                         Vitals
                       </Button>
                       </div>
                       {isClinic() && (
                         <Button 
-                          variant="ghost" 
+                          variant="outline" 
                           size="sm"
                           onClick={(e) => {
                             e.stopPropagation();
                             handleManageDoctors(patient);
                           }}
                           title="Manage Assigned Doctors"
-                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-600"
                         >
                           Assign Doctor
                         </Button>

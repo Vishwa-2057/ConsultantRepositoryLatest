@@ -38,7 +38,8 @@ import {
   Eye,
   Download,
   TestTubeDiagonal,
-  Video
+  Video,
+  Receipt
 } from "lucide-react";
 import { patientAPI, prescriptionAPI, appointmentAPI, vitalsAPI, referralAPI, medicalImageAPI, teleconsultationAPI } from "@/services/api";
 import sessionManager from "@/utils/sessionManager";
@@ -98,6 +99,8 @@ const PatientDetails = () => {
   const [medicalImages, setMedicalImages] = useState([]);
   const [labReports, setLabReports] = useState([]);
   const [labReportsLoading, setLabReportsLoading] = useState(false);
+  const [invoices, setInvoices] = useState([]);
+  const [invoicesLoading, setInvoicesLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [prescriptionsLoading, setPrescriptionsLoading] = useState(false);
   const [caseLogsLoading, setCaseLogsLoading] = useState(false);
@@ -419,6 +422,13 @@ const PatientDetails = () => {
     }
   }, [activeTab, patient]);
 
+  // Load invoices when invoices tab is accessed
+  useEffect(() => {
+    if (activeTab === 'invoices' && patient && invoices.length === 0) {
+      loadInvoices();
+    }
+  }, [activeTab, patient]);
+
   const loadLabReports = async () => {
     try {
       setLabReportsLoading(true);
@@ -457,6 +467,35 @@ const PatientDetails = () => {
       toast.error(`Failed to load lab reports: ${error.message}`);
     } finally {
       setLabReportsLoading(false);
+    }
+  };
+
+  const loadInvoices = async () => {
+    try {
+      setInvoicesLoading(true);
+      const patientDbId = patient._id || patient.id;
+      const API_BASE_URL = config.API_BASE_URL || 'http://localhost:5000/api';
+      
+      const token = await sessionManager.getToken();
+      
+      const response = await fetch(`${API_BASE_URL}/invoices?patientId=${patientDbId}&limit=100`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to load invoices');
+      }
+      
+      const data = await response.json();
+      setInvoices(data.invoices || []);
+    } catch (error) {
+      console.error('Error loading invoices:', error);
+      toast.error(`Failed to load invoices: ${error.message}`);
+    } finally {
+      setInvoicesLoading(false);
     }
   };
 
@@ -786,7 +825,7 @@ const PatientDetails = () => {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-8">
+        <TabsList className="grid w-full grid-cols-9">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="history">Patient History</TabsTrigger>
           <TabsTrigger value="case-logs">Case Logs</TabsTrigger>
@@ -794,6 +833,7 @@ const PatientDetails = () => {
           <TabsTrigger value="investigations">Investigations</TabsTrigger>
           <TabsTrigger value="treatment">Treatment</TabsTrigger>
           <TabsTrigger value="referrals">Referrals</TabsTrigger>
+          <TabsTrigger value="invoices">Invoices</TabsTrigger>
           <TabsTrigger value="gallery">Image Gallery</TabsTrigger>
         </TabsList>
 
@@ -811,10 +851,6 @@ const PatientDetails = () => {
                   <div>
                     <span className="text-gray-600">Date of Birth:</span>
                     <p className="font-medium">{formatDate(patient.dateOfBirth)}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Occupation:</span>
-                    <p className="font-medium">{patient.occupation || 'Not provided'}</p>
                   </div>
                   <div className="col-span-2">
                     <span className="text-gray-600">Address:</span>
@@ -1887,6 +1923,78 @@ const PatientDetails = () => {
           </Card>
         </TabsContent>
 
+        <TabsContent value="invoices" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Receipt className="w-5 h-5" />
+                Invoices
+              </CardTitle>
+              <CardDescription>Patient billing and payment history</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {invoicesLoading ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                </div>
+              ) : invoices.length > 0 ? (
+                <div className="space-y-4">
+                  {invoices.map((invoice, index) => (
+                    <div key={invoice._id || index} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                            <Receipt className="w-5 h-5 text-blue-600" />
+                          </div>
+                          <div>
+                            <h4 className="font-semibold text-gray-900">Invoice #{invoice.invoiceNumber || invoice._id?.slice(-6)}</h4>
+                            <p className="text-sm text-gray-500">
+                              {invoice.createdAt ? new Date(invoice.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-lg font-bold text-gray-900">₹{invoice.totalAmount?.toFixed(2) || '0.00'}</p>
+                          <Badge variant={invoice.paymentStatus === 'paid' ? 'success' : invoice.paymentStatus === 'pending' ? 'warning' : 'secondary'}>
+                            {invoice.paymentStatus || 'Pending'}
+                          </Badge>
+                        </div>
+                      </div>
+                      {invoice.items && invoice.items.length > 0 && (
+                        <div className="mt-3 pt-3 border-t">
+                          <p className="text-xs font-semibold text-gray-600 uppercase mb-2">Items</p>
+                          <div className="space-y-1">
+                            {invoice.items.map((item, idx) => (
+                              <div key={idx} className="flex justify-between text-sm">
+                                <span className="text-gray-700">{item.description || item.name}</span>
+                                <span className="text-gray-900 font-medium">₹{item.amount?.toFixed(2) || '0.00'}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {invoice.paymentMethod && (
+                        <div className="mt-3 pt-3 border-t">
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <span className="font-medium">Payment Method:</span>
+                            <span>{invoice.paymentMethod}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12 text-gray-500">
+                  <Receipt className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                  <p>No invoices found</p>
+                  <p className="text-sm">Patient invoices will appear here when created</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="gallery" className="space-y-6">
           <Card>
             <CardHeader>
@@ -1897,171 +2005,98 @@ const PatientDetails = () => {
               <CardDescription>Medical images, scans, and documents</CardDescription>
             </CardHeader>
             <CardContent>
-              {patient?.governmentDocument ? (
-                <div className="space-y-6">
-                  {/* Government Documents Section */}
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                      <FileText className="w-5 h-5" />
-                      Government Documents
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {Array.isArray(patient.governmentDocument) ? (
-                        patient.governmentDocument.map((doc, index) => (
-                          <div key={index} className="border rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
-                            <div className="aspect-[4/3] bg-gray-100 relative">
-                              <img
-                                src={doc}
-                                alt={`Government Document ${index + 1}`}
-                                className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform"
-                                onClick={() => handleDocumentClick(doc, null, index)}
-                                onError={(e) => {
-                                  e.target.style.display = 'none';
-                                  e.target.nextSibling.classList.remove('hidden');
-                                }}
-                              />
-                              <div className="hidden absolute inset-0 flex items-center justify-center bg-gray-200">
-                                <div className="text-center text-gray-500">
-                                  <FileText className="w-8 h-8 mx-auto mb-2" />
-                                  <p className="text-sm">Unable to load image</p>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="p-3">
-                              <p className="text-sm font-medium text-gray-900">Government Document {index + 1}</p>
-                              <p className="text-xs text-gray-500 mt-1">Click to view in popup</p>
-                            </div>
-                          </div>
-                        ))
+              {/* Medical Images Section */}
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <Camera className="w-5 h-5" />
+                    Medical Images
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="file"
+                      id="medical-image-upload"
+                      accept="image/*,.pdf"
+                      onChange={handleImageUpload}
+                      className="hidden"
+                      disabled={uploadingImage}
+                    />
+                    <Button
+                      onClick={() => document.getElementById('medical-image-upload').click()}
+                      disabled={uploadingImage}
+                      className="flex items-center gap-2"
+                    >
+                      {uploadingImage ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                       ) : (
-                        <div className="border rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
-                          <div className="aspect-[4/3] bg-gray-100 relative">
-                            <img
-                              src={patient.governmentDocument}
-                              alt="Government Document"
-                              className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform"
-                              onClick={() => handleDocumentClick(patient.governmentDocument, 'Government Document')}
-                              onError={(e) => {
-                                e.target.style.display = 'none';
-                                e.target.nextSibling.classList.remove('hidden');
-                              }}
-                            />
-                            <div className="hidden absolute inset-0 flex items-center justify-center bg-gray-200">
-                              <div className="text-center text-gray-500">
-                                <FileText className="w-8 h-8 mx-auto mb-2" />
-                                <p className="text-sm">Unable to load image</p>
-                              </div>
+                        <Plus className="w-4 h-4" />
+                      )}
+                      {uploadingImage ? 'Uploading...' : 'Add Image'}
+                    </Button>
+                  </div>
+                </div>
+
+                {medicalImagesLoading ? (
+                  <div className="flex justify-center py-8">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                  </div>
+                ) : medicalImages.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {medicalImages.map((image, index) => (
+                      <div key={image._id || index} className="border rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
+                        <div className="aspect-[4/3] bg-gray-100 relative">
+                          <img
+                            src={image.imageUrl || image.cloudinaryUrl}
+                            alt={image.title || `Medical Image ${index + 1}`}
+                            className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform"
+                            onClick={() => handleImageClick(image)}
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                              e.target.nextSibling.classList.remove('hidden');
+                            }}
+                          />
+                          <div className="hidden absolute inset-0 flex items-center justify-center bg-gray-200">
+                            <div className="text-center text-gray-500">
+                              <FileText className="w-8 h-8 mx-auto mb-2" />
+                              <p className="text-sm">Unable to load image</p>
                             </div>
-                          </div>
-                          <div className="p-3">
-                            <p className="text-sm font-medium text-gray-900">Government Document</p>
-                            <p className="text-xs text-gray-500 mt-1">Click to view in popup</p>
                           </div>
                         </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Medical Images Section */}
-                  <div className="border-t pt-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                        <Camera className="w-5 h-5" />
-                        Medical Images
-                      </h3>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="file"
-                          id="medical-image-upload"
-                          accept="image/*,.pdf"
-                          onChange={handleImageUpload}
-                          className="hidden"
-                          disabled={uploadingImage}
-                        />
-                        <Button
-                          onClick={() => document.getElementById('medical-image-upload').click()}
-                          disabled={uploadingImage}
-                          className="flex items-center gap-2"
-                        >
-                          {uploadingImage ? (
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                          ) : (
-                            <Plus className="w-4 h-4" />
-                          )}
-                          {uploadingImage ? 'Uploading...' : 'Add Image'}
-                        </Button>
-                      </div>
-                    </div>
-
-                    {medicalImagesLoading ? (
-                      <div className="flex justify-center py-8">
-                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                      </div>
-                    ) : medicalImages.length > 0 ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {medicalImages.map((image, index) => (
-                          <div key={image._id || index} className="border rounded-lg overflow-hidden hover:shadow-lg transition-shadow">
-                            <div className="aspect-[4/3] bg-gray-100 relative">
-                              <img
-                                src={image.imageUrl || image.cloudinaryUrl}
-                                alt={image.title || `Medical Image ${index + 1}`}
-                                className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform"
-                                onClick={() => handleImageClick(image)}
-                                onError={(e) => {
-                                  e.target.style.display = 'none';
-                                  e.target.nextSibling.classList.remove('hidden');
-                                }}
-                              />
-                              <div className="hidden absolute inset-0 flex items-center justify-center bg-gray-200">
-                                <div className="text-center text-gray-500">
-                                  <FileText className="w-8 h-8 mx-auto mb-2" />
-                                  <p className="text-sm">Unable to load image</p>
-                                </div>
-                              </div>
-                            </div>
-                            <div className="p-3">
-                              <div className="flex items-center justify-between mb-1">
-                                <p className="text-sm font-medium text-gray-900 truncate">
-                                  {image.title || `Medical Image ${index + 1}`}
-                                </p>
-                                {image.imageType && (
-                                  <Badge variant="outline" className="text-xs">
-                                    {image.imageType}
-                                  </Badge>
-                                )}
-                              </div>
-                              {image.bodyPart && (
-                                <p className="text-xs text-gray-500 mb-1">Body Part: {image.bodyPart}</p>
-                              )}
-                              <div className="flex items-center justify-between text-xs text-gray-400">
-                                <span>
-                                  {image.uploadedBy?.fullName ? `Dr. ${image.uploadedBy.fullName}` : 'Unknown'}
-                                </span>
-                                <span>
-                                  {image.createdAt ? new Date(image.createdAt).toLocaleDateString() : 'Unknown date'}
-                                </span>
-                              </div>
-                              <p className="text-xs text-gray-500 mt-1">Click to view in popup</p>
-                            </div>
+                        <div className="p-3">
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="text-sm font-medium text-gray-900 truncate">
+                              {image.title || `Medical Image ${index + 1}`}
+                            </p>
+                            {image.imageType && (
+                              <Badge variant="outline" className="text-xs">
+                                {image.imageType}
+                              </Badge>
+                            )}
                           </div>
-                        ))}
+                          {image.bodyPart && (
+                            <p className="text-xs text-gray-500 mb-1">Body Part: {image.bodyPart}</p>
+                          )}
+                          <div className="flex items-center justify-between text-xs text-gray-400">
+                            <span>
+                              {image.uploadedBy?.fullName ? `Dr. ${image.uploadedBy.fullName}` : 'Unknown'}
+                            </span>
+                            <span>
+                              {image.createdAt ? new Date(image.createdAt).toLocaleDateString() : 'Unknown date'}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1">Click to view in popup</p>
+                        </div>
                       </div>
-                    ) : (
-                      <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
-                        <Camera className="w-8 h-8 mx-auto mb-3 text-gray-300" />
-                        <p className="text-sm">No medical images found</p>
-                        <p className="text-xs text-gray-400">Click "Add Image" to upload X-rays, scans, and other medical images</p>
-                      </div>
-                    )}
+                    ))}
                   </div>
-                </div>
-              ) : (
-                <div className="text-center py-12 text-gray-500">
-                  <Camera className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                  <p>No images found</p>
-                  <p className="text-sm">Patient images and documents will appear here when uploaded</p>
-                </div>
-              )}
+                ) : (
+                  <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
+                    <Camera className="w-8 h-8 mx-auto mb-3 text-gray-300" />
+                    <p className="text-sm">No medical images found</p>
+                    <p className="text-xs text-gray-400">Click "Add Image" to upload X-rays, scans, and other medical images</p>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

@@ -32,7 +32,7 @@ const validatePatient = [
   body('email').optional().isEmail().withMessage('Valid email address is required'),
   body('uhid').trim().isLength({ min: 1, max: 50 }).withMessage('UHID is required and must be less than 50 characters'),
   body('bloodGroup').isIn(['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']).withMessage('Valid blood group is required'),
-  body('occupation').trim().isLength({ min: 1, max: 100 }).withMessage('Occupation is required and must be less than 100 characters'),
+  body('occupation').optional().trim().isLength({ max: 100 }).withMessage('Occupation cannot exceed 100 characters'),
   body('referringDoctor').optional().trim().isLength({ max: 100 }).withMessage('Referring doctor name cannot exceed 100 characters'),
   body('referredClinic').optional().trim().isLength({ max: 100 }).withMessage('Referred clinic name cannot exceed 100 characters'),
   body('address').custom((value) => {
@@ -500,9 +500,6 @@ router.post('/', auth, (req, res, next) => {
     if (!req.body.bloodGroup) {
       validationErrors.push('Blood group is required');
     }
-    if (!req.body.occupation || !req.body.occupation.trim()) {
-      validationErrors.push('Occupation is required');
-    }
     if (!req.body.password || req.body.password.length < 6) {
       validationErrors.push('Password is required and must be at least 6 characters long');
     }
@@ -510,9 +507,6 @@ router.post('/', auth, (req, res, next) => {
     // Check if required files are uploaded
     if (!req.files || !req.files.profileImage) {
       validationErrors.push('Profile image is required');
-    }
-    if (!req.files || !req.files.governmentDocument) {
-      validationErrors.push('Government document is required');
     }
 
     if (validationErrors.length > 0) {

@@ -7,9 +7,10 @@ import { Input } from "@/components/ui/input.jsx";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet.jsx";
+import { clinicAPI } from "@/services/api";
 
 // Header component that can use useSidebar hook
-function LayoutHeader({ getPageTitle, currentUser, currentTime, hideActions, toggleDarkMode, isDarkMode, mobileMenuOpen, setMobileMenuOpen }) {
+function LayoutHeader({ getPageTitle, currentUser, currentTime, hideActions, toggleDarkMode, isDarkMode, mobileMenuOpen, setMobileMenuOpen, clinicName }) {
   const { toggleSidebar } = useSidebar();
   const navigate = useNavigate();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -82,6 +83,13 @@ function LayoutHeader({ getPageTitle, currentUser, currentTime, hideActions, tog
             </div>
           )}
           
+          {/* Clinic name - shown on larger screens */}
+          {clinicName && (
+            <div className="hidden md:flex items-center gap-2 text-sm font-medium text-primary flex-shrink-0">
+              <span className="truncate">{clinicName}</span>
+            </div>
+          )}
+          
           {/* User info - hidden on mobile, shown on larger screens */}
           <div className="hidden xl:flex items-center gap-3 text-sm text-muted-foreground min-w-0">
             <div className="flex items-center gap-1 flex-shrink-0">
@@ -117,6 +125,21 @@ function LayoutHeader({ getPageTitle, currentUser, currentTime, hideActions, tog
       <div className="flex items-center gap-1 sm:gap-3 flex-shrink-0">
         {!hideActions && (
           <>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={() => navigate('/profile')}
+                  className="h-8 w-8 sm:h-10 sm:w-10"
+                >
+                  <User className="w-4 h-4 sm:w-5 sm:h-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>View Profile</p>
+              </TooltipContent>
+            </Tooltip>
             <Button variant="ghost" size="icon" onClick={toggleDarkMode} className="h-8 w-8 sm:h-10 sm:w-10">
               {isDarkMode ? (
                 <Sun className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -175,6 +198,7 @@ export function Layout({ children }) {
   const hideActions = ['/login','/register'].includes(location.pathname);
   const isAuthPage = hideActions;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [clinicName, setClinicName] = useState('');
   
   // Get current user from localStorage
   const [currentUser, setCurrentUser] = useState(() => {
@@ -235,6 +259,39 @@ export function Layout({ children }) {
     window.addEventListener('auth-changed', handleAuthChanged);
     return () => window.removeEventListener('auth-changed', handleAuthChanged);
   }, []);
+
+  // Fetch clinic name
+  useEffect(() => {
+    const fetchClinicName = async () => {
+      if (!currentUser) {
+        setClinicName('');
+        return;
+      }
+
+      try {
+        // If user is clinic admin, fetch their clinic profile
+        if (currentUser?.role === 'clinic' || currentUser?.isClinic) {
+          const response = await clinicAPI.getProfile();
+          const clinic = response.data || response;
+          if (clinic?.name) {
+            setClinicName(clinic.name);
+          }
+        } else if (currentUser?.clinicId) {
+          // For other users, fetch clinic profile
+          const response = await clinicAPI.getProfile();
+          const clinic = response.data || response;
+          if (clinic?.name) {
+            setClinicName(clinic.name);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching clinic name:', error);
+        setClinicName('');
+      }
+    };
+
+    fetchClinicName();
+  }, [currentUser]);
 
   const toggleDarkMode = () => {
     setIsDarkMode(!isDarkMode);
@@ -323,6 +380,7 @@ export function Layout({ children }) {
               isDarkMode={isDarkMode}
               mobileMenuOpen={mobileMenuOpen}
               setMobileMenuOpen={setMobileMenuOpen}
+              clinicName={clinicName}
             />
 
             {/* Main Content */}

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { 
@@ -35,7 +36,7 @@ import ComplianceAlertModal from '../components/ComplianceAlertModal';
 import ActivityLogsModal from '../components/ActivityLogsModal';
 import Carousel from "@/components/Carousel";
 import { getCurrentUser, isDoctor, isNurse, isHeadNurse, isSupervisor, isClinic } from "@/utils/roleUtils";
-import SnakeGame from "@/components/SnakeGame";
+// // import SnakeGame from "@/components/SnakeGame";
 import sessionManager from "@/utils/sessionManager";
 
 // Import lab images
@@ -85,9 +86,9 @@ const Dashboard = () => {
   const [monthlyRevenue, setMonthlyRevenue] = useState(0);
   const [monthlyRevenueChange, setMonthlyRevenueChange] = useState("+0%");
   const [monthlyRevenueLoading, setMonthlyRevenueLoading] = useState(true);
-  const [isSnakeGameOpen, setIsSnakeGameOpen] = useState(false);
-  const [clickCount, setClickCount] = useState(0);
-  const [clickTimeout, setClickTimeout] = useState(null);
+  // const [isSnakeGameOpen, setIsSnakeGameOpen] = useState(false);
+  // const [clickCount, setClickCount] = useState(0);
+  // const [clickTimeout, setClickTimeout] = useState(null);
   const [complianceRate, setComplianceRate] = useState(94.2);
   const [complianceRateLoading, setComplianceRateLoading] = useState(true);
   const [totalDoctors, setTotalDoctors] = useState(0);
@@ -706,32 +707,32 @@ const Dashboard = () => {
     return "normal";
   };
 
-  // Snake game Easter egg - triple click handler
-  const handleRevenueIconClick = () => {
-    const newCount = clickCount + 1;
-    console.log('Revenue icon clicked! Count:', newCount);
-    
-    // Clear existing timeout
-    if (clickTimeout) {
-      clearTimeout(clickTimeout);
-    }
-    
-    // Check if triple clicked
-    if (newCount === 3) {
-      console.log('Triple click detected! Opening Snake game...');
-      setIsSnakeGameOpen(true);
-      setClickCount(0);
-    } else {
-      setClickCount(newCount);
-      
-      // Set new timeout to reset click count after 1 second
-      const timeout = setTimeout(() => {
-        console.log('Resetting click count');
-        setClickCount(0);
-      }, 1000);
-      setClickTimeout(timeout);
-    }
-  };
+  // Snake game Easter egg - triple click handler (DISABLED)
+  // const handleRevenueIconClick = () => {
+  //   const newCount = clickCount + 1;
+  //   console.log('Revenue icon clicked! Count:', newCount);
+  //   
+  //   // Clear existing timeout
+  //   if (clickTimeout) {
+  //     clearTimeout(clickTimeout);
+  //   }
+  //   
+  //   // Check if triple clicked
+  //   if (newCount === 3) {
+  //     console.log('Triple click detected! Opening Snake game...');
+  //     setIsSnakeGameOpen(true);
+  //     setClickCount(0);
+  //   } else {
+  //     setClickCount(newCount);
+  //     
+  //     // Set new timeout to reset click count after 1 second
+  //     const timeout = setTimeout(() => {
+  //       console.log('Resetting click count');
+  //       setClickCount(0);
+  //     }, 1000);
+  //     setClickTimeout(timeout);
+  //   }
+  // };
 
   // Modal handlers
   const handleNewAppointment = () => setIsAppointmentModalOpen(true);
@@ -1027,7 +1028,8 @@ const Dashboard = () => {
                   <div className="text-muted-foreground">Loading chart data...</div>
                 </div>
               ) : (
-                <ChartContainer
+                <div style={{paddingTop: "40px", paddingRight:"100px"}}>
+                  <ChartContainer
                   config={{
                     appointments: {
                       label: "Appointments",
@@ -1061,57 +1063,37 @@ const Dashboard = () => {
                     />
                   </LineChart>
                 </ChartContainer>
+                </div>
+                
               )}
             </CardContent>
           </Card>
 
-          {/* Patient Age Distribution Chart */}
+          {/* Appointment Calendar */}
           <Card className="border-0 shadow-soft">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-primary" />
-                Patient Age Distribution
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <CalendarDays className="w-4 h-4 text-primary" />
+                Appointment Calendar
               </CardTitle>
-              <CardDescription>
-                Breakdown of patients by age groups
+              <CardDescription className="text-xs">
+                View and manage your appointments
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              {chartsLoading ? (
-                <div className="h-[150px] flex items-center justify-center">
-                  <div className="text-muted-foreground">Loading chart data...</div>
-                </div>
-              ) : (
-                <ChartContainer
-                  config={{
-                    patients: {
-                      label: "Patients",
-                      color: "#8884d8",
-                    },
+            <CardContent className="flex justify-center p-2">
+              <div className="flex justify-center w-full scale-x-110 scale-y-90 origin-top [&_.rdp]:text-xs [&_.rdp-day]:h-7 [&_.rdp-day]:w-14 [&_.rdp-cell]:h-7 [&_.rdp-cell]:w-14 [&_.rdp-head_cell]:w-14 [&_.rdp-head_cell]:text-xs [&_.rdp-nav_button]:h-6 [&_.rdp-nav_button]:w-6 [&_.rdp]:p-1 [&_.rdp-caption]:text-sm [&_.rdp-row]:mt-0.5 [&_.rdp-month]:space-y-2">
+                <CalendarComponent
+                  mode="single"
+                  selected={new Date()}
+                  className="rounded-md border-0"
+                  modifiers={{
+                    booked: appointments.map(apt => new Date(apt.date))
                   }}
-                  className="h-[200px] sm:h-[250px] lg:h-[200px]"
-                >
-                  <BarChart data={patientAgeData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="ageRange" 
-                      fontSize={12}
-                      tickLine={false}
-                      axisLine={false}
-                    />
-                    <YAxis 
-                      fontSize={12}
-                      tickLine={false}
-                      axisLine={false}
-                    />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Bar 
-                      dataKey="patients" 
-                      radius={[4, 4, 0, 0]}
-                    />
-                  </BarChart>
-                </ChartContainer>
-              )}
+                  modifiersClassNames={{
+                    booked: "bg-primary/20 text-primary font-bold"
+                  }}
+                />
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -1132,7 +1114,6 @@ const Dashboard = () => {
                   </div>
                   <div 
                     className={`p-2 sm:p-3 rounded-lg bg-gradient-primary/10 flex-shrink-0`}
-                    onClick={stat.title === 'Revenue (Month)' ? handleRevenueIconClick : undefined}
                   >
                     <stat.icon className={`w-5 h-5 sm:w-6 sm:h-6 ${stat.color}`} />
                   </div>
@@ -1160,7 +1141,6 @@ const Dashboard = () => {
                   </div>
                   <div 
                     className={`p-2 sm:p-3 rounded-lg bg-gradient-primary/10 flex-shrink-0`}
-                    onClick={stat.title === 'Revenue (Month)' ? handleRevenueIconClick : undefined}
                   >
                     <stat.icon className={`w-5 h-5 sm:w-6 sm:h-6 ${stat.color}`} />
                   </div>
@@ -1389,8 +1369,8 @@ const Dashboard = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Snake Game Easter Egg */}
-      <SnakeGame isOpen={isSnakeGameOpen} onClose={() => setIsSnakeGameOpen(false)} />
+      {/* Snake Game Easter Egg - DISABLED */}
+      {/* <SnakeGame isOpen={isSnakeGameOpen} onClose={() => setIsSnakeGameOpen(false)} /> */}
  
     </div>
   );

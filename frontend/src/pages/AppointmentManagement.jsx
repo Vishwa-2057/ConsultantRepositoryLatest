@@ -48,7 +48,7 @@ const AppointmentManagement = () => {
   const [totalCount, setTotalCount] = useState(0);
   const [itemsPerPage, setItemsPerPage] = useState(() => {
     const saved = localStorage.getItem('appointmentManagement_pageSize');
-    return saved ? parseInt(saved) : 10;
+    return saved ? parseInt(saved) : 20;
   });
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [stats, setStats] = useState({});

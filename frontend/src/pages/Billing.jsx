@@ -87,7 +87,7 @@ const Billing = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [pageSize, setPageSize] = useState(() => {
     const saved = localStorage.getItem('invoiceManagement_pageSize');
-    return saved ? parseInt(saved) : 10;
+    return saved ? parseInt(saved) : 20;
   });
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [totalInvoices, setTotalInvoices] = useState(() => {
@@ -286,6 +286,9 @@ const Billing = () => {
       if (statusFilter !== 'all') {
         filters.status = statusFilter;
       }
+      if (searchTerm.trim()) {
+        filters.search = searchTerm.trim();
+      }
 
       const response = await appointmentInvoiceAPI.getAll(currentPage, pageSize, filters);
       const list = response.invoices || [];
@@ -307,7 +310,7 @@ const Billing = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, pageSize, statusFilter]);
+  }, [currentPage, pageSize, statusFilter, searchTerm]);
 
 
   useEffect(() => {
@@ -499,6 +502,26 @@ const Billing = () => {
     // Apply status filter
     if (statusFilter !== "all") {
       const invoiceStatus = getInvoiceStatus(invoice).toLowerCase();
+      if (invoiceStatus !== statusFilter.toLowerCase()) return false;
+    }
+    
+    return matchesSearch;
+  });
+
+  // Client-side search for appointment invoices
+  const filteredAppointmentInvoices = appointmentInvoices.filter(invoice => {
+    const patient = (invoice.patientId?.fullName || "").toLowerCase();
+    const invNum = (invoice.invoiceNumber || "").toString().toLowerCase();
+    const doctor = (invoice.doctorId?.fullName || "").toLowerCase();
+    const appointmentType = (invoice.appointmentDetails?.appointmentType || "").toLowerCase();
+    const matchesSearch = patient.includes(searchTerm.toLowerCase()) || 
+                         invNum.includes(searchTerm.toLowerCase()) ||
+                         doctor.includes(searchTerm.toLowerCase()) ||
+                         appointmentType.includes(searchTerm.toLowerCase());
+    
+    // Apply status filter
+    if (statusFilter !== "all") {
+      const invoiceStatus = (invoice.status || "").toLowerCase();
       if (invoiceStatus !== statusFilter.toLowerCase()) return false;
     }
     
@@ -1089,7 +1112,7 @@ const Billing = () => {
               </TabsList>
               <div className="flex items-center space-x-3">
                 <Badge variant="secondary" className="px-3 py-1 text-sm font-medium bg-blue-100 text-blue-700 border-0">
-                  {activeTab === 'regular' ? filteredInvoices.length : appointmentInvoices.length}
+                  {activeTab === 'regular' ? filteredInvoices.length : filteredAppointmentInvoices.length}
                 </Badge>
               </div>
             </div>
@@ -1142,9 +1165,11 @@ const Billing = () => {
                 {searchTerm ? "No invoices found matching your search." : "No invoices found."}
               </p>
             </div>
-          ) : activeTab === 'appointment' && appointmentInvoices.length === 0 ? (
+          ) : activeTab === 'appointment' && filteredAppointmentInvoices.length === 0 ? (
             <div className="flex items-center justify-center h-32">
-              <p className="text-muted-foreground">No appointment invoices found.</p>
+              <p className="text-muted-foreground">
+                {searchTerm ? "No appointment invoices found matching your search." : "No appointment invoices found."}
+              </p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -1234,7 +1259,7 @@ const Billing = () => {
                       </div>
                     );
                   })}
-                  {activeTab === 'appointment' && appointmentInvoices.map((invoice) => (
+                  {activeTab === 'appointment' && filteredAppointmentInvoices.map((invoice) => (
                     <div key={invoice._id} className="p-4 rounded-lg bg-gray-50 hover:bg-gray-100 transition-all duration-200 border-0">
                       <div className="grid grid-cols-12 gap-4 items-center">
                         {/* Left section - Patient info */}

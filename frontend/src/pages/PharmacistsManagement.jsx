@@ -62,7 +62,7 @@ const PharmacistsManagement = () => {
   const [inactiveCount, setInactiveCount] = useState(0);
   const [pageSize, setPageSize] = useState(() => {
     const saved = localStorage.getItem('pharmacistsManagement_pageSize');
-    return saved ? parseInt(saved) : 10;
+    return saved ? parseInt(saved) : 20;
   });
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');

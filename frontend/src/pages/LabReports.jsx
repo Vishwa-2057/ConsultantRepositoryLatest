@@ -23,13 +23,16 @@ import {
   ChevronsUpDown,
   AlertCircle,
   FileCheck,
-  Clock
+  Clock,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { patientAPI } from "@/services/api";
 import { cn } from "@/lib/utils";
 import { config } from "@/config/env";
 import sessionManager from "@/utils/sessionManager";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const LabReports = () => {
   const { toast } = useToast();
@@ -48,6 +51,13 @@ const LabReports = () => {
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [reportToDelete, setReportToDelete] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [pageSize, setPageSize] = useState(() => {
+    const saved = localStorage.getItem('labReports_pageSize');
+    return saved ? parseInt(saved) : 20;
+  });
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   
   const [uploadForm, setUploadForm] = useState({
     testName: "",
@@ -57,16 +67,30 @@ const LabReports = () => {
     file: null
   });
 
+  // Save pageSize to localStorage when it changes (skip initial load)
+  useEffect(() => {
+    if (isInitialLoad) {
+      setIsInitialLoad(false);
+      return;
+    }
+    localStorage.setItem('labReports_pageSize', pageSize.toString());
+  }, [pageSize, isInitialLoad]);
+
   useEffect(() => {
     loadPatients();
-    loadAllLabReports(); // Load all reports by default
   }, []);
 
   useEffect(() => {
     if (selectedPatients.length > 0) {
       loadLabReportsForSinglePatient();
     } else {
-      loadAllLabReports(); // Show all reports when no patient is selected
+      loadAllLabReports();
+    }
+  }, [currentPage, pageSize, selectedPatients]);
+
+  useEffect(() => {
+    if (currentPage !== 1) {
+      setCurrentPage(1); // Reset to page 1 when patient selection changes
     }
   }, [selectedPatients]);
 
@@ -129,7 +153,16 @@ const LabReports = () => {
       // Sort by test date (most recent first)
       reports.sort((a, b) => new Date(b.testDate) - new Date(a.testDate));
       
-      setLabReports(reports);
+      // Calculate pagination
+      const total = reports.length;
+      setTotalPages(Math.ceil(total / pageSize));
+      
+      // Get paginated reports
+      const startIndex = (currentPage - 1) * pageSize;
+      const endIndex = startIndex + pageSize;
+      const paginatedReports = reports.slice(startIndex, endIndex);
+      
+      setLabReports(paginatedReports);
     } catch (error) {
       console.error('Failed to load lab reports:', error);
       toast({
@@ -163,7 +196,16 @@ const LabReports = () => {
       // Sort by test date (most recent first)
       reports.sort((a, b) => new Date(b.testDate) - new Date(a.testDate));
       
-      setLabReports(reports);
+      // Calculate pagination
+      const total = reports.length;
+      setTotalPages(Math.ceil(total / pageSize));
+      
+      // Get paginated reports
+      const startIndex = (currentPage - 1) * pageSize;
+      const endIndex = startIndex + pageSize;
+      const paginatedReports = reports.slice(startIndex, endIndex);
+      
+      setLabReports(paginatedReports);
     } catch (error) {
       console.error('Failed to load lab reports:', error);
       toast({
@@ -384,7 +426,6 @@ const LabReports = () => {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Select Patient</CardTitle>
               <CardDescription>Choose a patient to view and manage their lab reports</CardDescription>
             </div>
             <Button
@@ -486,13 +527,42 @@ const LabReports = () => {
       {/* Lab Reports List */}
       <Card>
         <CardHeader>
-          <CardTitle>Lab Reports</CardTitle>
-          <CardDescription>
-            {selectedPatients.length > 0 
-              ? `${labReports.length} report${labReports.length !== 1 ? 's' : ''} found for ${selectedPatients[0]?.fullName}`
-              : `${labReports.length} total report${labReports.length !== 1 ? 's' : ''} from all patients`
-            }
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Lab Reports</CardTitle>
+              <CardDescription>
+                {selectedPatients.length > 0 
+                  ? `Reports for ${selectedPatients[0]?.fullName}`
+                  : `All patient reports`
+                }
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 rounded-lg border">
+                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                <span className="text-sm font-medium text-gray-700">
+                  Page {currentPage} of {totalPages}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 px-2.5 py-1 bg-white rounded-md border border-gray-200">
+                <span className="text-xs font-medium text-gray-500">Show</span>
+                <Select value={pageSize.toString()} onValueChange={(value) => {
+                  setPageSize(parseInt(value));
+                  setCurrentPage(1);
+                }}>
+                  <SelectTrigger className="w-12 h-6 text-xs border-0 bg-transparent p-0 focus:ring-0">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="5">5</SelectItem>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="20">20</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
         </CardHeader>
           <CardContent>
             {loading ? (
@@ -579,6 +649,79 @@ const LabReports = () => {
             )}
           </CardContent>
         </Card>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex justify-center pb-2">
+          <div className="flex items-center gap-2 bg-white rounded-xl shadow-sm border border-gray-100 p-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+              className="h-10 px-4 text-sm bg-white border-gray-200 rounded-lg shadow-sm hover:bg-gray-50"
+            >
+              First
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="h-10 px-4 text-sm bg-white border-gray-200 rounded-lg shadow-sm hover:bg-gray-50"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            
+            {/* Page Numbers */}
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+                
+                return (
+                  <Button
+                    key={pageNum}
+                    variant={currentPage === pageNum ? "default" : "outline"}
+                    size="sm"
+                    className={`w-8 h-8 p-0 ${currentPage === pageNum ? "bg-blue-600 text-white" : "bg-white border-gray-200 hover:bg-gray-50"} rounded-lg shadow-sm`}
+                    onClick={() => setCurrentPage(pageNum)}
+                  >
+                    {pageNum}
+                  </Button>
+                );
+              })}
+            </div>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              className="h-10 px-4 text-sm bg-white border-gray-200 rounded-lg shadow-sm hover:bg-gray-50"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={currentPage === totalPages}
+              className="h-10 px-4 text-sm bg-white border-gray-200 rounded-lg shadow-sm hover:bg-gray-50"
+            >
+              Last
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Upload Modal */}
       <Dialog open={isUploadModalOpen} onOpenChange={setIsUploadModalOpen}>

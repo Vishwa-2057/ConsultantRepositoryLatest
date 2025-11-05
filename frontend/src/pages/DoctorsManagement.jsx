@@ -63,7 +63,7 @@ const DoctorsManagement = () => {
   const [inactiveCount, setInactiveCount] = useState(0);
   const [pageSize, setPageSize] = useState(() => {
     const saved = localStorage.getItem('doctorsManagement_pageSize');
-    return saved ? parseInt(saved) : 10;
+    return saved ? parseInt(saved) : 20;
   });
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [languageInput, setLanguageInput] = useState('');

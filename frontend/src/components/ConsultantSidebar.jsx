@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { clinicAPI } from "@/services/api";
 import { 
   Sidebar, 
   SidebarContent, 
@@ -45,6 +46,38 @@ export function ConsultantSidebar({ mobile = false }) {
   const currentPath = location.pathname;
   const collapsed = !mobile && state === "collapsed";
   const authUser = getCurrentUser();
+  const [clinicName, setClinicName] = useState('SMAART Healthcare');
+  
+  // Fetch clinic name
+  useEffect(() => {
+    const fetchClinicName = async () => {
+      try {
+        // If user is clinic admin, fetch their clinic profile
+        if (authUser?.role === 'clinic' || authUser?.isClinic) {
+          const response = await clinicAPI.getProfile();
+          const clinic = response.data || response;
+          if (clinic?.name) {
+            setClinicName(clinic.name);
+          }
+        } else if (authUser?.clinicId) {
+          // For other users, fetch clinic by ID if available
+          // Note: You may need to add a getById method to clinicAPI if it doesn't exist
+          const response = await clinicAPI.getProfile();
+          const clinic = response.data || response;
+          if (clinic?.name) {
+            setClinicName(clinic.name);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching clinic name:', error);
+        // Keep default name on error
+      }
+    };
+
+    if (authUser) {
+      fetchClinicName();
+    }
+  }, [authUser]);
   
   // Filter navigation items based on user role
   const navigationItems = isPharmacist() 
@@ -85,7 +118,7 @@ export function ConsultantSidebar({ mobile = false }) {
             </div>
             {!collapsed && (
               <div className="overflow-hidden">
-                <h2 className={`font-semibold text-foreground ${mobile ? 'text-xl' : 'text-lg'} tracking-tight whitespace-nowrap`}>SMAART Healthcare</h2>
+                <h2 className={`font-semibold text-foreground ${mobile ? 'text-xl' : 'text-lg'} tracking-tight whitespace-nowrap`}>{clinicName}</h2>
               </div>
             )}
           </div>
@@ -122,7 +155,7 @@ export function ConsultantSidebar({ mobile = false }) {
                 {authUser.name || authUser.fullName || 'User'}
               </p>
               <p className={`text-muted-foreground ${mobile ? 'text-sm' : 'text-xs'} whitespace-nowrap text-ellipsis overflow-hidden`}>
-                {isClinic() ? 'Clinic Administrator' : (authUser.specialty || 'Medical Professional')}
+                {isClinic() ? 'Clinic Administrator' : isPharmacist() ? 'Pharmacist' : (authUser.specialty || 'Medical Professional')}
               </p>
             </div>
           </div>

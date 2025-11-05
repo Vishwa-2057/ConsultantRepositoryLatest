@@ -91,10 +91,10 @@ const CommunityHub = () => {
   };
 
   const handleLikePost = async (postId) => {
+    const post = posts.find(p => p._id === postId);
+    const isCurrentlyLiked = post?.isLikedByCurrentUser;
+    
     try {
-      const post = posts.find(p => p._id === postId);
-      const isCurrentlyLiked = post?.isLikedByCurrentUser;
-      
       if (isCurrentlyLiked) {
         // Unlike the post
         const response = await postAPI.unlike(postId);
@@ -120,12 +120,16 @@ const CommunityHub = () => {
       }
     } catch (error) {
       console.error('Error toggling like:', error);
+      
+      // Reload posts to sync with backend state
+      loadPosts();
+      
       if (error.message.includes('already liked')) {
-        toast.error('You have already liked this post');
+        toast.error('This post is already liked. Refreshing...');
       } else if (error.message.includes('not liked')) {
-        toast.error('You have not liked this post');
+        toast.error('This post is not liked. Refreshing...');
       } else {
-        toast.error('Failed to update like status');
+        toast.error('Failed to update like status. Please try again.');
       }
     }
   };

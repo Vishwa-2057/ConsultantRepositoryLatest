@@ -69,7 +69,6 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
     password: "",
     uhid: "",
     bloodGroup: "",
-    occupation: "",
     referringDoctor: "",
     referredClinic: "",
     // New fields from images
@@ -127,8 +126,6 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
   // File upload states
   const [profileImage, setProfileImage] = useState(null);
   const [profileImagePreview, setProfileImagePreview] = useState(null);
-  const [governmentDocument, setGovernmentDocument] = useState(null);
-  const [governmentDocumentName, setGovernmentDocumentName] = useState("");
   const [doctorComboboxOpen, setDoctorComboboxOpen] = useState(false);
 
   // Load doctors when modal opens and log component access
@@ -330,14 +327,7 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
         }
         break;
         
-      case 'occupation':
-        if (fieldValue) {
-          const occupationError = validators.maxLength(fieldValue, 100, 'Occupation');
-          if (occupationError) newErrors.occupation = occupationError;
-          else delete newErrors.occupation;
-        }
-        break;
-        
+      
       case 'password':
         if (fieldValue) {
           const passwordError = validators.password(fieldValue);
@@ -380,28 +370,6 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
     }
   };
 
-  // Handle government document upload
-  const handleGovernmentDocumentChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      // Validate file type (images and PDFs)
-      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
-      if (!allowedTypes.includes(file.type)) {
-        setErrors(prev => ({ ...prev, governmentDocument: "Please select a valid image file or PDF" }));
-        return;
-      }
-      
-      // Validate file size (10MB limit)
-      if (file.size > 10 * 1024 * 1024) {
-        setErrors(prev => ({ ...prev, governmentDocument: "File size must be less than 10MB" }));
-        return;
-      }
-      
-      setGovernmentDocument(file);
-      setGovernmentDocumentName(file.name);
-      setErrors(prev => ({ ...prev, governmentDocument: "" }));
-    }
-  };
 
   const validateForm = () => {
     const newErrors = {};
@@ -442,9 +410,6 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
     
     if (!formData.bloodGroup) newErrors.bloodGroup = "Blood group is required";
     
-    const occupationError = validators.required(formData.occupation, 'Occupation') ||
-                           validators.maxLength(formData.occupation, 100, 'Occupation');
-    if (occupationError) newErrors.occupation = occupationError;
     
     // Password validation
     const passwordError = validators.required(formData.password, 'Password') ||
@@ -529,15 +494,6 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
       if (fileTypeError) newErrors.profileImage = fileTypeError;
     }
     
-    if (!governmentDocument) {
-      newErrors.governmentDocument = "Government document is required";
-    } else {
-      const fileSizeError = validators.fileSize(governmentDocument, 10);
-      if (fileSizeError) newErrors.governmentDocument = fileSizeError;
-      
-      const fileTypeError = validators.fileType(governmentDocument, ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'application/pdf']);
-      if (fileTypeError) newErrors.governmentDocument = fileTypeError;
-    }
 
     setErrors(newErrors);
     console.log('Validation errors:', newErrors);
@@ -564,8 +520,7 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
       password: formData.password ? `[${formData.password.length} characters]` : 'Not provided',
       uhid: formData.uhid,
       bloodGroup: formData.bloodGroup,
-      profileImage: profileImage ? 'Selected' : 'Not selected',
-      governmentDocument: governmentDocument ? 'Selected' : 'Not selected'
+      profileImage: profileImage ? 'Selected' : 'Not selected'
     });
     
     if (validateForm()) {
@@ -591,7 +546,6 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
         formDataToSend.append('password', formData.password);
         formDataToSend.append('uhid', formData.uhid.trim().toUpperCase());
         formDataToSend.append('bloodGroup', formData.bloodGroup);
-        formDataToSend.append('occupation', formData.occupation.trim());
         formDataToSend.append('referringDoctor', formData.referringDoctor.trim());
         formDataToSend.append('referredClinic', formData.referredClinic.trim());
         
@@ -641,7 +595,6 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
         
         // Add files
         formDataToSend.append('profileImage', profileImage);
-        formDataToSend.append('governmentDocument', governmentDocument);
 
         console.log('Submitting form data to API...');
 
@@ -690,7 +643,6 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
       password: "",
       uhid: "",
       bloodGroup: "",
-      occupation: "",
       referringDoctor: "",
       referredClinic: "",
       // New fields from images
@@ -742,8 +694,6 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
     // Reset file states
     setProfileImage(null);
     setProfileImagePreview(null);
-    setGovernmentDocument(null);
-    setGovernmentDocumentName("");
     
     // Reset other states
     setErrors({});
@@ -868,20 +818,6 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                   </SelectContent>
                 </Select>
                 {errors.bloodGroup && <p className="text-sm text-red-500 mt-1">{errors.bloodGroup}</p>}
-              </div>
-              
-              <div>
-                <Label htmlFor="occupation">Occupation *</Label>
-                <Input
-                  id="occupation"
-                  value={formData.occupation}
-                  onChange={(e) => handleInputChange("occupation", e.target.value)}
-                  onBlur={(e) => handleFieldBlur("occupation", e.target.value)}
-                  placeholder="Enter occupation"
-                  className={errors.occupation ? "border-red-500" : ""}
-                  disabled={submitting}
-                />
-                {errors.occupation && <p className="text-sm text-red-500 mt-1">{errors.occupation}</p>}
               </div>
               
               <div>
@@ -1203,25 +1139,6 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                   )}
                 </div>
                 {errors.profileImage && <p className="text-sm text-red-500 mt-1">{errors.profileImage}</p>}
-              </div>
-              
-              <div>
-                <Label htmlFor="governmentDocument">Government Document *</Label>
-                <div className="flex flex-col gap-2">
-                  <Input
-                    id="governmentDocument"
-                    type="file"
-                    accept="image/*,.pdf"
-                    onChange={handleGovernmentDocumentChange}
-                    className={`cursor-pointer ${errors.governmentDocument ? "border-red-500" : ""}`}
-                  />
-                  {governmentDocumentName && (
-                    <p className="text-sm text-gray-600 bg-gray-50 p-2 rounded">
-                      Selected: {governmentDocumentName}
-                    </p>
-                  )}
-                </div>
-                {errors.governmentDocument && <p className="text-sm text-red-500 mt-1">{errors.governmentDocument}</p>}
               </div>
             </div>
           </div>

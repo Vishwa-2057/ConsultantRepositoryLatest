@@ -381,8 +381,11 @@ postSchema.methods.like = function(userId, userRole) {
 
 // Instance method to unlike post
 postSchema.methods.unlike = function(userId) {
+  // Convert userId to string for comparison
+  const userIdStr = userId.toString();
+  
   // Find and remove user from likedBy array
-  const likeIndex = this.likedBy.findIndex(like => like.userId === userId);
+  const likeIndex = this.likedBy.findIndex(like => like.userId.toString() === userIdStr);
   if (likeIndex === -1) {
     throw new Error('User has not liked this post');
   }
@@ -397,7 +400,9 @@ postSchema.methods.unlike = function(userId) {
 
 // Instance method to check if user has liked post
 postSchema.methods.isLikedBy = function(userId) {
-  return this.likedBy.some(like => like.userId === userId);
+  // Convert userId to string for comparison
+  const userIdStr = userId.toString();
+  return this.likedBy.some(like => like.userId.toString() === userIdStr);
 };
 
 // Instance method to increment views

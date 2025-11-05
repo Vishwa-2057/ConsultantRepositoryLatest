@@ -83,132 +83,137 @@ const CreatePostModal = ({ isOpen, onClose, onPostCreated }) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
-        <DialogHeader className="flex-shrink-0">
-          <DialogTitle className="flex items-center justify-between">
-            <span className="flex items-center space-x-2">
-              <FileText className="w-5 h-5" />
-              <span>Create New Post</span>
-            </span>
-            <Button variant="ghost" size="sm" onClick={handleClose} disabled={isSubmitting}>
-              <X className="w-4 h-4" />
-            </Button>
-          </DialogTitle>
-        </DialogHeader>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden p-0">
+        <div className="flex flex-col h-full max-h-[85vh]">
+          <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4">
+            <DialogTitle className="flex items-center justify-between">
+              <span className="flex items-center space-x-2">
+                <FileText className="w-5 h-5" />
+                <span>Create New Post</span>
+              </span>
+              <Button variant="ghost" size="sm" onClick={handleClose} disabled={isSubmitting}>
+                <X className="w-4 h-4" />
+              </Button>
+            </DialogTitle>
+          </DialogHeader>
 
-        <div className="flex-1 flex flex-col space-y-6 min-h-0">
-          {/* Post Title */}
-          <div className="space-y-2">
-            <Label htmlFor="title" className="text-sm font-medium">
-              Post Title *
-            </Label>
-            <Input
-              id="title"
-              placeholder="Enter a descriptive title for your post..."
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              onKeyPress={handleKeyPress}
-              disabled={isSubmitting}
-              className="text-base"
-            />
-            <p className="text-xs text-muted-foreground">
-              {title.length}/200 characters
-            </p>
-          </div>
-
-          {/* Category Selection */}
-          <div className="space-y-3">
-            <Label className="text-sm font-medium">Category *</Label>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {categories.map((cat) => {
-                const IconComponent = cat.icon;
-                const isSelected = category === cat.value;
-                
-                return (
-                  <button
-                    key={cat.value}
-                    onClick={() => setCategory(cat.value)}
-                    disabled={isSubmitting}
-                    className={`
-                      flex items-center space-x-2 p-3 rounded-lg border-2 transition-all
-                      ${isSelected 
-                        ? 'border-primary bg-primary/10 text-primary' 
-                        : 'border-border hover:border-primary/50 hover:bg-muted/50'
-                      }
-                      ${isSubmitting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-                    `}
-                  >
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center ${cat.color}`}>
-                      <IconComponent className="w-3 h-3 text-white" />
-                    </div>
-                    <span className="text-sm font-medium">{cat.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-            
-            {selectedCategoryData && (
-              <div className="flex items-center space-x-2">
-                <span className="text-sm text-muted-foreground">Selected:</span>
-                <Badge variant="outline" className="flex items-center space-x-1">
-                  <selectedCategoryData.icon className="w-3 h-3" />
-                  <span>{selectedCategoryData.label}</span>
-                </Badge>
-              </div>
-            )}
-          </div>
-
-          {/* Post Content */}
-          <div className="space-y-2 flex-1 flex flex-col">
-            <Label htmlFor="content" className="text-sm font-medium">
-              Content *
-            </Label>
-            <Textarea
-              id="content"
-              placeholder="Share your knowledge, ask questions, or start a discussion..."
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              onKeyPress={handleKeyPress}
-              disabled={isSubmitting}
-              className="flex-1 min-h-[200px] resize-none text-base"
-            />
-            <p className="text-xs text-muted-foreground">
-              {content.length}/5000 characters
-            </p>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex-shrink-0 flex items-center justify-between pt-4 border-t border-border">
-            <div className="text-sm text-muted-foreground">
-              <kbd className="px-2 py-1 bg-muted rounded text-xs">Ctrl</kbd> + 
-              <kbd className="px-2 py-1 bg-muted rounded text-xs ml-1">Enter</kbd> to post
-            </div>
-            
-            <div className="flex items-center space-x-3">
-              <Button 
-                variant="outline" 
-                onClick={handleClose}
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+            {/* Post Title */}
+            <div className="space-y-2">
+              <Label htmlFor="title" className="text-sm font-medium">
+                Post Title *
+              </Label>
+              <Input
+                id="title"
+                placeholder="Enter a descriptive title for your post..."
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                onKeyPress={handleKeyPress}
                 disabled={isSubmitting}
-              >
-                Cancel
-              </Button>
-              <Button 
-                onClick={handleSubmit}
-                disabled={isSubmitting || !title.trim() || !content.trim()}
-                className="bg-gradient-primary min-w-[100px]"
-              >
-                {isSubmitting ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                    Creating...
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-4 h-4 mr-2" />
-                    Create Post
-                  </>
-                )}
-              </Button>
+                className="text-base"
+              />
+              <p className="text-xs text-muted-foreground">
+                {title.length}/200 characters
+              </p>
+            </div>
+
+            {/* Category Selection */}
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">Category *</Label>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {categories.map((cat) => {
+                  const IconComponent = cat.icon;
+                  const isSelected = category === cat.value;
+                  
+                  return (
+                    <button
+                      key={cat.value}
+                      onClick={() => setCategory(cat.value)}
+                      disabled={isSubmitting}
+                      className={`
+                        flex items-center space-x-2 p-3 rounded-lg border-2 transition-all
+                        ${isSelected 
+                          ? 'border-primary bg-primary/10 text-primary' 
+                          : 'border-border hover:border-primary/50 hover:bg-muted/50'
+                        }
+                        ${isSubmitting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                      `}
+                    >
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center ${cat.color}`}>
+                        <IconComponent className="w-3 h-3 text-white" />
+                      </div>
+                      <span className="text-sm font-medium">{cat.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              
+              {selectedCategoryData && (
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm text-muted-foreground">Selected:</span>
+                  <Badge variant="outline" className="flex items-center space-x-1">
+                    <selectedCategoryData.icon className="w-3 h-3" />
+                    <span>{selectedCategoryData.label}</span>
+                  </Badge>
+                </div>
+              )}
+            </div>
+
+            {/* Post Content */}
+            <div className="space-y-2">
+              <Label htmlFor="content" className="text-sm font-medium">
+                Content *
+              </Label>
+              <Textarea
+                id="content"
+                placeholder="Share your knowledge, ask questions, or start a discussion..."
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                onKeyPress={handleKeyPress}
+                disabled={isSubmitting}
+                className="min-h-[180px] resize-none text-base"
+                rows={8}
+              />
+              <p className="text-xs text-muted-foreground">
+                {content.length}/5000 characters
+              </p>
+            </div>
+          </div>
+
+          {/* Action Buttons - Fixed at bottom */}
+          <div className="flex-shrink-0 px-6 py-4 border-t border-border bg-background">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">
+                <kbd className="px-2 py-1 bg-muted rounded text-xs">Ctrl</kbd> + 
+                <kbd className="px-2 py-1 bg-muted rounded text-xs ml-1">Enter</kbd> to post
+              </div>
+              
+              <div className="flex items-center space-x-3">
+                <Button 
+                  variant="outline" 
+                  onClick={handleClose}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={handleSubmit}
+                  disabled={isSubmitting || !title.trim() || !content.trim()}
+                  className="bg-gradient-primary min-w-[100px]"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4 mr-2" />
+                      Create Post
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
         </div>

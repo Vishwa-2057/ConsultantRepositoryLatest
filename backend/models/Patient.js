@@ -64,7 +64,6 @@ const patientSchema = new mongoose.Schema({
   },
   occupation: {
     type: String,
-    required: [true, 'Occupation is required'],
     trim: true,
     maxlength: [100, 'Occupation cannot exceed 100 characters']
   },
@@ -143,7 +142,6 @@ const patientSchema = new mongoose.Schema({
 
   governmentDocument: {
     type: String,
-    required: [true, 'Government document is required'],
     trim: true
   },
   
