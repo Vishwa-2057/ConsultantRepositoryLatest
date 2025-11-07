@@ -366,6 +366,14 @@ const InvoiceViewModal = ({
                       <span className="font-medium">{getStatusInfo(invoice.status).label}</span>
                     </div>
                   )}
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Payment Status:</span>
+                    <span className="font-medium">
+                      {invoice.status === 'Approved' || invoice.status === 'Paid' 
+                        ? (invoice.paymentMethod === 'cash' ? 'Paid (Cash)' : invoice.paymentMethod === 'online' ? 'Paid (Online)' : 'Paid') 
+                        : 'Pending'}
+                    </span>
+                  </div>
                 </div>
               </div>
             </CardContent>

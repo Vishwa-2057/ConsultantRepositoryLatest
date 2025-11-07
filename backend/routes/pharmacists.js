@@ -476,7 +476,7 @@ router.get('/:id', auth, async (req, res) => {
 // PUT /api/pharmacists/:id - Update pharmacist
 router.put('/:id', auth, async (req, res) => {
   try {
-    const allowedUpdates = ['fullName', 'specialization', 'shift', 'phone', 'licenseNumber', 'experience', 'role', 'isActive'];
+    const allowedUpdates = ['fullName', 'email', 'specialization', 'shift', 'phone', 'licenseNumber', 'experience', 'role', 'isActive'];
     const updates = {};
     
     Object.keys(req.body).forEach(key => {

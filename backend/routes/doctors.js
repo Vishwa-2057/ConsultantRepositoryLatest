@@ -583,7 +583,7 @@ router.get('/:id', auth, async (req, res) => {
 // PUT /api/doctors/:id - Update doctor
 router.put('/:id', auth, async (req, res) => {
   try {
-    const allowedUpdates = ['fullName', 'specialty', 'phone', 'role', 'isActive', 'uhid', 'qualification', 'currentAddress', 'permanentAddress', 'about'];
+    const allowedUpdates = ['fullName', 'email', 'specialty', 'phone', 'role', 'isActive', 'uhid', 'qualification', 'currentAddress', 'permanentAddress', 'about'];
     const updates = {};
     
     Object.keys(req.body).forEach(key => {

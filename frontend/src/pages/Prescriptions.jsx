@@ -380,7 +380,7 @@ const Prescriptions = () => {
         
         {/* Actions */}
         <div className="flex items-center gap-3">
-          {(isClinic() || isDoctor()) && (
+          {isDoctor() && (
             <Button 
               className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
               onClick={handleCreatePrescription}

@@ -159,6 +159,13 @@ router.get('/:id', auth, async (req, res) => {
 // POST /api/prescriptions - Create new prescription
 router.post('/', auth, validatePrescription, async (req, res) => {
   try {
+    // Only doctors can create prescriptions
+    if (req.user.role !== 'doctor') {
+      return res.status(403).json({ 
+        error: 'Access denied. Only doctors can create prescriptions.' 
+      });
+    }
+
     // Check for validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -174,25 +181,17 @@ router.post('/', auth, validatePrescription, async (req, res) => {
       return res.status(404).json({ error: 'Patient not found' });
     }
 
-    // Role-based access control and validation
-    if (req.user.role === 'doctor') {
-      // Check if doctor is assigned to this patient
-      if (!patient.assignedDoctors.includes(req.user.id)) {
-        return res.status(403).json({ error: 'Access denied. You are not assigned to this patient.' });
-      }
-    } else if (req.user.role === 'clinic') {
-      // Clinic admins must provide a doctorId
-      if (!req.body.doctorId) {
-        return res.status(400).json({ error: 'Doctor ID is required for clinic administrators.' });
-      }
+    // Check if doctor is assigned to this patient
+    if (!patient.assignedDoctors.includes(req.user.id)) {
+      return res.status(403).json({ error: 'Access denied. You are not assigned to this patient.' });
     }
 
     // Create new prescription
     const prescriptionData = {
       ...req.body,
-      // For clinic admins, use the selected doctorId; for doctors, use their own ID
-      doctorId: req.user.role === 'clinic' ? req.body.doctorId : req.user.id,
-      clinicId: req.user.role === 'clinic' ? req.user.id : req.body.clinicId
+      // Use the logged-in doctor's ID
+      doctorId: req.user.id,
+      clinicId: req.body.clinicId
     };
 
     const prescription = new Prescription(prescriptionData);

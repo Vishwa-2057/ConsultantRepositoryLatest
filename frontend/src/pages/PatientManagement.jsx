@@ -33,7 +33,7 @@ import PatientModal from "@/components/PatientModal";
 import { getImageUrl } from '@/utils/imageUtils';
 import vitalsIcon from '@/assets/Images/vitals.png';
 import { useAuditLog } from "@/hooks/useAuditLog";
-import { isClinic, isDoctor } from "@/utils/roleUtils";
+import { isClinic, isDoctor, isNurse } from "@/utils/roleUtils";
 import { Link, useNavigate } from "react-router-dom";
 import VitalsHistory from '../components/VitalsHistory';
 import AssignDoctorsModal from '../components/AssignDoctorsModal';
@@ -414,23 +414,25 @@ const PatientManagement = () => {
           
           {/* Table Headers */}
           {!loading && !error && filteredPatients.length > 0 && (
-            <div className="bg-gray-100 rounded-lg p-4 mb-2">
-              <div className="grid grid-cols-12 gap-4 items-center">
+            <div className="bg-gray-100 rounded-lg px-6 py-4 mb-3">
+              <div className="grid grid-cols-12 gap-6 items-center">
                 <div className="col-span-1">
                   <span className="text-xs font-semibold text-gray-600 uppercase">Photo</span>
                 </div>
                 <div className="col-span-2">
                   <span className="text-xs font-semibold text-gray-600 uppercase">Name & UHID</span>
                 </div>
-                <div className="col-span-1">
+                <div className="col-span-1 -ml-3">
                   <span className="text-xs font-semibold text-gray-600 uppercase">Age/Gender</span>
                 </div>
                 <div className="col-span-1">
                   <span className="text-xs font-semibold text-gray-600 uppercase">Blood</span>
                 </div>
-                <div className="col-span-1">
-                  <span className="text-xs font-semibold text-gray-600 uppercase">Phone</span>
-                </div>
+                {!isDoctor() && !isNurse() && (
+                  <div className="col-span-1">
+                    <span className="text-xs font-semibold text-gray-600 uppercase">Phone</span>
+                  </div>
+                )}
                 <div className="col-span-1">
                   <span className="text-xs font-semibold text-gray-600 uppercase">Checked In</span>
                 </div>
@@ -444,16 +446,16 @@ const PatientManagement = () => {
             </div>
           )}
           
-          <div className="space-y-2">
+          <div className="space-y-3">
             {filteredPatients.map((patient) => {
               const patientId = patient.id || patient._id;
               
               return (
-                <div key={patientId} className="bg-gray-50 hover:bg-gray-100 rounded-lg p-4 transition-all duration-200 cursor-pointer" onClick={() => handlePatientClick(patientId)}>
-                  <div className="grid grid-cols-12 gap-4 items-center">
+                <div key={patientId} className="bg-gray-50 hover:bg-gray-100 rounded-lg px-6 py-5 transition-all duration-200 cursor-pointer" onClick={() => handlePatientClick(patientId)}>
+                  <div className="grid grid-cols-12 gap-6 items-center">
                     {/* Column 1: Profile Image */}
                     <div className="col-span-1">
-                      <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden">
+                      <div className="w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden">
                         {patient.profileImage ? (
                           <img 
                             src={getImageUrl(patient.profileImage)}
@@ -474,17 +476,17 @@ const PatientManagement = () => {
                     
                     {/* Column 2-3: Name & UHID */}
                     <div className="col-span-2">
-                      <h3 className="font-semibold text-foreground truncate text-base mb-1">{patient.fullName || patient.name || 'Unknown Patient'}</h3>
+                      <h3 className="font-semibold text-foreground truncate text-base mb-1.5">{patient.fullName || patient.name || 'Unknown Patient'}</h3>
                       {patient.uhid && (
-                        <span className="text-xs font-mono bg-muted px-2 py-1 rounded">
+                        <span className="text-xs font-mono bg-muted px-2.5 py-1 rounded">
                           {patient.uhid}
                         </span>
                       )}
                     </div>
                     
                     {/* Column 4: Age & Gender */}
-                    <div className="col-span-1">
-                      <div className="text-sm text-muted-foreground">
+                    <div className="col-span-1 -ml-3">
+                      <div className="text-sm text-muted-foreground space-y-1">
                         <div>{patient.age || patient.calculatedAge || 0} years</div>
                         <div>{patient.gender || 'Unknown'}</div>
                       </div>
@@ -500,17 +502,19 @@ const PatientManagement = () => {
                     </div>
                     
                     {/* Column 6: Phone */}
-                    <div className="col-span-1">
-                      <div className="flex items-center space-x-1 text-sm text-muted-foreground">
-                        <Phone className="w-3 h-3" />
-                        <span className="truncate">{patient.phone || 'No phone'}</span>
+                    {!isDoctor() && !isNurse() && (
+                      <div className="col-span-1">
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Phone className="w-3.5 h-3.5 flex-shrink-0" />
+                          <span className="truncate">{patient.phone || 'No phone'}</span>
+                        </div>
                       </div>
-                    </div>
+                    )}
                     
                     {/* Column 7: Checked In Date */}
                     <div className="col-span-1">
-                      <div className="flex items-center space-x-1 text-sm text-muted-foreground">
-                        <Calendar className="w-3 h-3" />
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Calendar className="w-3.5 h-3.5 flex-shrink-0" />
                         <span className="truncate">
                           {patient.createdAt ? (() => {
                             const date = new Date(patient.createdAt);
@@ -526,8 +530,8 @@ const PatientManagement = () => {
                     {/* Column 8-9: Assigned Doctors */}
                     <div className="col-span-2">
                       {patient.assignedDoctors && patient.assignedDoctors.length > 0 ? (
-                        <div className="flex items-center space-x-1 text-sm text-muted-foreground">
-                          <UserCheck className="w-3 h-3" />
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <UserCheck className="w-3.5 h-3.5 flex-shrink-0" />
                           <span className="truncate">{patient.assignedDoctors.map(doctor => 
                             typeof doctor === 'object' ? doctor.fullName : 'Dr. Assigned'
                           ).join(', ')}</span>
@@ -538,8 +542,7 @@ const PatientManagement = () => {
                     </div>
                     
                     {/* Column 9-11: Actions */}
-                    <div className="col-span-3 flex items-center justify-end space-x-2">
-                      <div style={{paddingRight:"50px"}}>
+                    <div className="col-span-3 flex items-center justify-end gap-3">
                       <Button 
                         variant="outline" 
                         size="sm"
@@ -548,11 +551,10 @@ const PatientManagement = () => {
                           handleVitalsHistory(patient);
                         }}
                         title="View Vitals History"
-                        className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-600"
+                        className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-600 min-w-[80px]"
                       >
                         Vitals
                       </Button>
-                      </div>
                       {isClinic() && (
                         <Button 
                           variant="outline" 
@@ -562,7 +564,7 @@ const PatientManagement = () => {
                             handleManageDoctors(patient);
                           }}
                           title="Manage Assigned Doctors"
-                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-600"
+                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-600 min-w-[120px]"
                         >
                           Assign Doctor
                         </Button>

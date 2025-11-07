@@ -65,10 +65,7 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
   useEffect(() => {
     if (isOpen) {
       loadPatients();
-      // Load doctors for clinic admins and nurses (doctors don't need to select themselves)
-      if (isClinic() || isNurse()) {
-        loadDoctors();
-      }
+      // Only doctors can create prescriptions, so no need to load doctors list
       // Log prescription form access
       logComponentAccess('PrescriptionModal', prescription ? 'EDIT' : 'CREATE');
     }
@@ -158,11 +155,6 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
     // Patient validation
     if (!formData.patientId) {
       newErrors.patientId = "Patient is required";
-    }
-
-    // Doctor validation - only for clinic admins and nurses
-    if ((isClinic() || isNurse()) && !formData.doctorId) {
-      newErrors.doctorId = "Doctor is required";
     }
 
     // Diagnosis validation
@@ -461,83 +453,6 @@ const PrescriptionModal = ({ isOpen, onClose, onSubmit, prescription = null }) =
               </div>
             )}
           </div>
-
-          {/* Doctor Selection - For Clinic Admins and Nurses */}
-          {(isClinic() || isNurse()) && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="doctorId">Doctor *</Label>
-                <Popover open={doctorComboboxOpen} onOpenChange={setDoctorComboboxOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={doctorComboboxOpen}
-                      className={`w-full justify-between ${errors.doctorId ? "border-red-500" : ""}`}
-                      disabled={loadingDoctors || loading}
-                    >
-                      {formData.doctorId
-                        ? `Dr. ${doctors.find(d => d._id === formData.doctorId)?.fullName || 'Select doctor...'}`
-                        : loadingDoctors ? "Loading doctors..." : "Select doctor..."}
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-full p-0" align="start" onWheel={(e) => e.stopPropagation()}>
-                    <Command>
-                      <CommandInput placeholder="Search doctors..." />
-                      <CommandList className="max-h-[300px] overflow-y-auto">
-                        <CommandEmpty>No doctor found.</CommandEmpty>
-                        <CommandGroup>
-                          {doctors.map((doctor) => (
-                            <CommandItem
-                              key={doctor._id}
-                              value={`${doctor.fullName} ${doctor.specialty}`}
-                              onSelect={() => {
-                                handleInputChange('doctorId', doctor._id);
-                                setDoctorComboboxOpen(false);
-                              }}
-                            >
-                              <Check
-                                className={cn(
-                                  "mr-2 h-4 w-4",
-                                  formData.doctorId === doctor._id ? "opacity-100" : "opacity-0"
-                                )}
-                              />
-                              <div className="flex flex-col">
-                                <span className="font-medium">Dr. {doctor.fullName}</span>
-                                <span className="text-sm text-muted-foreground">{doctor.specialty || 'General'}</span>
-                              </div>
-                            </CommandItem>
-                          ))}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-                {errors.doctorId && <p className="text-sm text-red-500">{errors.doctorId}</p>}
-              </div>
-
-              {formData.doctorId && (
-                <div className="space-y-2">
-                  <Label>Doctor Info</Label>
-                  <div className="p-3 bg-muted rounded-lg">
-                    {(() => {
-                      const selectedDoctor = doctors.find(d => d._id === formData.doctorId);
-                      return selectedDoctor ? (
-                        <>
-                          <p className="font-medium">Dr. {selectedDoctor.fullName}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {selectedDoctor.specialty || 'General Medicine'}
-                          </p>
-                          <p className="text-sm text-muted-foreground">{selectedDoctor.phone}</p>
-                        </>
-                      ) : null;
-                    })()}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
 
           {/* Doctor Display - For Logged-in Doctors */}
           {isDoctor() && (

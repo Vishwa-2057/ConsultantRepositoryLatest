@@ -1,5 +1,18 @@
-import { Calendar, Users, UserCheck, Video, Share2, FileText, Mail, AlertTriangle, Home, LogOut, User, LayoutDashboard, Stethoscope, Heart, ArrowLeftRight, CreditCard, MessageCircle, UserPlus, Pill, Shield, Clock, TestTubeDiagonal, FlaskConical, Package } from "lucide-react";
+import { Calendar, Users, UserCheck, Video, Share2, FileText, Mail, AlertTriangle, Home, LogOut, User, LayoutDashboard, Stethoscope, Heart, ArrowLeftRight, CreditCard, MessageCircle, UserPlus, Pill, Shield, Clock, TestTubeDiagonal, FlaskConical, Package, Dumbbell } from "lucide-react";
 import LogoImage from "@/assets/Images/Logo.png";
+import DoctorIcon from "@/assets/Images/doctor.png";
+import NurseIcon from "@/assets/Images/nurse.png";
+import PharmacistIcon from "@/assets/Images/pharmacist.png";
+import SlotIcon from "@/assets/Images/slots.png";
+import AppointmentIcon from "@/assets/Images/appointment.png";
+import PatientIcon from "@/assets/Images/patient.png";
+import DashboardIcon from "@/assets/Images/dashboard.png";
+import PrescriptionIcon from "@/assets/Images/prescription.png";
+import ReportIcon from "@/assets/Images/report.png";
+import TeleIcon from "@/assets/Images/tele.png";
+import ReferralIcon from "@/assets/Images/referral.png";
+import InvoiceIcon from "@/assets/Images/invoice.png";
+import CommunityIcon from "@/assets/Images/commun.png";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -19,19 +32,19 @@ import {
 import { canAccessRoute, isClinic, isDoctor, isPharmacist, getCurrentUser } from "@/utils/roleUtils";
 
 const allNavigationItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard, routeName: "dashboard" },
-  { title: "Patient Management", url: "/patients", icon: Users, routeName: "patient-management" },
-  { title: "Appointments", url: "/appointments", icon: Calendar, routeName: "appointment-management" },
-  { title: "Slot Management", url: "/slot-management", icon: Clock, routeName: "slot-management" },
-  { title: "Doctor Management", url: "/doctors", icon: UserCheck, routeName: "doctors-management" },
-  { title: "Nurse Management", url: "/nurses", icon: UserPlus, routeName: "nurses-management" },
-  { title: "Pharmacist Management", url: "/pharmacists", icon: FlaskConical, routeName: "pharmacists-management" },
-  { title: "Prescriptions", url: "/prescriptions", icon: Pill, routeName: "prescriptions" },
-  { title: "Lab Reports", url: "/lab-reports", icon: TestTubeDiagonal, routeName: "lab-reports" },
-  { title: "Teleconsultation", url: "/teleconsultation", icon: Video, routeName: "teleconsultation" },
-  { title: "Referral System", url: "/referrals", icon: Share2, routeName: "referral-system" },
-  { title: "Invoice Management", url: "/invoices", icon: FileText, routeName: "invoice-management" },
-  { title: "Community Hub", url: "/community", icon: MessageCircle, routeName: "community-hub" },
+  { title: "Dashboard", url: "/", icon: DashboardIcon, isImage: true, routeName: "dashboard" },
+  { title: "Patient Management", url: "/patients", icon: PatientIcon, isImage: true, routeName: "patient-management" },
+  { title: "Appointments", url: "/appointments", icon: AppointmentIcon, isImage: true, routeName: "appointment-management" },
+  { title: "Slot Management", url: "/slot-management", icon: SlotIcon, isImage: true, routeName: "slot-management" },
+  { title: "Doctor Management", url: "/doctors", icon: DoctorIcon, isImage: true, routeName: "doctors-management" },
+  { title: "Nurse Management", url: "/nurses", icon: NurseIcon, isImage: true, routeName: "nurses-management" },
+  { title: "Pharmacist Management", url: "/pharmacists", icon: PharmacistIcon, isImage: true, routeName: "pharmacists-management" },
+  { title: "Prescriptions", url: "/prescriptions", icon: PrescriptionIcon, isImage: true, routeName: "prescriptions" },
+  { title: "Lab Reports", url: "/lab-reports", icon: ReportIcon, isImage: true, routeName: "lab-reports" },
+  { title: "Teleconsultation", url: "/teleconsultation", icon: TeleIcon, isImage: true, routeName: "teleconsultation" },
+  { title: "Referral System", url: "/referrals", icon: ReferralIcon, isImage: true, routeName: "referral-system" },
+  { title: "Invoice Management", url: "/invoices", icon: InvoiceIcon, isImage: true, routeName: "invoice-management" },
+  { title: "Community Hub", url: "/community", icon: CommunityIcon, isImage: true, routeName: "community-hub" },
 ];
 
 const pharmacistNavigationItems = [
@@ -93,10 +106,10 @@ export function ConsultantSidebar({ mobile = false }) {
 
   const getNavClassName = (path) => {
     const baseClasses = collapsed 
-      ? "w-full justify-center transition-all duration-200 ease-in-out rounded-lg mx-1 px-2 py-2.5 font-medium relative group"
+      ? "w-full justify-center transition-all duration-200 ease-in-out rounded-lg px-2 py-2.5 font-medium relative group"
       : mobile
-      ? "w-full justify-start transition-all duration-200 ease-in-out rounded-lg mx-2 px-3 py-3 font-medium relative group whitespace-nowrap text-base"
-      : "w-full justify-start transition-all duration-200 ease-in-out rounded-lg mx-2 px-3 py-2.5 font-medium relative group whitespace-nowrap";
+      ? "w-full justify-start transition-all duration-200 ease-in-out rounded-lg px-3 py-3 font-medium relative group whitespace-nowrap text-base"
+      : "w-full justify-start transition-all duration-200 ease-in-out rounded-lg px-3 py-2.5 font-medium relative group whitespace-nowrap";
     const activeClasses = isActive(path) 
       ? "bg-primary text-primary-foreground shadow-sm border border-primary/20" 
       : "hover:bg-accent hover:text-accent-foreground border border-transparent hover:border-border";
@@ -104,7 +117,7 @@ export function ConsultantSidebar({ mobile = false }) {
   };
 
   return (
-    <Sidebar className={`${mobile ? 'border-0' : 'border-r border-border'} bg-background dark:bg-background transition-all duration-300 ease-in-out shadow-sm h-screen ${mobile ? 'w-full' : 'sticky top-0 flex-shrink-0'} ${collapsed ? 'w-16' : 'w-64'}`} style={mobile ? { minHeight: '100vh', width: '100%' } : { minHeight: '100vh', width: collapsed ? '4rem' : '16rem', minWidth: collapsed ? '4rem' : '16rem', maxWidth: collapsed ? '4rem' : '16rem' }}>
+    <Sidebar className={`${mobile ? 'border-0' : 'border-r border-border'} bg-background dark:bg-background transition-all duration-300 ease-in-out shadow-sm h-screen ${mobile ? 'w-full' : 'sticky top-0 flex-shrink-0'} ${collapsed ? 'w-28' : 'w-64'}`} style={mobile ? { minHeight: '100vh', width: '100%' } : { minHeight: '100vh', width: collapsed ? '7rem' : '16rem', minWidth: collapsed ? '7rem' : '16rem', maxWidth: collapsed ? '7rem' : '16rem' }}>
       <SidebarContent className="h-full flex flex-col overflow-x-hidden overflow-y-hidden" style={{ minHeight: '100vh' }}>
         {/* Header */}
         <div className={`${mobile ? 'h-20' : 'h-16'} border-b border-border bg-background dark:bg-background flex items-center ${collapsed ? 'px-2 justify-center' : mobile ? 'px-6 py-6' : 'px-6 py-4'} flex-shrink-0`}>
@@ -134,7 +147,15 @@ export function ConsultantSidebar({ mobile = false }) {
               {navigationItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <Link to={item.url} className={`${getNavClassName(item.url)} flex items-center`}>
-                    <item.icon className={`${mobile ? 'w-6 h-6' : 'w-5 h-5'} flex-shrink-0 transition-all duration-200 ${isActive(item.url) ? 'text-primary-foreground' : 'text-muted-foreground group-hover:text-accent-foreground'}`} />
+                    {item.isImage ? (
+                      <img 
+                        src={item.icon} 
+                        alt={item.title}
+                        className="w-12 h-12 flex-shrink-0 transition-all duration-200 object-contain rounded-full border-2 border-border p-1 bg-background opacity-100"
+                      />
+                    ) : (
+                      <item.icon className={`${mobile ? 'w-6 h-6' : 'w-5 h-5'} flex-shrink-0 transition-all duration-200 ${isActive(item.url) ? 'text-primary-foreground' : 'text-muted-foreground group-hover:text-accent-foreground'}`} />
+                    )}
                     {!collapsed && (
                       <span className={`${mobile ? 'ml-3' : 'ml-2'} transition-all duration-200 overflow-hidden whitespace-nowrap text-ellipsis`}>
                         {item.title}

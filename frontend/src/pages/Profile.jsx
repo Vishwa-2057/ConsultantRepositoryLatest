@@ -70,22 +70,58 @@ const Profile = () => {
     try {
       setSaving(true);
       
+      // Prepare update payload with only editable fields
+      const updatePayload = {
+        phone: editedData.phone
+      };
+
+      // Add name field based on user role
       if (currentUser.role === 'clinic' || currentUser.isClinic) {
-        await clinicAPI.updateProfile(editedData);
-      } else if (currentUser.role === 'doctor') {
-        await doctorAPI.update(currentUser._id || currentUser.id, editedData);
-      } else if (currentUser.role === 'nurse' || currentUser.role === 'head_nurse' || currentUser.role === 'supervisor') {
-        await nurseAPI.update(currentUser._id || currentUser.id, editedData);
-      } else if (currentUser.role === 'pharmacist' || currentUser.role === 'head_pharmacist' || currentUser.role === 'pharmacy_manager') {
-        await pharmacistAPI.update(currentUser._id || currentUser.id, editedData);
+        updatePayload.name = editedData.name;
+        // For clinics, use adminEmail instead of email
+        if (editedData.adminEmail && editedData.adminEmail !== profileData.adminEmail) {
+          updatePayload.adminEmail = editedData.adminEmail;
+          console.log('Admin email is being updated from', profileData.adminEmail, 'to', editedData.adminEmail);
+        }
+      } else {
+        updatePayload.fullName = editedData.fullName;
+        // Only include email if it has changed
+        if (editedData.email && editedData.email !== profileData.email) {
+          updatePayload.email = editedData.email;
+          console.log('Email is being updated from', profileData.email, 'to', editedData.email);
+        }
       }
 
-      toast.success('Profile updated successfully');
-      setProfileData(editedData);
+      console.log('Sending update payload:', updatePayload);
+
+      let response;
+      if (currentUser.role === 'clinic' || currentUser.isClinic) {
+        response = await clinicAPI.updateProfile(updatePayload);
+      } else if (currentUser.role === 'doctor') {
+        response = await doctorAPI.update(currentUser._id || currentUser.id, updatePayload);
+      } else if (currentUser.role === 'nurse' || currentUser.role === 'head_nurse' || currentUser.role === 'supervisor') {
+        response = await nurseAPI.update(currentUser._id || currentUser.id, updatePayload);
+      } else if (currentUser.role === 'pharmacist' || currentUser.role === 'head_pharmacist' || currentUser.role === 'pharmacy_manager') {
+        response = await pharmacistAPI.update(currentUser._id || currentUser.id, updatePayload);
+      }
+
+      console.log('Update response:', response);
+      
+      // Refetch profile data from backend to ensure we have the latest data
+      await fetchProfileData(currentUser);
+      
+      // Check if email was actually updated
+      const emailField = (currentUser.role === 'clinic' || currentUser.isClinic) ? 'adminEmail' : 'email';
+      if (updatePayload[emailField] && response?.data?.[emailField] !== updatePayload[emailField]) {
+        toast.warning('Profile updated, but email could not be changed. Email may be protected or already in use.');
+      } else {
+        toast.success('Profile updated successfully');
+      }
+      
       setIsEditing(false);
       
       // Update localStorage with fresh data
-      const updatedUser = { ...currentUser, ...editedData };
+      const updatedUser = { ...currentUser, ...updatePayload };
       localStorage.setItem('authUser', JSON.stringify(updatedUser));
       window.dispatchEvent(new Event('auth-changed'));
     } catch (error) {
@@ -196,7 +232,9 @@ const Profile = () => {
                 </Avatar>
                 
                 <h2 className="text-2xl font-bold mb-2">
-                  {profileData.fullName || profileData.name || profileData.adminName}
+                  {(currentUser.role === 'clinic' || currentUser.isClinic) 
+                    ? profileData.name 
+                    : profileData.fullName}
                 </h2>
                 
                 <Badge className={`${getRoleBadgeColor(currentUser.role)} text-white mb-4`}>
@@ -267,7 +305,7 @@ const Profile = () => {
                     <>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label>Clinic Name</Label>
+                          <Label>Clinic Name </Label>
                           <div className="flex items-center gap-2">
                             <Building2 className="w-4 h-4 text-muted-foreground" />
                             {isEditing ? (
@@ -301,7 +339,7 @@ const Profile = () => {
                       <Separator />
 
                       <div className="space-y-2">
-                        <Label>Address</Label>
+                        <Label>Address </Label>
                         <div className="flex items-start gap-2">
                           <MapPin className="w-4 h-4 text-muted-foreground mt-1" />
                           <div className="flex-1">
@@ -314,18 +352,26 @@ const Profile = () => {
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label>Phone</Label>
+                          <Label>Phone </Label>
                           <div className="flex items-center gap-2">
                             <Phone className="w-4 h-4 text-muted-foreground" />
-                            <span>{profileData.phone}</span>
+                            {isEditing ? (
+                              <Input value={editedData.phone || ''} onChange={(e) => handleInputChange('phone', e.target.value)} />
+                            ) : (
+                              <span>{profileData.phone}</span>
+                            )}
                           </div>
                         </div>
 
                         <div className="space-y-2">
-                          <Label>Email</Label>
+                          <Label>Admin Email </Label>
                           <div className="flex items-center gap-2">
                             <Mail className="w-4 h-4 text-muted-foreground" />
-                            <span className="break-all">{profileData.email}</span>
+                            {isEditing ? (
+                              <Input value={editedData.adminEmail || ''} onChange={(e) => handleInputChange('adminEmail', e.target.value)} type="email" />
+                            ) : (
+                              <span className="break-all">{profileData.adminEmail}</span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -336,31 +382,43 @@ const Profile = () => {
                     <>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label>Full Name</Label>
+                          <Label>Full Name </Label>
                           <div className="flex items-center gap-2">
                             <User className="w-4 h-4 text-muted-foreground" />
-                            <span>{profileData.fullName}</span>
+                            {isEditing ? (
+                              <Input value={editedData.fullName || ''} onChange={(e) => handleInputChange('fullName', e.target.value)} />
+                            ) : (
+                              <span>{profileData.fullName}</span>
+                            )}
                           </div>
                         </div>
 
                         <div className="space-y-2">
-                          <Label>Email</Label>
+                          <Label>Email </Label>
                           <div className="flex items-center gap-2">
                             <Mail className="w-4 h-4 text-muted-foreground" />
-                            <span className="break-all">{profileData.email}</span>
+                            {isEditing ? (
+                              <Input value={editedData.email || ''} onChange={(e) => handleInputChange('email', e.target.value)} type="email" />
+                            ) : (
+                              <span className="break-all">{profileData.email}</span>
+                            )}
                           </div>
                         </div>
 
                         <div className="space-y-2">
-                          <Label>Phone</Label>
+                          <Label>Phone </Label>
                           <div className="flex items-center gap-2">
                             <Phone className="w-4 h-4 text-muted-foreground" />
-                            <span>{profileData.phone}</span>
+                            {isEditing ? (
+                              <Input value={editedData.phone || ''} onChange={(e) => handleInputChange('phone', e.target.value)} />
+                            ) : (
+                              <span>{profileData.phone}</span>
+                            )}
                           </div>
                         </div>
 
                         <div className="space-y-2">
-                          <Label>UHID</Label>
+                          <Label>UHID </Label>
                           <span className="font-mono">{profileData.uhid}</span>
                         </div>
                       </div>
@@ -369,7 +427,7 @@ const Profile = () => {
                         <>
                           <Separator />
                           <div className="space-y-2">
-                            <Label>Current Address</Label>
+                            <Label>Current Address </Label>
                             <div className="flex items-start gap-2">
                               <MapPin className="w-4 h-4 text-muted-foreground mt-1" />
                               <div className="flex-1">
@@ -387,31 +445,43 @@ const Profile = () => {
                   {(currentUser.role === 'nurse' || currentUser.role === 'head_nurse' || currentUser.role === 'supervisor') && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>Full Name</Label>
+                        <Label>Full Name </Label>
                         <div className="flex items-center gap-2">
                           <User className="w-4 h-4 text-muted-foreground" />
-                          <span>{profileData.fullName}</span>
+                          {isEditing ? (
+                            <Input value={editedData.fullName || ''} onChange={(e) => handleInputChange('fullName', e.target.value)} />
+                          ) : (
+                            <span>{profileData.fullName}</span>
+                          )}
                         </div>
                       </div>
 
                       <div className="space-y-2">
-                        <Label>Email</Label>
+                        <Label>Email </Label>
                         <div className="flex items-center gap-2">
                           <Mail className="w-4 h-4 text-muted-foreground" />
-                          <span className="break-all">{profileData.email}</span>
+                          {isEditing ? (
+                            <Input value={editedData.email || ''} onChange={(e) => handleInputChange('email', e.target.value)} type="email" />
+                          ) : (
+                            <span className="break-all">{profileData.email}</span>
+                          )}
                         </div>
                       </div>
 
                       <div className="space-y-2">
-                        <Label>Phone</Label>
+                        <Label>Phone </Label>
                         <div className="flex items-center gap-2">
                           <Phone className="w-4 h-4 text-muted-foreground" />
-                          <span>{profileData.phone}</span>
+                          {isEditing ? (
+                            <Input value={editedData.phone || ''} onChange={(e) => handleInputChange('phone', e.target.value)} />
+                          ) : (
+                            <span>{profileData.phone}</span>
+                          )}
                         </div>
                       </div>
 
                       <div className="space-y-2">
-                        <Label>UHID</Label>
+                        <Label>UHID </Label>
                         <span className="font-mono">{profileData.uhid}</span>
                       </div>
                     </div>
@@ -420,31 +490,43 @@ const Profile = () => {
                   {(currentUser.role === 'pharmacist' || currentUser.role === 'head_pharmacist' || currentUser.role === 'pharmacy_manager') && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>Full Name</Label>
+                        <Label>Full Name </Label>
                         <div className="flex items-center gap-2">
                           <User className="w-4 h-4 text-muted-foreground" />
-                          <span>{profileData.fullName}</span>
+                          {isEditing ? (
+                            <Input value={editedData.fullName || ''} onChange={(e) => handleInputChange('fullName', e.target.value)} />
+                          ) : (
+                            <span>{profileData.fullName}</span>
+                          )}
                         </div>
                       </div>
 
                       <div className="space-y-2">
-                        <Label>Email</Label>
+                        <Label>Email </Label>
                         <div className="flex items-center gap-2">
                           <Mail className="w-4 h-4 text-muted-foreground" />
-                          <span className="break-all">{profileData.email}</span>
+                          {isEditing ? (
+                            <Input value={editedData.email || ''} onChange={(e) => handleInputChange('email', e.target.value)} type="email" />
+                          ) : (
+                            <span className="break-all">{profileData.email}</span>
+                          )}
                         </div>
                       </div>
 
                       <div className="space-y-2">
-                        <Label>Phone</Label>
+                        <Label>Phone </Label>
                         <div className="flex items-center gap-2">
                           <Phone className="w-4 h-4 text-muted-foreground" />
-                          <span>{profileData.phone}</span>
+                          {isEditing ? (
+                            <Input value={editedData.phone || ''} onChange={(e) => handleInputChange('phone', e.target.value)} />
+                          ) : (
+                            <span>{profileData.phone}</span>
+                          )}
                         </div>
                       </div>
 
                       <div className="space-y-2">
-                        <Label>UHID</Label>
+                        <Label>UHID </Label>
                         <span className="font-mono">{profileData.uhid}</span>
                       </div>
                     </div>
@@ -464,7 +546,7 @@ const Profile = () => {
                     <>
                       {profileData.specialties && profileData.specialties.length > 0 && (
                         <div className="space-y-2">
-                          <Label>Specialties</Label>
+                          <Label>Specialties </Label>
                           <div className="flex flex-wrap gap-2">
                             {profileData.specialties.map((specialty, index) => (
                               <Badge key={index} variant="secondary">{specialty}</Badge>
@@ -475,7 +557,7 @@ const Profile = () => {
 
                       {profileData.services && profileData.services.length > 0 && (
                         <div className="space-y-2">
-                          <Label>Services</Label>
+                          <Label>Services </Label>
                           <div className="flex flex-wrap gap-2">
                             {profileData.services.map((service, index) => (
                               <Badge key={index} variant="outline">{service}</Badge>
@@ -487,7 +569,7 @@ const Profile = () => {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {profileData.staffCount && (
                           <div className="space-y-2">
-                            <Label>Staff Count</Label>
+                            <Label>Staff Count </Label>
                             <span>{profileData.staffCount}</span>
                           </div>
                         )}
@@ -502,7 +584,7 @@ const Profile = () => {
 
                       {profileData.operatingHours && (
                         <div className="space-y-2">
-                          <Label>Operating Hours</Label>
+                          <Label>Operating Hours </Label>
                           <div className="flex items-center gap-2">
                             <Clock className="w-4 h-4 text-muted-foreground" />
                             <span>{profileData.operatingHours}</span>
@@ -516,7 +598,7 @@ const Profile = () => {
                     <>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
-                          <Label>Specialty</Label>
+                          <Label>Specialty </Label>
                           <div className="flex items-center gap-2">
                             <Briefcase className="w-4 h-4 text-muted-foreground" />
                             <span>{profileData.specialty}</span>
@@ -524,7 +606,7 @@ const Profile = () => {
                         </div>
 
                         <div className="space-y-2">
-                          <Label>Qualification</Label>
+                          <Label>Qualification </Label>
                           <div className="flex items-center gap-2">
                             <GraduationCap className="w-4 h-4 text-muted-foreground" />
                             <span>{profileData.qualification}</span>
@@ -534,7 +616,7 @@ const Profile = () => {
 
                       {profileData.languages && profileData.languages.length > 0 && (
                         <div className="space-y-2">
-                          <Label>Languages</Label>
+                          <Label>Languages </Label>
                           <div className="flex items-center gap-2">
                             <Languages className="w-4 h-4 text-muted-foreground" />
                             <div className="flex flex-wrap gap-2">
@@ -548,7 +630,7 @@ const Profile = () => {
 
                       {profileData.about && (
                         <div className="space-y-2">
-                          <Label>About</Label>
+                          <Label>About </Label>
                           <p className="text-sm text-muted-foreground">{profileData.about}</p>
                         </div>
                       )}
@@ -560,7 +642,7 @@ const Profile = () => {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {profileData.department && (
                           <div className="space-y-2">
-                            <Label>Department</Label>
+                            <Label>Department </Label>
                             <div className="flex flex-wrap gap-2">
                               {Array.isArray(profileData.department) ? (
                                 profileData.department.map((dept, index) => (
@@ -585,14 +667,14 @@ const Profile = () => {
 
                         {profileData.experience !== undefined && (
                           <div className="space-y-2">
-                            <Label>Experience</Label>
+                            <Label>Experience </Label>
                             <span>{profileData.experience} years</span>
                           </div>
                         )}
 
                         {profileData.licenseNumber && (
                           <div className="space-y-2">
-                            <Label>License Number</Label>
+                            <Label>License Number </Label>
                             <span className="font-mono">{profileData.licenseNumber}</span>
                           </div>
                         )}
@@ -605,7 +687,7 @@ const Profile = () => {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {profileData.specialization && (
                           <div className="space-y-2">
-                            <Label>Specialization</Label>
+                            <Label>Specialization </Label>
                             <div className="flex items-center gap-2">
                               <Briefcase className="w-4 h-4 text-muted-foreground" />
                               <span>{profileData.specialization}</span>
@@ -615,14 +697,14 @@ const Profile = () => {
 
                         {profileData.licenseNumber && (
                           <div className="space-y-2">
-                            <Label>License Number</Label>
+                            <Label>License Number </Label>
                             <span className="font-mono">{profileData.licenseNumber}</span>
                           </div>
                         )}
 
                         {profileData.shift && (
                           <div className="space-y-2">
-                            <Label>Shift</Label>
+                            <Label>Shift </Label>
                             <div className="flex items-center gap-2">
                               <Clock className="w-4 h-4 text-muted-foreground" />
                               <span>{profileData.shift}</span>
@@ -632,7 +714,7 @@ const Profile = () => {
 
                         {profileData.experience !== undefined && (
                           <div className="space-y-2">
-                            <Label>Experience</Label>
+                            <Label>Experience </Label>
                             <span>{profileData.experience} years</span>
                           </div>
                         )}

@@ -1083,6 +1083,8 @@ router.post('/logout', auth, async (req, res) => {
       userDetails = await Doctor.findById(currentUser.id).populate('clinicId');
     } else if (userType === 'nurse' || userType === 'head_nurse' || userType === 'supervisor') {
       userDetails = await Nurse.findById(currentUser.id).populate('clinicId');
+    } else if (userType === 'pharmacist') {
+      userDetails = await Pharmacist.findById(currentUser.id).populate('clinicId');
     }
 
     if (userDetails) {
@@ -1104,16 +1106,39 @@ router.post('/logout', auth, async (req, res) => {
 
       // Log the logout activity
       try {
-        await ActivityLogger.logLogout({
+        // Extract clinicId and clinicName properly
+        let logClinicId, logClinicName;
+        
+        if (userType === 'clinic') {
+          logClinicId = userDetails._id;
+          logClinicName = userDetails.name || userDetails.fullName || 'Unknown Clinic';
+        } else {
+          // For doctors, nurses, pharmacists - handle populated clinicId
+          if (userDetails.clinicId) {
+            logClinicId = userDetails.clinicId._id || userDetails.clinicId;
+            logClinicName = userDetails.clinicId.name || userDetails.clinicName || 'Unknown Clinic';
+          } else {
+            logClinicId = userDetails._id; // Fallback
+            logClinicName = 'Unknown Clinic';
+          }
+        }
+        
+        const logoutData = {
           _id: userDetails._id,
           fullName: userDetails.fullName || userDetails.adminName || userDetails.name,
-          email: userDetails.adminEmail || userDetails.email,
+          email: userDetails.email || userDetails.adminEmail,
           role: userType,
-          clinicId: userDetails.clinicId || userDetails._id,
-          clinicName: userDetails.clinicName || userDetails.name || 'Unknown Clinic'
-        }, req, null, sessionDuration);
+          clinicId: logClinicId,
+          clinicName: logClinicName
+        };
+        
+        console.log('Logging logout activity with data:', logoutData);
+        await ActivityLogger.logLogout(logoutData, req, null, sessionDuration);
+        console.log('Logout activity logged successfully');
       } catch (logError) {
         console.error('Failed to log logout activity:', logError);
+        console.error('Error details:', logError.message);
+        console.error('Stack trace:', logError.stack);
         // Don't fail the logout if logging fails
       }
     }
@@ -1509,45 +1534,6 @@ router.get('/me', auth, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to get user information'
-    });
-  }
-});
-
-// POST /auth/logout - Logout user
-router.post('/logout', auth, async (req, res) => {
-  try {
-    const token = tokenManager.extractTokenFromHeader(req.headers.authorization);
-    
-    if (token) {
-      // Blacklist the current token
-      tokenManager.blacklistToken(token);
-    }
-
-    // Get refresh token from body or header
-    const refreshToken = req.body.refreshToken || req.headers['x-refresh-token'];
-    
-    if (refreshToken) {
-      // Remove refresh token
-      tokenManager.removeRefreshToken(req.user.id, refreshToken);
-      tokenManager.blacklistToken(refreshToken);
-    }
-
-    // Log activity
-    await ActivityLogger.log(req.user.id, 'LOGOUT', 'User logged out', {
-      userAgent: req.headers['user-agent'],
-      ip: req.ip
-    });
-
-    res.json({
-      success: true,
-      message: 'Logged out successfully'
-    });
-
-  } catch (error) {
-    console.error('Logout error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Logout failed'
     });
   }
 });

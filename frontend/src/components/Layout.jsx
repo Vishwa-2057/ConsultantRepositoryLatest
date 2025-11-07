@@ -13,31 +13,12 @@ import { clinicAPI } from "@/services/api";
 function LayoutHeader({ getPageTitle, currentUser, currentTime, hideActions, toggleDarkMode, isDarkMode, mobileMenuOpen, setMobileMenuOpen, clinicName }) {
   const { toggleSidebar } = useSidebar();
   const navigate = useNavigate();
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
-  
   const handleLogoutClick = (e) => {
     e.preventDefault();
-    setIsLoggingOut(true);
     
-    // Save user info to sessionStorage before clearing for activity log
-    try {
-      const userInfo = localStorage.getItem('authUser');
-      if (userInfo) {
-        sessionStorage.setItem('logoutUser', userInfo);
-      }
-    } catch (error) {
-      // Silently continue
-    }
-    
-    // Clear auth state immediately to hide sidebar
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('authUser');
-    window.dispatchEvent(new Event('auth-changed'));
-    
-    // Add a brief delay for the animation to be visible
-    setTimeout(() => {
-      navigate('/logout');
-    }, 300);
+    // Just navigate to logout page - let Logout.jsx handle everything
+    // This ensures the auth token is still available for the activity log API call
+    navigate('/logout');
   };
   
   return (
@@ -83,8 +64,8 @@ function LayoutHeader({ getPageTitle, currentUser, currentTime, hideActions, tog
             </div>
           )}
           
-          {/* Clinic name - shown on larger screens */}
-          {clinicName && (
+          {/* Clinic name - shown on larger screens (only for non-clinic users) */}
+          {clinicName && currentUser?.role !== 'clinic' && !currentUser?.isClinic && (
             <div className="hidden md:flex items-center gap-2 text-sm font-medium text-primary flex-shrink-0">
               <span className="truncate">{clinicName}</span>
             </div>
@@ -150,23 +131,11 @@ function LayoutHeader({ getPageTitle, currentUser, currentTime, hideActions, tog
             <Button 
               variant="outline" 
               onClick={handleLogoutClick}
-              disabled={isLoggingOut}
-              className={`hidden sm:flex relative overflow-hidden group transition-all duration-300 ${
-                isLoggingOut 
-                  ? 'bg-red-500 text-white border-red-500 scale-95 opacity-70' 
-                  : 'hover:bg-red-50 hover:border-red-300 hover:text-red-600 dark:hover:bg-red-950/20'
-              }`}
+              className="hidden sm:flex group hover:bg-red-50 hover:border-red-300 hover:text-red-600 dark:hover:bg-red-950/20"
             >
-              {isLoggingOut && (
-                <span className="absolute inset-0 bg-gradient-to-r from-red-500 via-red-600 to-red-500 animate-pulse"></span>
-              )}
-              <span className="relative flex items-center gap-2">
-                <LogOut className={`w-4 h-4 transition-all duration-500 ${
-                  isLoggingOut ? 'rotate-180 scale-110' : 'group-hover:translate-x-0.5'
-                }`} />
-                <span className="hidden md:inline">
-                  {isLoggingOut ? 'Logging out...' : 'Logout'}
-                </span>
+              <LogOut className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+              <span className="hidden md:inline ml-2">
+                Logout
               </span>
             </Button>
             {/* Mobile logout button */}
@@ -174,16 +143,9 @@ function LayoutHeader({ getPageTitle, currentUser, currentTime, hideActions, tog
               variant="ghost" 
               size="icon" 
               onClick={handleLogoutClick}
-              disabled={isLoggingOut}
-              className={`sm:hidden h-8 w-8 transition-all duration-300 ${
-                isLoggingOut 
-                  ? 'bg-red-500 text-white scale-95 opacity-70' 
-                  : 'hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/20'
-              }`}
+              className="sm:hidden h-8 w-8 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/20"
             >
-              <LogOut className={`w-4 h-4 transition-all duration-500 ${
-                isLoggingOut ? 'rotate-180 scale-110' : ''
-              }`} />
+              <LogOut className="w-4 h-4" />
               <span className="sr-only">Logout</span>
             </Button>
           </>

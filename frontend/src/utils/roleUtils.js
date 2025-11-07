@@ -26,6 +26,7 @@ export const ROLE_PERMISSIONS = {
       'lab-reports',
       'referral-system',
       'community-hub',
+      'exercises',
       'invoice-management',
       'email-settings',
       'compliance-alerts',
@@ -45,7 +46,8 @@ export const ROLE_PERMISSIONS = {
       'teleconsultation',
       'prescriptions',
       'lab-reports',
-      'community-hub'
+      'community-hub',
+      'exercises'
     ],
     canViewAllPatients: false,
     canManageDoctors: false,
@@ -58,6 +60,7 @@ export const ROLE_PERMISSIONS = {
       'appointment-management',
       'prescriptions',
       'lab-reports',
+      'exercises',
       'invoice-management'
     ],
     canViewAllPatients: false,
@@ -71,6 +74,7 @@ export const ROLE_PERMISSIONS = {
       'appointment-management',
       'prescriptions',
       'lab-reports',
+      'exercises',
       'invoice-management'
     ],
     canViewAllPatients: false,
@@ -84,6 +88,7 @@ export const ROLE_PERMISSIONS = {
       'appointment-management',
       'prescriptions',
       'lab-reports',
+      'exercises',
       'invoice-management'
     ],
     canViewAllPatients: false,
@@ -94,7 +99,8 @@ export const ROLE_PERMISSIONS = {
     canAccess: [
       'pharmacist-dashboard',
       'inventory-management',
-      'pharmacist-prescriptions'
+      'pharmacist-prescriptions',
+      'exercises'
     ],
     canViewAllPatients: false,
     canManageDoctors: false,
@@ -104,7 +110,8 @@ export const ROLE_PERMISSIONS = {
     canAccess: [
       'pharmacist-dashboard',
       'inventory-management',
-      'pharmacist-prescriptions'
+      'pharmacist-prescriptions',
+      'exercises'
     ],
     canViewAllPatients: false,
     canManageDoctors: false,
@@ -114,7 +121,8 @@ export const ROLE_PERMISSIONS = {
     canAccess: [
       'pharmacist-dashboard',
       'inventory-management',
-      'pharmacist-prescriptions'
+      'pharmacist-prescriptions',
+      'exercises'
     ],
     canViewAllPatients: false,
     canManageDoctors: false,

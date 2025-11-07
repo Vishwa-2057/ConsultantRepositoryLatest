@@ -460,7 +460,7 @@ router.get('/:id', auth, async (req, res) => {
 // PUT /api/nurses/:id - Update nurse
 router.put('/:id', auth, async (req, res) => {
   try {
-    const allowedUpdates = ['fullName', 'department', 'shift', 'phone', 'licenseNumber', 'experience', 'role', 'isActive'];
+    const allowedUpdates = ['fullName', 'email', 'department', 'shift', 'phone', 'licenseNumber', 'experience', 'role', 'isActive'];
     const updates = {};
     
     Object.keys(req.body).forEach(key => {

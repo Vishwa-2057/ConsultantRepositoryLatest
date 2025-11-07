@@ -1295,7 +1295,7 @@ const Billing = () => {
                             {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
                           </Badge>
                           <p className="text-xs text-muted-foreground mt-1">
-                            Payment: {invoice.paymentMethod === 'cash' ? 'Cash' : invoice.paymentMethod === 'online' ? 'Online' : 'Pending'}
+                            Payment: {invoice.status === 'approved' || invoice.status === 'paid' ? (invoice.paymentMethod === 'cash' ? 'Cash' : invoice.paymentMethod === 'online' ? 'Online' : 'Paid') : 'Pending'}
                           </p>
                         </div>
                         
@@ -1328,6 +1328,7 @@ const Billing = () => {
                                 date: invoice.appointmentDetails?.appointmentDate ? new Date(invoice.appointmentDetails.appointmentDate).toLocaleDateString('en-GB') : new Date(invoice.createdAt).toLocaleDateString('en-GB'),
                                 total: invoice.amount,
                                 status: invoice.status,
+                                paymentMethod: invoice.paymentMethod,
                                 createdAt: invoice.createdAt,
                                 lineItems: [{
                                   description: `${invoice.appointmentDetails?.appointmentType || 'Appointment'} - Dr. ${invoice.doctorId?.fullName || 'N/A'}`,
@@ -1338,7 +1339,7 @@ const Billing = () => {
                                 discount: 0,
                                 tax: 0,
                                 shipping: 0,
-                                remarks: `Payment Method: ${invoice.paymentMethod === 'cash' ? 'Cash' : invoice.paymentMethod === 'online' ? 'Online' : 'Pending'}\nAppointment Time: ${invoice.appointmentDetails?.appointmentTime || 'N/A'}\nDuration: ${invoice.appointmentDetails?.duration || 30} minutes`
+                                remarks: `Payment Method: ${(invoice.status === 'approved' || invoice.status === 'paid') ? (invoice.paymentMethod === 'cash' ? 'Cash' : invoice.paymentMethod === 'online' ? 'Online' : 'Paid') : 'Pending'}\nAppointment Time: ${invoice.appointmentDetails?.appointmentTime || 'N/A'}\nDuration: ${invoice.appointmentDetails?.duration || 30} minutes`
                               };
                               setSelectedInvoice(transformedInvoice);
                               setIsViewModalOpen(true);
@@ -1385,7 +1386,7 @@ const Billing = () => {
                             {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
                           </Badge>
                           <p className="text-xs text-muted-foreground mt-1">
-                            Payment: {invoice.paymentMethod === 'cash' ? 'Cash' : invoice.paymentMethod === 'online' ? 'Online' : 'Pending'}
+                            Payment: {invoice.status === 'approved' || invoice.status === 'paid' ? (invoice.paymentMethod === 'cash' ? 'Cash' : invoice.paymentMethod === 'online' ? 'Online' : 'Paid') : 'Pending'}
                           </p>
                         </div>
                         
@@ -1416,6 +1417,7 @@ const Billing = () => {
                                 date: invoice.teleconsultationDetails?.scheduledDate ? new Date(invoice.teleconsultationDetails.scheduledDate).toLocaleDateString('en-GB') : new Date(invoice.createdAt).toLocaleDateString('en-GB'),
                                 total: invoice.amount,
                                 status: invoice.status,
+                                paymentMethod: invoice.paymentMethod,
                                 createdAt: invoice.createdAt,
                                 lineItems: [{
                                   description: `Teleconsultation - Dr. ${invoice.doctorId?.fullName || 'N/A'}`,
@@ -1426,7 +1428,7 @@ const Billing = () => {
                                 discount: 0,
                                 tax: 0,
                                 shipping: 0,
-                                remarks: `Payment Method: ${invoice.paymentMethod === 'cash' ? 'Cash' : invoice.paymentMethod === 'online' ? 'Online' : 'Pending'}\nScheduled Time: ${invoice.teleconsultationDetails?.scheduledTime || 'N/A'}\nDuration: ${invoice.teleconsultationDetails?.duration || 30} minutes\nMeeting ID: ${invoice.teleconsultationDetails?.meetingId || 'N/A'}\nAppointment Time: ${invoice.appointmentDetails?.appointmentTime || 'N/A'}\nDuration: ${invoice.appointmentDetails?.duration || 30} minutes`
+                                remarks: `Payment Method: ${(invoice.status === 'approved' || invoice.status === 'paid') ? (invoice.paymentMethod === 'cash' ? 'Cash' : invoice.paymentMethod === 'online' ? 'Online' : 'Paid') : 'Pending'}\nScheduled Time: ${invoice.teleconsultationDetails?.scheduledTime || 'N/A'}\nDuration: ${invoice.teleconsultationDetails?.duration || 30} minutes\nMeeting ID: ${invoice.teleconsultationDetails?.meetingId || 'N/A'}\nAppointment Time: ${invoice.appointmentDetails?.appointmentTime || 'N/A'}\nDuration: ${invoice.appointmentDetails?.duration || 30} minutes`
                               };
                               setSelectedInvoice(transformedInvoice);
                               setIsViewModalOpen(true);

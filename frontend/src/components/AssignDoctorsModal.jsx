@@ -9,10 +9,12 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { UserCheck, X, Plus, Users, Stethoscope } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { UserCheck, X, Plus, Users, Stethoscope, ChevronsUpDown, Check } from "lucide-react";
 import { doctorAPI, patientAPI } from "@/services/api";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 const AssignDoctorsModal = ({ isOpen, onClose, patient, onUpdate }) => {
   const { toast } = useToast();
@@ -20,6 +22,8 @@ const AssignDoctorsModal = ({ isOpen, onClose, patient, onUpdate }) => {
   const [doctorsLoading, setDoctorsLoading] = useState(false);
   const [assignedDoctors, setAssignedDoctors] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+  const [comboboxOpen, setComboboxOpen] = useState(false);
+  const [selectedDoctorId, setSelectedDoctorId] = useState("");
 
   // Load doctors and initialize assigned doctors when modal opens
   useEffect(() => {
@@ -50,10 +54,12 @@ const AssignDoctorsModal = ({ isOpen, onClose, patient, onUpdate }) => {
   };
 
   const addDoctor = (doctorId) => {
-    if (doctorId !== "none" && doctorId !== "unavailable" && !assignedDoctors.some(d => d._id === doctorId)) {
+    if (doctorId && !assignedDoctors.some(d => d._id === doctorId)) {
       const doctor = doctors.find(d => d._id === doctorId);
       if (doctor) {
         setAssignedDoctors(prev => [...prev, doctor]);
+        setSelectedDoctorId("");
+        setComboboxOpen(false);
       }
     }
   };
@@ -154,28 +160,63 @@ const AssignDoctorsModal = ({ isOpen, onClose, patient, onUpdate }) => {
               <Plus className="w-4 h-4" />
               Add Doctor
             </h4>
-            <Select onValueChange={addDoctor}>
-              <SelectTrigger>
-                <Stethoscope className="w-4 h-4 mr-2" />
-                <SelectValue placeholder={doctorsLoading ? "Loading doctors..." : "Select a doctor to assign"} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Select a doctor</SelectItem>
-                {doctors && doctors.length > 0 ? (
-                  doctors
-                    .filter(doctor => !assignedDoctors.some(d => d._id === doctor._id))
-                    .map((doctor) => (
-                      <SelectItem key={doctor._id} value={doctor._id}>
-                        Dr. {doctor.fullName} - {doctor.specialty}
-                      </SelectItem>
-                    ))
-                ) : (
-                  <SelectItem value="unavailable" disabled>
-                    {doctorsLoading ? "Loading..." : "No doctors available"}
-                  </SelectItem>
-                )}
-              </SelectContent>
-            </Select>
+            <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={comboboxOpen}
+                  className="w-full justify-between"
+                  disabled={doctorsLoading}
+                >
+                  <div className="flex items-center gap-2">
+                    <Stethoscope className="w-4 h-4" />
+                    <span>
+                      {selectedDoctorId
+                        ? `Dr. ${doctors.find(d => d._id === selectedDoctorId)?.fullName}`
+                        : doctorsLoading
+                        ? "Loading doctors..."
+                        : "Search and select a doctor to assign"}
+                    </span>
+                  </div>
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-full p-0" align="start" onWheel={(e) => e.stopPropagation()}>
+                <Command>
+                  <CommandInput placeholder="Search doctors by name or specialty..." />
+                  <CommandList className="max-h-[300px] overflow-y-auto">
+                    <CommandEmpty>
+                      {doctorsLoading ? "Loading doctors..." : "No doctors found."}
+                    </CommandEmpty>
+                    <CommandGroup>
+                      {doctors
+                        .filter(doctor => !assignedDoctors.some(d => d._id === doctor._id))
+                        .map((doctor) => (
+                          <CommandItem
+                            key={doctor._id}
+                            value={`${doctor.fullName} ${doctor.specialty}`}
+                            onSelect={() => {
+                              addDoctor(doctor._id);
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                selectedDoctorId === doctor._id ? "opacity-100" : "opacity-0"
+                              )}
+                            />
+                            <div className="flex flex-col">
+                              <span className="font-medium">Dr. {doctor.fullName}</span>
+                              <span className="text-sm text-muted-foreground">{doctor.specialty}</span>
+                            </div>
+                          </CommandItem>
+                        ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
 
           {/* Assigned Doctors List */}

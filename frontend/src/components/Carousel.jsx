@@ -42,9 +42,10 @@ const Carousel = ({ images, autoPlay = true, interval = 5000, onEdit, onDelete, 
 
   return (
     <div 
-      className="relative w-full h-64 rounded-lg overflow-hidden shadow-lg group"
+      className="relative w-full h-44 rounded-lg overflow-hidden shadow-lg group"
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
+      style={{border:"3px double #2279d0ff", borderRadius:"4px"}}
     >
       {/* Images */}
       <div className="relative w-full h-full">

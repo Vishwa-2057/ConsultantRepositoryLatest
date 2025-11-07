@@ -672,21 +672,6 @@ const ScheduleTeleconsultationModal = ({ isOpen, onClose, onSuccess, selectedPat
           </div>
         )}
 
-        {/* Consultation Mode */}
-        <div className="space-y-2">
-          <Label htmlFor="consultationMode">Consultation Mode</Label>
-          <Select value={formData.consultationMode} onValueChange={(value) => handleInputChange('consultationMode', value)} disabled={loading}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select consultation mode" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="video">Video Call</SelectItem>
-              <SelectItem value="audio">Audio Call</SelectItem>
-              <SelectItem value="chat">Chat Only</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
         {/* Duration */}
           <div className="space-y-2">
             <Label htmlFor="duration">Slot Duration</Label>

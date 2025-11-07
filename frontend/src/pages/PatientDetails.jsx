@@ -45,7 +45,7 @@ import { patientAPI, prescriptionAPI, appointmentAPI, vitalsAPI, referralAPI, me
 import sessionManager from "@/utils/sessionManager";
 import { config } from "@/config/env";
 import { toast } from "sonner";
-import { canEditPatients } from "@/utils/roleUtils";
+import { canEditPatients, isDoctor, isNurse } from "@/utils/roleUtils";
 import { getImageUrl } from '@/utils/imageUtils';
 import EditPatientModal from "@/components/EditPatientModal";
 
@@ -802,16 +802,20 @@ const PatientDetails = () => {
                   <span className="text-gray-600">Gender:</span>
                   <span>{patient.gender || 'Not specified'}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Phone className="w-4 h-4 text-gray-500" />
-                  <span className="text-gray-600">Phone:</span>
-                  <span>{patient.phone || 'Not provided'}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-gray-500" />
-                  <span className="text-gray-600">Email:</span>
-                  <span>{patient.email || 'Not provided'}</span>
-                </div>
+                {!isDoctor() && !isNurse() && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <Phone className="w-4 h-4 text-gray-500" />
+                      <span className="text-gray-600">Phone:</span>
+                      <span>{patient.phone || 'Not provided'}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Mail className="w-4 h-4 text-gray-500" />
+                      <span className="text-gray-600">Email:</span>
+                      <span>{patient.email || 'Not provided'}</span>
+                    </div>
+                  </>
+                )}
                 <div className="flex items-center gap-2">
                   <Heart className="w-4 h-4 text-red-500" />
                   <span className="text-gray-600">Blood Group:</span>
@@ -874,18 +878,20 @@ const PatientDetails = () => {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 gap-4 text-sm">
-                  <div>
-                    <span className="text-gray-600">Emergency Contact:</span>
-                    <p className="font-medium">
-                      {patient.emergencyContact?.name 
-                        ? `${patient.emergencyContact.name} (${patient.emergencyContact.relationship || 'Relationship not specified'})`
-                        : 'Not provided'
-                      }
-                    </p>
-                    {patient.emergencyContact?.phone && (
-                      <p className="text-gray-600 text-xs">{patient.emergencyContact.phone}</p>
-                    )}
-                  </div>
+                  {!isDoctor() && !isNurse() && (
+                    <div>
+                      <span className="text-gray-600">Emergency Contact:</span>
+                      <p className="font-medium">
+                        {patient.emergencyContact?.name 
+                          ? `${patient.emergencyContact.name} (${patient.emergencyContact.relationship || 'Relationship not specified'})`
+                          : 'Not provided'
+                        }
+                      </p>
+                      {patient.emergencyContact?.phone && (
+                        <p className="text-gray-600 text-xs">{patient.emergencyContact.phone}</p>
+                      )}
+                    </div>
+                  )}
                   <div>
                     <span className="text-gray-600">Insurance Provider:</span>
                     <p className="font-medium">{patient.insurance?.provider || 'Not provided'}</p>

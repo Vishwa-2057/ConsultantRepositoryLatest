@@ -39,6 +39,7 @@ class ActivityLogger {
       // Validate required fields
       if (!userId || !userName || !userEmail || !userRole || !clinicId || !clinicName || !activityType) {
         console.error('ActivityLogger: Missing required fields for logging activity');
+        console.error('Received fields:', { userId, userName, userEmail, userRole, clinicId, clinicName, activityType });
         return null;
       }
 

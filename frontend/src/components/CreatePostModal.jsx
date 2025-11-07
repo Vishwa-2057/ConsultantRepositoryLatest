@@ -86,14 +86,9 @@ const CreatePostModal = ({ isOpen, onClose, onPostCreated }) => {
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden p-0">
         <div className="flex flex-col h-full max-h-[85vh]">
           <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-4">
-            <DialogTitle className="flex items-center justify-between">
-              <span className="flex items-center space-x-2">
-                <FileText className="w-5 h-5" />
-                <span>Create New Post</span>
-              </span>
-              <Button variant="ghost" size="sm" onClick={handleClose} disabled={isSubmitting}>
-                <X className="w-4 h-4" />
-              </Button>
+            <DialogTitle className="flex items-center space-x-2">
+              <FileText className="w-5 h-5" />
+              <span>Create New Post</span>
             </DialogTitle>
           </DialogHeader>
 

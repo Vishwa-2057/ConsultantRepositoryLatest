@@ -28,7 +28,8 @@ import {
   Check,
   UserCheck,
   Shield,
-  Loader2
+  Loader2,
+  RotateCcw
 } from "lucide-react";
 import AppointmentModal from "@/components/AppointmentModal";
 import AppointmentViewModal from '../components/AppointmentViewModal';
@@ -76,6 +77,7 @@ const Dashboard = () => {
   const [isComplianceAlertModalOpen, setIsComplianceAlertModalOpen] = useState(false);
   const [isActivityLogsModalOpen, setIsActivityLogsModalOpen] = useState(false);
   const [appointments, setAppointments] = useState([]);
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [appointmentsLoading, setAppointmentsLoading] = useState(false);
   const [recentPatients, setRecentPatients] = useState([]);
   const [recentPatientsLoading, setRecentPatientsLoading] = useState(false);
@@ -215,10 +217,11 @@ const Dashboard = () => {
       setAppointmentsLoading(true);
       try {
         // For doctors, filter by doctorId to show only appointments they are conducting
+        // Fetch more appointments (100) to properly populate the calendar
         const filters = isDoctor() 
           ? { sortBy: 'date', sortOrder: 'asc', doctorId: currentUser?.id }
           : { sortBy: 'date', sortOrder: 'asc' };
-        const response = await appointmentAPI.getAll(1, 3, filters);
+        const response = await appointmentAPI.getAll(1, 100, filters);
         const appointmentsList = response.appointments || response.data || [];
         setAppointments(appointmentsList);
       } catch (error) {
@@ -426,7 +429,7 @@ const Dashboard = () => {
     }
   ] : [];
 
-  const stats = [...baseStats];
+  const stats = [...baseStats, ...clinicStats];
 
   // recentPatients are now loaded from the API
 
@@ -1022,13 +1025,13 @@ const Dashboard = () => {
                 Daily appointment bookings over the past week
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex justify-center items-center">
               {chartsLoading ? (
                 <div className="h-[150px] flex items-center justify-center">
                   <div className="text-muted-foreground">Loading chart data...</div>
                 </div>
               ) : (
-                <div style={{paddingTop: "40px", paddingRight:"100px"}}>
+                <div className="w-full flex justify-center" style={{paddingRight:"50px", paddingTop:"60px", border:"3px double #70ace8", borderRadius:"4px"}}>
                   <ChartContainer
                   config={{
                     appointments: {
@@ -1036,7 +1039,7 @@ const Dashboard = () => {
                       color: "hsl(var(--primary))",
                     },
                   }}
-                  className="h-[200px] sm:h-[250px] lg:h-[200px]"
+                  className="h-[200px] sm:h-[250px] lg:h-[200px] w-full max-w-[500px]"
                 >
                   <LineChart data={appointmentTrendData}>
                     <CartesianGrid strokeDasharray="3 3" />
@@ -1072,25 +1075,52 @@ const Dashboard = () => {
           {/* Appointment Calendar */}
           <Card className="border-0 shadow-soft">
             <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <CalendarDays className="w-4 h-4 text-primary" />
-                Appointment Calendar
-              </CardTitle>
-              <CardDescription className="text-xs">
-                View and manage your appointments
-              </CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <CalendarDays className="w-4 h-4 text-primary" />
+                    Appointment Calendar
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    View and manage your appointments
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCalendarMonth(new Date())}
+                  className="h-7 px-2 text-xs"
+                  title="Go to current month"
+                >
+                  <RotateCcw className="w-3 h-3 mr-1" />
+                  Today
+                </Button>
+              </div>
             </CardHeader>
-            <CardContent className="flex justify-center p-2">
-              <div className="flex justify-center w-full scale-x-110 scale-y-90 origin-top [&_.rdp]:text-xs [&_.rdp-day]:h-7 [&_.rdp-day]:w-14 [&_.rdp-cell]:h-7 [&_.rdp-cell]:w-14 [&_.rdp-head_cell]:w-14 [&_.rdp-head_cell]:text-xs [&_.rdp-nav_button]:h-6 [&_.rdp-nav_button]:w-6 [&_.rdp]:p-1 [&_.rdp-caption]:text-sm [&_.rdp-row]:mt-0.5 [&_.rdp-month]:space-y-2">
+            <CardContent className="flex justify-center p-4 bg-gradient-to-br from-background to-muted/20">
+              <div className="flex justify-center w-full">
                 <CalendarComponent
                   mode="single"
                   selected={new Date()}
-                  className="rounded-md border-0"
+                  month={calendarMonth}
+                  onMonthChange={setCalendarMonth}
+                  className="rounded-lg border-0 shadow-inner"
                   modifiers={{
-                    booked: appointments.map(apt => new Date(apt.date))
+                    booked: appointments.map(apt => {
+                      // Parse date string and create date at midnight local time
+                      const dateStr = apt.date.split('T')[0]; // Get YYYY-MM-DD part
+                      const [year, month, day] = dateStr.split('-').map(Number);
+                      return new Date(year, month - 1, day);
+                    }),
+                    todayWithAppointment: appointments.some(apt => {
+                      const dateStr = apt.date.split('T')[0];
+                      const today = new Date().toISOString().split('T')[0];
+                      return dateStr === today;
+                    }) ? [new Date()] : []
                   }}
                   modifiersClassNames={{
-                    booked: "bg-primary/20 text-primary font-bold"
+                    booked: "bg-gradient-to-br from-purple-100 to-violet-100 dark:from-purple-900/40 dark:to-violet-900/40 text-purple-700 dark:text-purple-300 font-bold hover:from-purple-200 hover:to-violet-200 dark:hover:from-purple-800/50 dark:hover:to-violet-800/50 border border-purple-300 dark:border-purple-700 shadow-sm",
+                    todayWithAppointment: "!bg-gradient-to-br !from-blue-100 !to-indigo-100 dark:!from-blue-900 dark:!to-indigo-900 !text-blue-600 dark:!text-blue-200 font-bold ring-2 ring-primary/50 ring-offset-2 shadow-lg border-2 !border-primary"
                   }}
                 />
               </div>
@@ -1099,23 +1129,22 @@ const Dashboard = () => {
         </div>
 
         {/* Stats Column - Responsive layout */}
-        <div className="xl:col-span-1 grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 xl:grid-cols-1">
+        <div className="xl:col-span-1 grid gap-2.5 grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 content-start">
           {stats.map((stat, index) => (
             <Card 
               key={index} 
               className="border-0 shadow-soft hover:shadow-medical transition-all duration-200"
             >
-              <CardContent className="p-4 sm:p-6">
-                <div className="flex items-center justify-between">
+              <CardContent className="p-3">
+                <div className="flex items-center justify-between gap-2.5">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-muted-foreground truncate">{stat.title}</p>
-                    <p className="text-xl sm:text-2xl font-bold text-foreground">{stat.value}</p>
-                    <p className={`text-xs sm:text-sm ${stat.color} truncate`}>{stat.change}</p>
+                    <p className="text-xs font-medium text-muted-foreground truncate">{stat.title}</p>
+                    <p className="text-lg font-bold text-foreground mt-0.5">{stat.value}</p>
                   </div>
                   <div 
-                    className={`p-2 sm:p-3 rounded-lg bg-gradient-primary/10 flex-shrink-0`}
+                    className={`p-2 rounded-lg bg-gradient-primary/10 flex-shrink-0`}
                   >
-                    <stat.icon className={`w-5 h-5 sm:w-6 sm:h-6 ${stat.color}`} />
+                    <stat.icon className={`w-5 h-5 ${stat.color}`} />
                   </div>
                 </div>
               </CardContent>
@@ -1124,32 +1153,6 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Clinic-specific Stats Row - Only for clinic users */}
-      {(currentUser?.role === 'clinic' || currentUser?.isClinic) && clinicStats.length > 0 && (
-        <div className="grid gap-4 sm:gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-          {clinicStats.map((stat, index) => (
-            <Card 
-              key={index} 
-              className="border-0 shadow-soft hover:shadow-medical transition-all duration-200"
-            >
-              <CardContent className="p-4 sm:p-6">
-                <div className="flex items-center justify-between">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-muted-foreground truncate">{stat.title}</p>
-                    <p className="text-xl sm:text-2xl font-bold text-foreground">{stat.value}</p>
-                    <p className={`text-xs sm:text-sm ${stat.color} truncate`}>{stat.change}</p>
-                  </div>
-                  <div 
-                    className={`p-2 sm:p-3 rounded-lg bg-gradient-primary/10 flex-shrink-0`}
-                  >
-                    <stat.icon className={`w-5 h-5 sm:w-6 sm:h-6 ${stat.color}`} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
 
       {/* Appointment Modal */}
       <AppointmentModal
