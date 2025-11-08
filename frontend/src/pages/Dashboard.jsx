@@ -57,11 +57,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { patientAPI, appointmentAPI, consultationAPI, complianceAlertAPI, invoiceAPI, revenueAPI, doctorAPI, nurseAPI } from "@/services/api";
- 
-import { Link } from "react-router-dom";
+import { patientAPI, appointmentAPI, consultationAPI, complianceAlertAPI, invoiceAPI, revenueAPI, doctorAPI, nurseAPI, clinicAPI } from "@/services/api";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Link, useNavigate } from "react-router-dom";
 
 const Dashboard = () => {
+  const navigate = useNavigate();
+  
   // Get current user from localStorage
   const [currentUser, setCurrentUser] = useState(() => {
     try {
@@ -83,8 +85,12 @@ const Dashboard = () => {
   const [recentPatientsLoading, setRecentPatientsLoading] = useState(false);
   const [totalPatients, setTotalPatients] = useState(0);
   const [totalPatientsLoading, setTotalPatientsLoading] = useState(true);
+  const [monthlyPatients, setMonthlyPatients] = useState(0);
+  const [monthlyPatientsLoading, setMonthlyPatientsLoading] = useState(true);
   const [todayAppointments, setTodayAppointments] = useState(0);
   const [todayAppointmentsLoading, setTodayAppointmentsLoading] = useState(true);
+  const [yesterdayAppointments, setYesterdayAppointments] = useState(0);
+  const [yesterdayAppointmentsLoading, setYesterdayAppointmentsLoading] = useState(true);
   const [monthlyRevenue, setMonthlyRevenue] = useState(0);
   const [monthlyRevenueChange, setMonthlyRevenueChange] = useState("+0%");
   const [monthlyRevenueLoading, setMonthlyRevenueLoading] = useState(true);
@@ -97,6 +103,7 @@ const Dashboard = () => {
   const [totalDoctorsLoading, setTotalDoctorsLoading] = useState(true);
   const [totalNurses, setTotalNurses] = useState(0);
   const [totalNursesLoading, setTotalNursesLoading] = useState(true);
+  const [clinicOwnerName, setClinicOwnerName] = useState('');
   
   const { toast } = useToast();
 
@@ -211,6 +218,42 @@ const Dashboard = () => {
     loadCarouselImages();
   }, []);
 
+  // Load clinic owner name
+  useEffect(() => {
+    const loadClinicOwner = async () => {
+      console.log('Loading clinic owner - isClinic:', isClinic());
+      console.log('Current user:', currentUser);
+      
+      if (isClinic()) {
+        try {
+          // Use getProfile to get the current clinic's data
+          const response = await clinicAPI.getProfile();
+          console.log('Clinic data received:', response);
+          
+          // Handle nested response structure
+          const clinicData = response?.data || response;
+          console.log('Extracted clinic data:', clinicData);
+          
+          // Only use ownerName field from clinic data
+          const ownerName = clinicData?.ownerName;
+          
+          console.log('Owner name extracted:', ownerName);
+          
+          if (ownerName) {
+            setClinicOwnerName(ownerName);
+          } else {
+            console.log('No ownerName field found in clinic data');
+            console.log('Available fields:', Object.keys(clinicData || {}));
+          }
+        } catch (error) {
+          console.error('Failed to load clinic owner name:', error);
+        }
+      }
+    };
+
+    loadClinicOwner();
+  }, [currentUser]);
+
   // Load appointments from API when component mounts
   useEffect(() => {
     const loadAppointments = async () => {
@@ -261,7 +304,7 @@ const Dashboard = () => {
     loadChartData();
   }, []);
 
-  // Load total patients count
+  // Load total patients count and this month's registrations
   useEffect(() => {
     const loadTotalPatients = async () => {
       setTotalPatientsLoading(true);
@@ -276,10 +319,42 @@ const Dashboard = () => {
         setTotalPatientsLoading(false);
       }
     };
+    
+    const loadMonthlyPatients = async () => {
+      setMonthlyPatientsLoading(true);
+      try {
+        // Get all patients and filter by this month's registration
+        const response = await patientAPI.getAll(1, 1000); // Get more patients to filter
+        const patients = response?.patients || response?.data || [];
+        
+        // Get current month and year
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+        
+        // Filter patients registered this month
+        const monthlyCount = patients.filter(patient => {
+          if (patient.createdAt) {
+            const createdDate = new Date(patient.createdAt);
+            return createdDate.getMonth() === currentMonth && createdDate.getFullYear() === currentYear;
+          }
+          return false;
+        }).length;
+        
+        setMonthlyPatients(monthlyCount);
+      } catch (error) {
+        console.error('Failed to load monthly patients:', error);
+        setMonthlyPatients(0);
+      } finally {
+        setMonthlyPatientsLoading(false);
+      }
+    };
+    
     loadTotalPatients();
+    loadMonthlyPatients();
   }, []);
 
-  // Load today's appointments count
+  // Load today's and yesterday's appointments count
   useEffect(() => {
     const loadTodayAppointments = async () => {
       setTodayAppointmentsLoading(true);
@@ -298,7 +373,27 @@ const Dashboard = () => {
         setTodayAppointmentsLoading(false);
       }
     };
+    
+    const loadYesterdayAppointments = async () => {
+      setYesterdayAppointmentsLoading(true);
+      try {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayDate = yesterday.toISOString().split('T')[0]; // YYYY-MM-DD format
+        const filters = { date: yesterdayDate };
+        const response = await appointmentAPI.getAll(1, 100, filters);
+        const yesterdayCount = response?.appointments?.length || 0;
+        setYesterdayAppointments(yesterdayCount);
+      } catch (error) {
+        console.error('Failed to load yesterday\'s appointments:', error);
+        setYesterdayAppointments(0);
+      } finally {
+        setYesterdayAppointmentsLoading(false);
+      }
+    };
+    
     loadTodayAppointments();
+    loadYesterdayAppointments();
   }, []);
 
   // Load current month revenue
@@ -382,21 +477,45 @@ const Dashboard = () => {
       value: todayAppointmentsLoading ? "…" : todayAppointments.toString(),
       change: "",
       icon: Calendar,
-      color: "text-secondary"
+      color: "text-secondary",
+      route: "/appointments",
+      details: {
+        description: "Appointments scheduled for today and yesterday",
+        metrics: [
+          { label: "Today", value: todayAppointmentsLoading ? "…" : todayAppointments },
+          { label: "Yesterday", value: yesterdayAppointmentsLoading ? "…" : yesterdayAppointments }
+        ]
+      }
     },
     {
       title: "Total Patients",
       value: totalPatientsLoading ? "…" : totalPatients.toLocaleString(),
       change: "",
       icon: Users,
-      color: "text-primary"
+      color: "text-primary",
+      route: "/patients",
+      details: {
+        description: "Total number of registered patients in the system",
+        metrics: [
+          { label: "Registered", value: totalPatientsLoading ? "…" : totalPatients },
+          { label: `Registered (${new Date().toLocaleString('en-US', { month: 'short' })})`, value: monthlyPatientsLoading ? "…" : monthlyPatients }
+        ]
+      }
     },
     {
       title: "Total Doctors",
       value: totalDoctorsLoading ? "…" : totalDoctors.toLocaleString(),
       change: "",
       icon: UserCheck,
-      color: "text-blue-600"
+      color: "text-blue-600",
+      route: "/doctors",
+      details: {
+        description: "Total number of doctors in the clinic",
+        metrics: [
+          { label: "Active Doctors", value: totalDoctors },
+          { label: "Status", value: "Available" }
+        ]
+      }
     }
   ];
 
@@ -412,20 +531,46 @@ const Dashboard = () => {
       value: totalNursesLoading ? "…" : totalNurses.toLocaleString(),
       change: "",
       icon: Shield,
-      color: "text-green-600"
+      color: "text-green-600",
+      route: "/nurses",
+      details: {
+        description: "Total nursing staff in the clinic",
+        metrics: [
+          { label: "Active Nurses", value: totalNurses },
+          { label: "Department", value: "All" }
+        ]
+      }
     },
     {
       title: "Compliance Rate",
       value: complianceRateLoading ? "…" : `${complianceRate}%`,
       icon: CheckCircle,
-      color: "text-success"
+      color: "text-success",
+      route: null, // No navigation for compliance rate
+      details: {
+        description: "Overall compliance rate for healthcare standards",
+        metrics: [
+          { label: "Current Rate", value: `${complianceRate}%` },
+          { label: "Target", value: "95%" },
+          { label: "Status", value: complianceRate >= 95 ? "Excellent" : complianceRate >= 90 ? "Good" : "Needs Improvement" }
+        ]
+      }
     },
     {
       title: "Revenue (Month)",
       value: monthlyRevenueLoading ? "…" : `₹${monthlyRevenue.toLocaleString('en-IN')}`,
       change: monthlyRevenueChange,
       icon: TrendingUp,
-      color: "text-warning"
+      color: "text-warning",
+      route: "/invoices",
+      details: {
+        description: "Total revenue generated this month",
+        metrics: [
+          { label: "This Month", value: `₹${monthlyRevenue.toLocaleString('en-IN')}` },
+          { label: "Change", value: monthlyRevenueChange },
+          { label: "Trend", value: monthlyRevenueChange.startsWith('+') ? "Increasing" : "Decreasing" }
+        ]
+      }
     }
   ] : [];
 
@@ -982,7 +1127,9 @@ const Dashboard = () => {
     {/* Header */}
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
       <div>
-        <p className="text-sm sm:text-base text-muted-foreground">Welcome back, {currentUser?.name || currentUser?.fullName || 'User'}. Here's your overview.</p>
+        <p className="text-sm sm:text-base text-muted-foreground">
+          Welcome back, {isClinic() && clinicOwnerName ? clinicOwnerName : (currentUser?.name || currentUser?.fullName || 'User')}. Here's your overview.
+        </p>
       </div>
       {isClinic() && (
         <Button 
@@ -1004,153 +1151,176 @@ const Dashboard = () => {
           images={carouselImages} 
           autoPlay={true} 
           interval={4000}
-          onEdit={isClinic() ? handleEditCarouselImage : undefined}
-          onDelete={isClinic() ? handleDeleteCarouselImage : undefined}
-          onAdd={isClinic() ? handleAddCarouselImage : undefined}
         />
       </div>
 
-      {/* Main Content Grid - Charts and Stats */}
+      {/* Main Content Grid - Stats, Chart, and Calendar */}
       <div className="grid gap-4 sm:gap-6 xl:grid-cols-3">
-        {/* Charts Section - Takes 2 columns on desktop */}
-        <div className="xl:col-span-2 grid gap-4 sm:gap-6 lg:grid-cols-2">
-          {/* Appointments Trend Chart */}
-          <Card className="border-0 shadow-soft">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-primary" />
-                Appointment Trends (7 Days)
-              </CardTitle>
-              <CardDescription>
-                Daily appointment bookings over the past week
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex justify-center items-center">
-              {chartsLoading ? (
-                <div className="h-[150px] flex items-center justify-center">
-                  <div className="text-muted-foreground">Loading chart data...</div>
-                </div>
-              ) : (
-                <div className="w-full flex justify-center" style={{paddingRight:"50px", paddingTop:"60px", border:"3px double #70ace8", borderRadius:"4px"}}>
-                  <ChartContainer
-                  config={{
-                    appointments: {
-                      label: "Appointments",
-                      color: "hsl(var(--primary))",
-                    },
-                  }}
-                  className="h-[200px] sm:h-[250px] lg:h-[200px] w-full max-w-[500px]"
-                >
-                  <LineChart data={appointmentTrendData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="date" 
-                      fontSize={12}
-                      tickLine={false}
-                      axisLine={false}
-                      domain={['dataMin', 'dataMax']}
-                      ticks={appointmentTrendData.length > 0 ? [appointmentTrendData[0]?.date, appointmentTrendData[appointmentTrendData.length - 1]?.date] : []}
-                    />
-                    <YAxis 
-                      fontSize={12}
-                      tickLine={false}
-                      axisLine={false}
-                    />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Line 
-                      type="monotone" 
-                      dataKey="appointments" 
-                      stroke="var(--color-appointments)" 
-                      strokeWidth={2}
-                      dot={{ fill: "var(--color-appointments)" }}
-                    />
-                  </LineChart>
-                </ChartContainer>
-                </div>
-                
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Appointment Calendar */}
-          <Card className="border-0 shadow-soft">
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <CalendarDays className="w-4 h-4 text-primary" />
-                    Appointment Calendar
-                  </CardTitle>
-                  <CardDescription className="text-xs">
-                    View and manage your appointments
-                  </CardDescription>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCalendarMonth(new Date())}
-                  className="h-7 px-2 text-xs"
-                  title="Go to current month"
-                >
-                  <RotateCcw className="w-3 h-3 mr-1" />
-                  Today
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="flex justify-center p-4 bg-gradient-to-br from-background to-muted/20">
-              <div className="flex justify-center w-full">
-                <CalendarComponent
-                  mode="single"
-                  selected={new Date()}
-                  month={calendarMonth}
-                  onMonthChange={setCalendarMonth}
-                  className="rounded-lg border-0 shadow-inner"
-                  modifiers={{
-                    booked: appointments.map(apt => {
-                      // Parse date string and create date at midnight local time
-                      const dateStr = apt.date.split('T')[0]; // Get YYYY-MM-DD part
-                      const [year, month, day] = dateStr.split('-').map(Number);
-                      return new Date(year, month - 1, day);
-                    }),
-                    todayWithAppointment: appointments.some(apt => {
-                      const dateStr = apt.date.split('T')[0];
-                      const today = new Date().toISOString().split('T')[0];
-                      return dateStr === today;
-                    }) ? [new Date()] : []
-                  }}
-                  modifiersClassNames={{
-                    booked: "bg-gradient-to-br from-purple-100 to-violet-100 dark:from-purple-900/40 dark:to-violet-900/40 text-purple-700 dark:text-purple-300 font-bold hover:from-purple-200 hover:to-violet-200 dark:hover:from-purple-800/50 dark:hover:to-violet-800/50 border border-purple-300 dark:border-purple-700 shadow-sm",
-                    todayWithAppointment: "!bg-gradient-to-br !from-blue-100 !to-indigo-100 dark:!from-blue-900 dark:!to-indigo-900 !text-blue-600 dark:!text-blue-200 font-bold ring-2 ring-primary/50 ring-offset-2 shadow-lg border-2 !border-primary"
-                  }}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Stats Column - Responsive layout */}
+        {/* Stats Column - Left side */}
         <div className="xl:col-span-1 grid gap-2.5 grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 content-start">
-          {stats.map((stat, index) => (
-            <Card 
-              key={index} 
-              className="border-0 shadow-soft hover:shadow-medical transition-all duration-200"
-            >
-              <CardContent className="p-3">
-                <div className="flex items-center justify-between gap-2.5">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-medium text-muted-foreground truncate">{stat.title}</p>
-                    <p className="text-lg font-bold text-foreground mt-0.5">{stat.value}</p>
-                  </div>
-                  <div 
-                    className={`p-2 rounded-lg bg-gradient-primary/10 flex-shrink-0`}
+          <TooltipProvider delayDuration={200}>
+            {stats.map((stat, index) => (
+              <Tooltip key={index}>
+                <TooltipTrigger asChild>
+                  <Card 
+                    className="border-0 shadow-soft hover:shadow-2xl hover:scale-105 hover:-translate-y-1 transition-all duration-300 cursor-pointer group"
+                    onClick={() => stat.route && navigate(stat.route)}
                   >
-                    <stat.icon className={`w-5 h-5 ${stat.color}`} />
+                    <CardContent className="p-3">
+                      <div className="flex items-center justify-between gap-2.5">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium text-muted-foreground truncate group-hover:text-primary transition-colors duration-300">{stat.title}</p>
+                          <p className="text-lg font-bold text-foreground mt-0.5 group-hover:scale-110 transition-transform duration-300 origin-left">{stat.value}</p>
+                        </div>
+                        <div 
+                          className={`p-2 rounded-lg bg-gradient-primary/10 flex-shrink-0 group-hover:scale-110 group-hover:rotate-6 transition-all duration-300`}
+                        >
+                          <stat.icon className={`w-5 h-5 ${stat.color} group-hover:animate-pulse`} />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TooltipTrigger>
+                <TooltipContent 
+                  side="right" 
+                  className="max-w-xs p-4 bg-gradient-to-br from-background to-muted border-2 border-primary/20 shadow-xl"
+                  sideOffset={10}
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 pb-2 border-b border-border">
+                      <stat.icon className={`w-5 h-5 ${stat.color}`} />
+                      <h4 className="font-semibold text-sm">{stat.title}</h4>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      {stat.details?.description}
+                    </p>
+                    <div className="space-y-2 pt-2">
+                      {stat.details?.metrics.map((metric, idx) => (
+                        <div key={idx} className="flex justify-between items-center text-xs">
+                          <span className="text-muted-foreground font-medium">{metric.label}:</span>
+                          <span className="font-semibold text-foreground">{metric.value}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </TooltipContent>
+              </Tooltip>
+            ))}
+          </TooltipProvider>
         </div>
+
+        {/* Appointments Trend Chart - Middle */}
+        <Card className="border-0 shadow-soft xl:col-span-1">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-primary" />
+              Appointment Trends (7 Days)
+            </CardTitle>
+            <CardDescription>
+              Daily appointment bookings over the past week
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex justify-center items-center">
+            {chartsLoading ? (
+              <div className="h-[150px] flex items-center justify-center">
+                <div className="text-muted-foreground">Loading chart data...</div>
+              </div>
+            ) : (
+              <div className="w-full flex justify-center" style={{paddingRight:"50px", paddingTop:"60px", border:"3px double #70ace8", borderRadius:"4px"}}>
+                <ChartContainer
+                config={{
+                  appointments: {
+                    label: "Appointments",
+                    color: "hsl(var(--primary))",
+                  },
+                }}
+                className="h-[200px] sm:h-[250px] lg:h-[200px] w-full max-w-[500px]"
+              >
+                <LineChart data={appointmentTrendData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis 
+                    dataKey="date" 
+                    fontSize={12}
+                    tickLine={false}
+                    axisLine={false}
+                    domain={['dataMin', 'dataMax']}
+                    ticks={appointmentTrendData.length > 0 ? [appointmentTrendData[0]?.date, appointmentTrendData[appointmentTrendData.length - 1]?.date] : []}
+                  />
+                  <YAxis 
+                    fontSize={12}
+                    tickLine={false}
+                    axisLine={false}
+                  />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Line 
+                    type="monotone" 
+                    dataKey="appointments" 
+                    stroke="var(--color-appointments)" 
+                    strokeWidth={2}
+                    dot={{ fill: "var(--color-appointments)" }}
+                  />
+                </LineChart>
+              </ChartContainer>
+              </div>
+              
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Appointment Calendar - Right side */}
+        <Card className="border-0 shadow-soft xl:col-span-1">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <CalendarDays className="w-4 h-4 text-primary" />
+                  Appointment Calendar
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  View and manage your appointments
+                </CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCalendarMonth(new Date())}
+                className="h-7 px-2 text-xs"
+                title="Go to current month"
+              >
+                <RotateCcw className="w-3 h-3 mr-1" />
+                Today
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="flex justify-center p-4 bg-gradient-to-br from-background to-muted/20">
+            <div className="flex justify-center w-full">
+              <CalendarComponent
+                mode="single"
+                selected={new Date()}
+                month={calendarMonth}
+                onMonthChange={setCalendarMonth}
+                className="rounded-lg border-0 shadow-inner"
+                modifiers={{
+                  booked: appointments.map(apt => {
+                    // Parse date string and create date at midnight local time
+                    const dateStr = apt.date.split('T')[0]; // Get YYYY-MM-DD part
+                    const [year, month, day] = dateStr.split('-').map(Number);
+                    return new Date(year, month - 1, day);
+                  }),
+                  todayWithAppointment: appointments.some(apt => {
+                    const dateStr = apt.date.split('T')[0];
+                    const today = new Date().toISOString().split('T')[0];
+                    return dateStr === today;
+                  }) ? [new Date()] : []
+                }}
+                modifiersClassNames={{
+                  booked: "bg-gradient-to-br from-purple-100 to-violet-100 dark:from-purple-900/40 dark:to-violet-900/40 text-purple-700 dark:text-purple-300 font-bold hover:from-purple-200 hover:to-violet-200 dark:hover:from-purple-800/50 dark:hover:to-violet-800/50 border border-purple-300 dark:border-purple-700 shadow-sm",
+                  todayWithAppointment: "!bg-gradient-to-br !from-blue-100 !to-indigo-100 dark:!from-blue-900 dark:!to-indigo-900 !text-blue-600 dark:!text-blue-200 font-bold ring-2 ring-primary/50 ring-offset-2 shadow-lg border-2 !border-primary"
+                }}
+              />
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
 

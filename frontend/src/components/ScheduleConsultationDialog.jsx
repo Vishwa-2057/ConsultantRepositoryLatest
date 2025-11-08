@@ -45,10 +45,7 @@ const ScheduleConsultationDialog = ({ open, onOpenChange, onSuccess }) => {
 
   const consultationTypes = [
     { value: "General", label: "General Consultation", icon: User },
-    { value: "Specialist", label: "Specialist Consultation", icon: Users },
-    { value: "Follow-up", label: "Follow-up Visit", icon: Clock },
-    { value: "Emergency", label: "Emergency Consultation", icon: Phone },
-    { value: "Telemedicine", label: "Telemedicine", icon: Video }
+    { value: "Follow-up", label: "Follow-up Visit", icon: Clock }
   ];
 
   const consultationModes = [

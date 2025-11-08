@@ -43,7 +43,7 @@ const ForgotPasswordModal = ({ isOpen, onClose }) => {
 
       if (response.success) {
         setStep(2);
-        setSuccess('Password reset code sent to your email address.');
+        setSuccess('OTP sent to your email address.');
       } else {
         setError(response.error || response.message || 'Failed to send reset code');
       }
@@ -99,7 +99,7 @@ const ForgotPasswordModal = ({ isOpen, onClose }) => {
       const response = await authAPI.forgotPassword(email.trim());
 
       if (response.success) {
-        setSuccess('New password reset code sent to your email address.');
+        setSuccess('New OTP sent to your email address.');
       } else {
         setError(response.error || response.message || 'Failed to resend reset code');
       }

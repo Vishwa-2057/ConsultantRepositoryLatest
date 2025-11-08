@@ -42,6 +42,87 @@ import { doctorAPI } from "@/services/api";
 import { getImageUrl } from '@/utils/imageUtils';
 // Removed direct Cloudinary import - now using backend upload endpoint
 
+// Password validation function
+const validatePasswordStrength = (password) => {
+  const minLength = 8;
+  const hasUpperCase = /[A-Z]/.test(password);
+  const hasLowerCase = /[a-z]/.test(password);
+  const hasNumber = /[0-9]/.test(password);
+  const hasSpecialChar = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password);
+  
+  if (password.length < minLength) {
+    return {
+      isValid: false,
+      message: `Password must be at least ${minLength} characters long.`
+    };
+  }
+  
+  if (!hasUpperCase) {
+    return {
+      isValid: false,
+      message: "Password must contain at least one uppercase letter (A-Z)."
+    };
+  }
+  
+  if (!hasLowerCase) {
+    return {
+      isValid: false,
+      message: "Password must contain at least one lowercase letter (a-z)."
+    };
+  }
+  
+  if (!hasNumber) {
+    return {
+      isValid: false,
+      message: "Password must contain at least one number (0-9)."
+    };
+  }
+  
+  if (!hasSpecialChar) {
+    return {
+      isValid: false,
+      message: "Password must contain at least one special character (!@#$%^&*...)."
+    };
+  }
+  
+  return {
+    isValid: true,
+    message: "Strong password!"
+  };
+};
+
+// Calculate password strength score
+const calculatePasswordStrength = (password) => {
+  if (!password) {
+    return { score: 0, message: '', color: '' };
+  }
+  
+  let score = 0;
+  const checks = {
+    length: password.length >= 8,
+    uppercase: /[A-Z]/.test(password),
+    lowercase: /[a-z]/.test(password),
+    number: /[0-9]/.test(password),
+    special: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)
+  };
+  
+  // Calculate score
+  if (checks.length) score++;
+  if (checks.uppercase) score++;
+  if (checks.lowercase) score++;
+  if (checks.number) score++;
+  if (checks.special) score++;
+  
+  // Determine strength message and color
+  if (score === 5) {
+    return { score: 5, message: 'Strong password', color: 'text-green-600' };
+  } else if (score >= 3) {
+    return { score, message: 'Medium strength', color: 'text-yellow-600' };
+  } else {
+    return { score, message: 'Weak password', color: 'text-red-600' };
+  }
+};
+
 const DoctorsManagement = () => {
   const [doctors, setDoctors] = useState([]);
   const [doctorsLoading, setDoctorsLoading] = useState(false);
@@ -49,6 +130,7 @@ const DoctorsManagement = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [passwordStrength, setPasswordStrength] = useState({ score: 0, message: '', color: '' });
   const [expandedDoctors, setExpandedDoctors] = useState(new Set());
   const [sameAsCurrent, setSameAsCurrent] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
@@ -337,10 +419,11 @@ const DoctorsManagement = () => {
     }
 
     // Validate password strength
-    if (doctorForm.password.length < 6) {
+    const passwordValidation = validatePasswordStrength(doctorForm.password);
+    if (!passwordValidation.isValid) {
       toast({
         title: "Weak Password",
-        description: "Password must be at least 6 characters long for security.",
+        description: passwordValidation.message,
         variant: "destructive"
       });
       return;
@@ -457,6 +540,8 @@ const DoctorsManagement = () => {
         setSelectedImage(null);
         setImagePreview(null);
         setSameAsCurrent(false);
+        // Reset password strength
+        setPasswordStrength({ score: 0, message: '', color: '' });
         loadDoctors();
       } else {
         toast({
@@ -1305,7 +1390,7 @@ const DoctorsManagement = () => {
                     </p>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4">
                   <div>
                     <Label htmlFor="password">Password *</Label>
                     <div className="relative">
@@ -1313,7 +1398,11 @@ const DoctorsManagement = () => {
                         id="password"
                         type={showPassword ? "text" : "password"}
                         value={doctorForm.password}
-                        onChange={(e) => setDoctorForm({...doctorForm, password: e.target.value})}
+                        onChange={(e) => {
+                          const newPassword = e.target.value;
+                          setDoctorForm({...doctorForm, password: newPassword});
+                          setPasswordStrength(calculatePasswordStrength(newPassword));
+                        }}
                         placeholder="Enter secure password"
                         disabled={submitting || uploadingImage}
                       />
@@ -1328,6 +1417,51 @@ const DoctorsManagement = () => {
                         {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
                     </div>
+                    
+                    {/* Password Strength Indicator */}
+                    {doctorForm.password && (
+                      <div className="mt-2 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                            <div 
+                              className={`h-full transition-all duration-300 ${
+                                passwordStrength.score === 5 ? 'bg-green-500' :
+                                passwordStrength.score >= 3 ? 'bg-yellow-500' :
+                                'bg-red-500'
+                              }`}
+                              style={{ width: `${(passwordStrength.score / 5) * 100}%` }}
+                            />
+                          </div>
+                          <span className={`text-xs font-medium ${passwordStrength.color}`}>
+                            {passwordStrength.message}
+                          </span>
+                        </div>
+                        
+                        {/* Password Requirements Checklist */}
+                        <div className="text-xs space-y-1 text-gray-600">
+                          <div className={`flex items-center gap-1 ${doctorForm.password.length >= 8 ? 'text-green-600' : ''}`}>
+                            {doctorForm.password.length >= 8 ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                            <span>At least 8 characters</span>
+                          </div>
+                          <div className={`flex items-center gap-1 ${/[A-Z]/.test(doctorForm.password) ? 'text-green-600' : ''}`}>
+                            {/[A-Z]/.test(doctorForm.password) ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                            <span>One uppercase letter (A-Z)</span>
+                          </div>
+                          <div className={`flex items-center gap-1 ${/[a-z]/.test(doctorForm.password) ? 'text-green-600' : ''}`}>
+                            {/[a-z]/.test(doctorForm.password) ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                            <span>One lowercase letter (a-z)</span>
+                          </div>
+                          <div className={`flex items-center gap-1 ${/[0-9]/.test(doctorForm.password) ? 'text-green-600' : ''}`}>
+                            {/[0-9]/.test(doctorForm.password) ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                            <span>One number (0-9)</span>
+                          </div>
+                          <div className={`flex items-center gap-1 ${/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(doctorForm.password) ? 'text-green-600' : ''}`}>
+                            {/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(doctorForm.password) ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                            <span>One special character (!@#$%...)</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

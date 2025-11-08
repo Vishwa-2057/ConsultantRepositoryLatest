@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -10,7 +11,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Calendar, Clock, User, Phone, MapPin, AlertCircle, CheckCircle, XCircle, Plus, Search, Filter, Edit, CalendarDays, Users, TrendingUp, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FileText, Calendar as CalendarIcon, Info, Video, MessageCircle, Check, ChevronsUpDown, Link as LinkIcon, Share2, Copy } from 'lucide-react';
+import { Calendar, Clock, User, Phone, MapPin, AlertCircle, CheckCircle, XCircle, Plus, Search, Filter, Edit, CalendarDays, Users, TrendingUp, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, FileText, Calendar as CalendarIcon, Info, Video, MessageCircle, Check, ChevronsUpDown, Link as LinkIcon, Share2, Copy, Eye, X, Mail } from 'lucide-react';
 import { cn } from "@/lib/utils";
 import { toast } from 'sonner';
 import { appointmentAPI, patientAPI, doctorAPI, doctorAvailabilityAPI } from '@/services/api';
@@ -77,6 +78,8 @@ const AppointmentManagement = () => {
   const [loadingPaymentLink, setLoadingPaymentLink] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('online'); // 'online' or 'cash'
   const [appointmentInvoices, setAppointmentInvoices] = useState({});
+  const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
   const API_BASE_URL = config.API_BASE_URL || 'http://localhost:5000/api';
   const [formData, setFormData] = useState({
     patientId: '',
@@ -96,15 +99,7 @@ const AppointmentManagement = () => {
 
   const appointmentTypes = [
     'General Consultation',
-    'Follow-up Visit', 
-    'Annual Checkup',
-    'Specialist Consultation',
-    'Emergency Visit',
-    'Lab Work',
-    'Imaging',
-    'Vaccination',
-    'Physical Therapy',
-    'Mental Health'
+    'Follow-up Visit'
   ];
 
   const statusOptions = [
@@ -215,6 +210,19 @@ const AppointmentManagement = () => {
     } catch (error) {
       console.error('Error loading stats:', error);
     }
+  };
+
+  // Calculate monthly appointments count
+  const getMonthlyAppointmentsCount = () => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    
+    return appointments.filter(appointment => {
+      const appointmentDate = new Date(appointment.date);
+      return appointmentDate.getMonth() === currentMonth && 
+             appointmentDate.getFullYear() === currentYear;
+    }).length;
   };
 
   const loadPatients = async () => {
@@ -386,6 +394,12 @@ const AppointmentManagement = () => {
   };
 
   const handleCreateAppointment = async (forceCreate = false) => {
+    // Validate required fields
+    if (!formData.reason || !formData.reason.trim()) {
+      toast.error('Please provide a reason for the appointment');
+      return;
+    }
+    
     setSubmitting(true);
     try {
       // Check for conflicts first (unless forcing creation)
@@ -411,7 +425,10 @@ const AppointmentManagement = () => {
       }
 
       // No conflicts or force create - proceed with creation
-      const appointmentData = forceCreate ? { ...formData, forceCreate: true } : formData;
+      // Set status to Scheduled by default
+      const appointmentData = forceCreate 
+        ? { ...formData, forceCreate: true, status: 'Scheduled' } 
+        : { ...formData, status: 'Scheduled' };
       const response = await appointmentAPI.create(appointmentData);
       
       // Slot booking removed - using manual date/time selection
@@ -604,6 +621,46 @@ const AppointmentManagement = () => {
                 throw new Error('Payment verification failed');
               }
 
+              // Update appointment status to Scheduled after successful payment
+              try {
+                await fetch(`${API_BASE_URL}/appointments/${createdAppointment._id}`, {
+                  method: 'PATCH',
+                  headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify({ status: 'Scheduled' })
+                });
+              } catch (statusError) {
+                console.error('Error updating appointment status:', statusError);
+              }
+              
+              // Update invoice status to approved after successful payment
+              try {
+                const invoicesResponse = await fetch(`${API_BASE_URL}/appointment-invoices?appointmentId=${createdAppointment._id}`, {
+                  headers: {
+                    'Authorization': `Bearer ${token}`
+                  }
+                });
+                
+                if (invoicesResponse.ok) {
+                  const invoicesData = await invoicesResponse.json();
+                  if (invoicesData.invoices && invoicesData.invoices.length > 0) {
+                    const invoice = invoicesData.invoices[0];
+                    await fetch(`${API_BASE_URL}/appointment-invoices/${invoice._id}`, {
+                      method: 'PATCH',
+                      headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                      },
+                      body: JSON.stringify({ status: 'approved' })
+                    });
+                  }
+                }
+              } catch (invoiceError) {
+                console.error('Error updating invoice status:', invoiceError);
+              }
+              
               toast.success('Payment successful! Appointment confirmed.');
               setIsPaymentDialogOpen(false);
               resetForm();
@@ -678,18 +735,35 @@ const AppointmentManagement = () => {
         if (invoicesData.invoices && invoicesData.invoices.length > 0) {
           const invoice = invoicesData.invoices[0];
           
-          // Update payment method to cash (status remains unapproved)
+          // Update payment method to cash and set status to approved
           await fetch(`${API_BASE_URL}/appointment-invoices/${invoice._id}`, {
             method: 'PATCH',
             headers: {
               'Authorization': `Bearer ${token}`,
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ paymentMethod: 'cash' })
+            body: JSON.stringify({ 
+              paymentMethod: 'cash',
+              status: 'approved'
+            })
           });
         }
       }
 
+      // Update appointment status to Scheduled after cash payment selection
+      try {
+        await fetch(`${API_BASE_URL}/appointments/${createdAppointment._id}`, {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ status: 'Scheduled' })
+        });
+      } catch (statusError) {
+        console.error('Error updating appointment status:', statusError);
+      }
+      
       setIsPaymentDialogOpen(false);
       setPaymentMethod('online'); // Reset to default
       resetForm();
@@ -994,7 +1068,7 @@ const AppointmentManagement = () => {
                             {patients.map((patient) => (
                               <CommandItem
                                 key={patient._id}
-                                value={`${patient.fullName} ${patient.phone} ${patient.email || ''}`}
+                                value={`${patient.fullName} ${patient.phone} ${patient.email || ''} ${patient.uhid || ''}`}
                                 onSelect={() => {
                                   setFormData({...formData, patientId: patient._id});
                                   setPatientComboboxOpen(false);
@@ -1008,6 +1082,11 @@ const AppointmentManagement = () => {
                                 />
                                 <div className="flex flex-col">
                                   <span className="font-medium">{patient.fullName}</span>
+                                  {patient.uhid && (
+                                    <span className="text-xs font-mono text-muted-foreground">
+                                      {patient.uhid}
+                                    </span>
+                                  )}
                                   <span className="text-sm text-muted-foreground">{patient.phone}</span>
                                 </div>
                               </CommandItem>
@@ -1286,12 +1365,15 @@ const AppointmentManagement = () => {
                 </div>
               )}
               <div>
-                <Label htmlFor="reason">Reason for Visit</Label>
+                <Label htmlFor="reason">Reason for Visit <span className="text-red-500">*</span></Label>
                 <Textarea
+                  id="reason"
                   placeholder="Enter reason for appointment"
                   value={formData.reason}
                   onChange={(e) => setFormData({...formData, reason: e.target.value})}
                   disabled={submitting}
+                  required
+                  className={!formData.reason && formData.reason !== '' ? 'border-red-500' : ''}
                 />
               </div>
               <div>
@@ -1349,7 +1431,7 @@ const AppointmentManagement = () => {
             </div>
             <div className="min-w-0">
               <span className="text-xs sm:text-sm text-blue-600 font-medium block truncate">
-                Total: {stats.totalAppointments || 0}
+                Total (Month): {getMonthlyAppointmentsCount()}
               </span>
             </div>
           </div>
@@ -1602,7 +1684,7 @@ const AppointmentManagement = () => {
                         }}
                         title="View Appointment Details"
                       >
-                        <Info className="w-4 h-4" />
+                        <Eye className="w-4 h-4" />
                       </Button>
                       <Button
                         variant="outline"
@@ -1615,10 +1697,6 @@ const AppointmentManagement = () => {
                       </Button>
                       <Select 
                         onValueChange={(value) => handleUpdateStatus(appointment._id, value)}
-                        disabled={
-                          appointment.status === 'Processing' && 
-                          (!appointmentInvoices[appointment._id] || appointmentInvoices[appointment._id].status !== 'approved')
-                        }
                       >
                         <SelectTrigger className="w-32">
                           <SelectValue placeholder="Status" />
@@ -1631,6 +1709,32 @@ const AppointmentManagement = () => {
                           ))}
                         </SelectContent>
                       </Select>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const invoice = appointmentInvoices[appointment._id];
+                          if (invoice) {
+                            // Always use the appointment data from the appointments list for accurate duration
+                            const enrichedInvoice = {
+                              ...invoice,
+                              appointmentId: {
+                                ...appointment,
+                                _id: appointment._id
+                              }
+                            };
+                            setSelectedInvoice(enrichedInvoice);
+                            setIsInvoiceDialogOpen(true);
+                          } else {
+                            toast.error('Invoice not found for this appointment');
+                          }
+                        }}
+                        title="View Invoice"
+                        className="text-blue-600 hover:text-blue-700"
+                      >
+                        <FileText className="w-4 h-4 mr-1" />
+                        Invoice
+                      </Button>
                     </div>
 
                                         {/* Status & Priority - Fixed width */}
@@ -2040,7 +2144,7 @@ const AppointmentManagement = () => {
                   <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
                   <p className="text-xs text-amber-800 dark:text-amber-200">
                     {paymentMethod === 'online' 
-                      ? 'Your appointment is in "Processing" status. Complete the payment to confirm your appointment.'
+                      ? 'Complete the payment to confirm your appointment.'
                       : 'Appointment will be confirmed. Payment will be collected in cash at the clinic.'}
                   </p>
                 </div>
@@ -2049,13 +2153,6 @@ const AppointmentManagement = () => {
           </div>
 
           <DialogFooter className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={handleSkipPayment}
-              disabled={processingPayment}
-            >
-              Pay Later
-            </Button>
             {paymentMethod === 'online' ? (
               <Button
                 onClick={handlePayment}
@@ -2085,6 +2182,194 @@ const AppointmentManagement = () => {
               </Button>
             )}
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Invoice Dialog */}
+      <Dialog open={isInvoiceDialogOpen} onOpenChange={setIsInvoiceDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <FileText className="w-5 h-5 text-blue-600" />
+              Invoice Details
+            </DialogTitle>
+            <DialogDescription>
+              View and manage invoice information
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedInvoice && (
+            <div className="space-y-6">
+              {/* Invoice Header */}
+              <div className="flex justify-between items-start">
+                <div>
+                  <h2 className="text-2xl font-bold text-foreground">Invoice #{selectedInvoice.invoiceNumber || 'N/A'}</h2>
+                  <p className="text-muted-foreground">
+                    Date: {selectedInvoice.createdAt ? format(parseISO(selectedInvoice.createdAt), 'MMM dd, yyyy') : 'N/A'}
+                  </p>
+                  {/* Status Badge */}
+                  {selectedInvoice.status && (
+                    <div className="mt-2">
+                      <Badge variant={selectedInvoice.status === 'approved' ? 'success' : 'secondary'} className="flex items-center gap-1 w-fit">
+                        <CheckCircle className="w-3 h-3" />
+                        {selectedInvoice.status}
+                      </Badge>
+                    </div>
+                  )}
+                </div>
+                <div className="text-right">
+                  <p className="text-2xl font-bold text-foreground">
+                    ₹{Number(selectedInvoice.amount || selectedInvoice.totalAmount || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                  </p>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Patient Information */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <User className="w-5 h-5 text-blue-600" />
+                    Patient Information
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <h3 className="font-semibold text-foreground">{selectedInvoice.patientId?.fullName || 'N/A'}</h3>
+                      <div className="space-y-1 text-sm text-muted-foreground">
+                        {selectedInvoice.patientId?.phone && (
+                          <div className="flex items-center gap-2">
+                            <Phone className="w-4 h-4" />
+                            {selectedInvoice.patientId.phone}
+                          </div>
+                        )}
+                        {selectedInvoice.patientId?.email && (
+                          <div className="flex items-center gap-2">
+                            <Mail className="w-4 h-4" />
+                            {selectedInvoice.patientId.email}
+                          </div>
+                        )}
+                        {selectedInvoice.patientId?.uhid && (
+                          <div className="flex items-center gap-2">
+                            <FileText className="w-4 h-4" />
+                            UHID: {selectedInvoice.patientId.uhid}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Invoice Date:</span>
+                        <span className="font-medium">{selectedInvoice.createdAt ? format(parseISO(selectedInvoice.createdAt), 'MMM dd, yyyy') : 'N/A'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Invoice Number:</span>
+                        <span className="font-medium">{selectedInvoice.invoiceNumber || 'N/A'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Status:</span>
+                        <span className="font-medium capitalize">{selectedInvoice.status || 'N/A'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Payment Method:</span>
+                        <span className="font-medium">
+                          {selectedInvoice.paymentMethod === 'cash' ? 'Cash' : 
+                           selectedInvoice.paymentMethod === 'online' ? 'Card / UPI' : 
+                           'Pending'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Doctor & Appointment Information */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Calendar className="w-5 h-5 text-blue-600" />
+                    Appointment Details
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <h4 className="font-semibold text-sm text-muted-foreground">Doctor Information</h4>
+                      <div className="space-y-1">
+                        <p className="font-medium">Dr. {selectedInvoice.doctorId?.fullName || 'N/A'}</p>
+                        <p className="text-sm text-muted-foreground">{selectedInvoice.doctorId?.specialty || 'N/A'}</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <h4 className="font-semibold text-sm text-muted-foreground">Appointment Information</h4>
+                      <div className="space-y-1 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Type:</span>
+                          <span className="font-medium">{selectedInvoice.appointmentId?.appointmentType || 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Date:</span>
+                          <span className="font-medium">
+                            {selectedInvoice.appointmentId?.date ? format(parseISO(selectedInvoice.appointmentId.date), 'MMM dd, yyyy') : 'N/A'}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Time:</span>
+                          <span className="font-medium">{selectedInvoice.appointmentId?.time || 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Duration:</span>
+                          <span className="font-medium">
+                            {selectedInvoice.appointmentId?.duration ? `${selectedInvoice.appointmentId.duration} minutes` : 'N/A'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Totals */}
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-lg font-bold">
+                      <span>Total Amount:</span>
+                      <span>₹{Number(selectedInvoice.amount || selectedInvoice.totalAmount || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Notes */}
+              {selectedInvoice.notes && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Notes</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-muted-foreground whitespace-pre-wrap">{selectedInvoice.notes}</p>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3 pt-4">
+            <Button variant="outline" onClick={() => setIsInvoiceDialogOpen(false)}>
+              <X className="w-4 h-4 mr-2" />
+              Close
+            </Button>
+            <Button 
+              onClick={() => window.print()}
+              className="gradient-button"
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Print Invoice
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -14,9 +14,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Calendar, Clock, User, Stethoscope, AlertTriangle } from "lucide-react";
-import { appointmentAPI, doctorAPI } from "@/services/api";
+import { appointmentAPI, doctorAPI, doctorAvailabilityAPI } from "@/services/api";
 import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
+import { getAvailableTimeSlots } from '@/utils/availabilityUtils';
 
 const RescheduleAppointmentModal = ({ isOpen, onClose, appointment, onSuccess }) => {
   const [formData, setFormData] = useState({
@@ -32,6 +33,9 @@ const RescheduleAppointmentModal = ({ isOpen, onClose, appointment, onSuccess })
   const [doctors, setDoctors] = useState([]);
   const [loadingDoctors, setLoadingDoctors] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [availableSlots, setAvailableSlots] = useState([]);
+  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [slotDuration, setSlotDuration] = useState(30);
 
   // Initialize form data when appointment changes
   useEffect(() => {
@@ -59,6 +63,59 @@ const RescheduleAppointmentModal = ({ isOpen, onClose, appointment, onSuccess })
       loadDoctors();
     }
   }, [isOpen]);
+
+  // Load available slots when doctor and date change
+  useEffect(() => {
+    if (formData.doctorId && formData.date && isOpen) {
+      loadAvailableSlots();
+    } else if (!formData.doctorId || !formData.date) {
+      setAvailableSlots([]);
+      setFormData(prev => ({ ...prev, time: '' })); // Clear selected time
+    }
+  }, [formData.doctorId, formData.date, isOpen]);
+
+  const loadAvailableSlots = async () => {
+    try {
+      setLoadingSlots(true);
+      console.log('Loading slots for doctor:', formData.doctorId, 'date:', formData.date);
+      const response = await doctorAvailabilityAPI.getAvailableSlots(formData.doctorId, formData.date);
+      console.log('Slots response:', response);
+      
+      if (response.success) {
+        const { availability, exceptions, appointments } = response;
+        const selectedDate = new Date(formData.date);
+        
+        // Get slot duration from availability
+        const duration = availability.length > 0 && availability[0].slotDuration 
+          ? availability[0].slotDuration 
+          : 30;
+        setSlotDuration(duration);
+        setFormData(prev => ({ ...prev, duration: duration.toString() }));
+        
+        // Exclude the current appointment being rescheduled from the booked appointments
+        // This frees up the original slot so it can be selected again if needed
+        const filteredAppointments = appointments.filter(apt => 
+          apt._id !== appointment._id && apt.id !== appointment._id
+        );
+        
+        console.log('Total appointments:', appointments.length, 'After filtering current:', filteredAppointments.length);
+        
+        // Calculate available slots using utility function
+        const slots = getAvailableTimeSlots(availability, exceptions, filteredAppointments, selectedDate, duration);
+        console.log('Calculated available slots:', slots);
+        setAvailableSlots(slots);
+      } else {
+        console.log('Response not successful:', response);
+        setAvailableSlots([]);
+      }
+    } catch (error) {
+      console.error('Error loading available slots:', error);
+      setAvailableSlots([]);
+      toast.error('Failed to load available time slots');
+    } finally {
+      setLoadingSlots(false);
+    }
+  };
 
   const loadDoctors = async () => {
     setLoadingDoctors(true);
@@ -163,13 +220,15 @@ const RescheduleAppointmentModal = ({ isOpen, onClose, appointment, onSuccess })
       await appointmentAPI.update(appointment._id, updatedData);
       
       toast.success('Appointment rescheduled successfully');
-      onSuccess();
+      
+      // Close modal first
       handleClose();
       
-      // Reload the page to refresh the data
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
+      // Call onSuccess to refresh the appointments list
+      // This will update the UI without a full page reload
+      if (onSuccess) {
+        onSuccess();
+      }
     } catch (error) {
       console.error('Failed to reschedule appointment:', error);
       toast.error(`Failed to reschedule appointment: ${error.message}`);
@@ -282,19 +341,12 @@ const RescheduleAppointmentModal = ({ isOpen, onClose, appointment, onSuccess })
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="duration">Duration</Label>
-                <Select value={formData.duration} onValueChange={(value) => handleInputChange("duration", value)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {durationOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="duration">Slot Duration</Label>
+                <div className="flex items-center gap-2 h-10 px-3 border rounded-md bg-gray-50">
+                  <Clock className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">{slotDuration} minutes</span>
+                  <span className="text-xs text-muted-foreground">(configured)</span>
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -313,14 +365,42 @@ const RescheduleAppointmentModal = ({ isOpen, onClose, appointment, onSuccess })
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="time">New Time *</Label>
-                <Input
-                  id="time"
-                  type="time"
-                  value={formData.time}
-                  onChange={(e) => handleInputChange("time", e.target.value)}
-                  className={errors.time ? "border-red-500" : ""}
-                />
+                <Label htmlFor="time">Available Time Slots *</Label>
+                {loadingSlots ? (
+                  <div className="flex items-center justify-center p-4 border rounded-md">
+                    <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mr-2" />
+                    <span className="text-sm text-muted-foreground">Loading available slots...</span>
+                  </div>
+                ) : availableSlots.length > 0 ? (
+                  <Select 
+                    value={formData.time} 
+                    onValueChange={(value) => handleInputChange("time", value)}
+                  >
+                    <SelectTrigger className={errors.time ? "border-red-500" : ""}>
+                      <SelectValue placeholder="Select available time" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableSlots.map((slot) => {
+                        // Handle both string slots and object slots
+                        const slotTime = typeof slot === 'string' ? slot : slot.time;
+                        const slotDisplay = typeof slot === 'string' ? slot : (slot.display || slot.time);
+                        return (
+                          <SelectItem key={slotTime} value={slotTime}>
+                            {slotDisplay}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                ) : formData.date && formData.doctorId ? (
+                  <div className="p-3 border border-amber-200 bg-amber-50 rounded-md">
+                    <p className="text-sm text-amber-800">No available slots for this date. Please select a different date.</p>
+                  </div>
+                ) : (
+                  <div className="p-3 border border-gray-200 bg-gray-50 rounded-md">
+                    <p className="text-sm text-gray-600">Please select a doctor and date to view available time slots.</p>
+                  </div>
+                )}
                 {errors.time && (
                   <p className="text-sm text-red-600">{errors.time}</p>
                 )}

@@ -1,18 +1,6 @@
-import { Calendar, Users, UserCheck, Video, Share2, FileText, Mail, AlertTriangle, Home, LogOut, User, LayoutDashboard, Stethoscope, Heart, ArrowLeftRight, CreditCard, MessageCircle, UserPlus, Pill, Shield, Clock, TestTubeDiagonal, FlaskConical, Package, Dumbbell } from "lucide-react";
-import LogoImage from "@/assets/Images/Logo.png";
-import DoctorIcon from "@/assets/Images/doctor.png";
-import NurseIcon from "@/assets/Images/nurse.png";
-import PharmacistIcon from "@/assets/Images/pharmacist.png";
-import SlotIcon from "@/assets/Images/slots.png";
-import AppointmentIcon from "@/assets/Images/appointment.png";
-import PatientIcon from "@/assets/Images/patient.png";
-import DashboardIcon from "@/assets/Images/dashboard.png";
-import PrescriptionIcon from "@/assets/Images/prescription.png";
-import ReportIcon from "@/assets/Images/report.png";
-import TeleIcon from "@/assets/Images/tele.png";
-import ReferralIcon from "@/assets/Images/referral.png";
-import InvoiceIcon from "@/assets/Images/invoice.png";
-import CommunityIcon from "@/assets/Images/commun.png";
+import { Calendar, Users, UserCheck, Video, Share2, FileText, Mail, AlertTriangle, Home, LogOut, User, LayoutDashboard, Stethoscope, Heart, ArrowLeftRight, CreditCard, MessageCircle, UserPlus, Pill, Shield, Clock, TestTubeDiagonal, FlaskConical, Package, Dumbbell, CalendarDays } from "lucide-react";
+import LogoImage from "@/assets/Images/SmaartHealthcare.png";
+import LogoIcon from "@/assets/Images/Logo.png";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -32,19 +20,19 @@ import {
 import { canAccessRoute, isClinic, isDoctor, isPharmacist, getCurrentUser } from "@/utils/roleUtils";
 
 const allNavigationItems = [
-  { title: "Dashboard", url: "/", icon: DashboardIcon, isImage: true, routeName: "dashboard" },
-  { title: "Patient Management", url: "/patients", icon: PatientIcon, isImage: true, routeName: "patient-management" },
-  { title: "Appointments", url: "/appointments", icon: AppointmentIcon, isImage: true, routeName: "appointment-management" },
-  { title: "Slot Management", url: "/slot-management", icon: SlotIcon, isImage: true, routeName: "slot-management" },
-  { title: "Doctor Management", url: "/doctors", icon: DoctorIcon, isImage: true, routeName: "doctors-management" },
-  { title: "Nurse Management", url: "/nurses", icon: NurseIcon, isImage: true, routeName: "nurses-management" },
-  { title: "Pharmacist Management", url: "/pharmacists", icon: PharmacistIcon, isImage: true, routeName: "pharmacists-management" },
-  { title: "Prescriptions", url: "/prescriptions", icon: PrescriptionIcon, isImage: true, routeName: "prescriptions" },
-  { title: "Lab Reports", url: "/lab-reports", icon: ReportIcon, isImage: true, routeName: "lab-reports" },
-  { title: "Teleconsultation", url: "/teleconsultation", icon: TeleIcon, isImage: true, routeName: "teleconsultation" },
-  { title: "Referral System", url: "/referrals", icon: ReferralIcon, isImage: true, routeName: "referral-system" },
-  { title: "Invoice Management", url: "/invoices", icon: InvoiceIcon, isImage: true, routeName: "invoice-management" },
-  { title: "Community Hub", url: "/community", icon: CommunityIcon, isImage: true, routeName: "community-hub" },
+  { title: "Dashboard", url: "/", icon: LayoutDashboard, routeName: "dashboard" },
+  { title: "Patient Management", url: "/patients", icon: Users, routeName: "patient-management" },
+  { title: "Appointments", url: "/appointments", icon: Calendar, routeName: "appointment-management" },
+  { title: "Slot Management", url: "/slot-management", icon: CalendarDays, routeName: "slot-management" },
+  { title: "Doctor Management", url: "/doctors", icon: Stethoscope, routeName: "doctors-management" },
+  { title: "Nurse Management", url: "/nurses", icon: Heart, routeName: "nurses-management" },
+  { title: "Pharmacist Management", url: "/pharmacists", icon: Pill, routeName: "pharmacists-management" },
+  { title: "Prescriptions", url: "/prescriptions", icon: FileText, routeName: "prescriptions" },
+  { title: "Lab Reports", url: "/lab-reports", icon: FlaskConical, routeName: "lab-reports" },
+  { title: "Teleconsultation", url: "/teleconsultation", icon: Video, routeName: "teleconsultation" },
+  { title: "Referral System", url: "/referrals", icon: Share2, routeName: "referral-system" },
+  { title: "Invoice Management", url: "/invoices", icon: CreditCard, routeName: "invoice-management" },
+  { title: "Community Hub", url: "/community", icon: MessageCircle, routeName: "community-hub" },
 ];
 
 const pharmacistNavigationItems = [
@@ -121,41 +109,23 @@ export function ConsultantSidebar({ mobile = false }) {
       <SidebarContent className="h-full flex flex-col overflow-x-hidden overflow-y-hidden" style={{ minHeight: '100vh' }}>
         {/* Header */}
         <div className={`${mobile ? 'h-20' : 'h-16'} border-b border-border bg-background dark:bg-background flex items-center ${collapsed ? 'px-2 justify-center' : mobile ? 'px-6 py-6' : 'px-6 py-4'} flex-shrink-0`}>
-          <div className="flex items-center gap-3">
-            <div className={`${mobile ? 'w-12 h-12' : 'w-10 h-10'} rounded-lg flex items-center justify-center shadow-sm border border-border overflow-hidden bg-card`}>
-              <img 
-                src={LogoImage} 
-                alt="Smaart Healthcare Logo" 
-                className="w-full h-full object-contain"
-              />
-            </div>
-            {!collapsed && (
-              <div className="overflow-hidden">
-                <h2 className={`font-semibold text-foreground ${mobile ? 'text-xl' : 'text-lg'} tracking-tight whitespace-nowrap`}>SMAART Healthcare</h2>
-              </div>
-            )}
+          <div className="flex items-center justify-center w-full">
+            <img 
+              src={collapsed ? LogoIcon : LogoImage} 
+              alt="Smaart Healthcare Logo" 
+              className={`${collapsed ? 'h-8' : mobile ? 'h-12' : 'h-10'} w-auto object-contain`}
+            />
           </div>
         </div>
 
         {/* Navigation */}
         <SidebarGroup className={`flex-1 px-3 ${mobile ? 'py-8' : 'py-6'} min-h-0 overflow-x-hidden overflow-y-auto scrollbar-thin scrollbar-thumb-gray-100 dark:scrollbar-thumb-gray-900 scrollbar-track-transparent hover:scrollbar-thumb-gray-50 dark:hover:scrollbar-thumb-gray-800`}>
-          <SidebarGroupLabel className={`text-xs font-medium text-muted-foreground uppercase tracking-wider mb-4 px-2 ${collapsed ? "sr-only" : ""}`}>
-            Navigation
-          </SidebarGroupLabel>
           <SidebarGroupContent className="flex-1">
             <SidebarMenu className={`${mobile ? 'space-y-2' : 'space-y-1'}`} key={collapsed ? 'collapsed' : mobile ? 'mobile' : 'expanded'}>
               {navigationItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <Link to={item.url} className={`${getNavClassName(item.url)} flex items-center`}>
-                    {item.isImage ? (
-                      <img 
-                        src={item.icon} 
-                        alt={item.title}
-                        className="w-12 h-12 flex-shrink-0 transition-all duration-200 object-contain rounded-full border-2 border-border p-1 bg-background opacity-100"
-                      />
-                    ) : (
-                      <item.icon className={`${mobile ? 'w-6 h-6' : 'w-5 h-5'} flex-shrink-0 transition-all duration-200 ${isActive(item.url) ? 'text-primary-foreground' : 'text-muted-foreground group-hover:text-accent-foreground'}`} />
-                    )}
+                    <item.icon className={`${mobile ? 'w-6 h-6' : 'w-5 h-5'} flex-shrink-0 transition-all duration-200 ${isActive(item.url) ? 'text-primary-foreground' : 'text-muted-foreground group-hover:text-accent-foreground'}`} />
                     {!collapsed && (
                       <span className={`${mobile ? 'ml-3' : 'ml-2'} transition-all duration-200 overflow-hidden whitespace-nowrap text-ellipsis`}>
                         {item.title}
@@ -173,10 +143,10 @@ export function ConsultantSidebar({ mobile = false }) {
           <div className={`${mobile ? 'p-6' : 'p-4'} border-t border-border bg-muted/30 mt-auto`}>
             <div className={`${mobile ? 'text-base' : 'text-md'} overflow-hidden`}>
               <p className="font-medium text-foreground whitespace-nowrap text-ellipsis overflow-hidden" style={{color: "#0059b3"}}>
-                {authUser.name || authUser.fullName || 'User'}
+                {isClinic() ? clinicName : (authUser.name || authUser.fullName || 'User')}
               </p>
               <p className={`text-muted-foreground ${mobile ? 'text-sm' : 'text-xs'} whitespace-nowrap text-ellipsis overflow-hidden`}>
-                {isClinic() ? 'Clinic Administrator' : isPharmacist() ? 'Pharmacist' : (authUser.specialty || 'Medical Professional')}
+                {isClinic() ? 'Clinic' : isPharmacist() ? 'Pharmacist' : (authUser.specialty || 'Medical Professional')}
               </p>
             </div>
           </div>

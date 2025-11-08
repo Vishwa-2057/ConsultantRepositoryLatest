@@ -5,10 +5,12 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import DoctorScheduleManager from "@/components/DoctorScheduleManager";
 import { doctorAPI } from "@/services/api";
 import { useToast } from "@/hooks/use-toast";
-import { Clock, User, Loader2, Check, ChevronsUpDown, DollarSign, Save } from "lucide-react";
+import { Clock, User, Loader2, Check, ChevronsUpDown, DollarSign, Save, CalendarDays, Info, Search, Stethoscope, Mail, CheckCircle2 } from "lucide-react";
 import { getCurrentUser } from "@/utils/roleUtils";
 import { cn } from "@/lib/utils";
 import { config } from "@/config/env";
@@ -130,49 +132,97 @@ const SlotManagement = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      <div className="flex items-center justify-center h-screen bg-gray-50 dark:bg-gray-900">
+        <div className="text-center">
+          <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto mb-3" />
+          <p className="text-sm text-muted-foreground">Loading doctors...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+        {/* Page Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm text-muted-foreground mt-1">
+              Manage doctor availability schedules and consultation fees
+            </p>
+          </div>
+          {doctors.length > 0 && (
+            <Badge variant="secondary" className="hidden sm:flex items-center gap-1.5 px-3 py-1.5">
+              <Stethoscope className="w-4 h-4" />
+              {doctors.length} {doctors.length === 1 ? 'Doctor' : 'Doctors'}
+            </Badge>
+          )}
+        </div>
 
-      {/* Doctor Selection */}
-      {doctors.length > 0 && (
-        <Card className="border-gray-100 dark:border-gray-800 shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="w-5 h-5" />
-              Select Doctor
-            </CardTitle>
-            <CardDescription>
-              Choose a doctor to manage their availability schedule and fees
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="max-w-md">
-              <Label>Doctor</Label>
+        {/* Info Alert */}
+        {doctors.length > 0 && !selectedDoctor && (
+          <Alert className="bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800">
+            <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            <AlertDescription className="text-blue-800 dark:text-blue-300">
+              Select a doctor below to configure their availability schedule and consultation fees
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Doctor Selection Card */}
+        {doctors.length > 0 && (
+          <Card className="shadow-md border-gray-200 dark:border-gray-800">
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-primary/10 rounded-lg">
+                  <Search className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <CardTitle className="text-lg">Select Doctor</CardTitle>
+                  <CardDescription className="text-xs">
+                    Choose from {doctors.length} available {doctors.length === 1 ? 'doctor' : 'doctors'}
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
               <Popover open={open} onOpenChange={setOpen}>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
                     role="combobox"
                     aria-expanded={open}
-                    className="w-full justify-between mt-2"
+                    className="w-full justify-between h-auto py-3 px-4 hover:bg-accent hover:border-primary transition-colors"
                   >
-                      {selectedDoctor
-                        ? `Dr. ${selectedDoctor.fullName} - ${selectedDoctor.specialty}`
-                        : "Select a doctor..."}
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                <PopoverContent className="w-[500px] p-0" onWheel={(e) => e.stopPropagation()}>
+                    {selectedDoctor ? (
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold">
+                          {selectedDoctor.fullName.charAt(0)}
+                        </div>
+                        <div className="text-left">
+                          <p className="font-semibold text-sm">Dr. {selectedDoctor.fullName}</p>
+                          <p className="text-xs text-muted-foreground">{selectedDoctor.specialty}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <User className="w-4 h-4" />
+                        <span>Select a doctor to manage schedule...</span>
+                      </div>
+                    )}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-full p-0" align="start" onWheel={(e) => e.stopPropagation()}>
                   <Command>
-                    <CommandInput placeholder="Search doctors..." />
-                    <CommandList className="max-h-[300px] overflow-y-auto">
-                      <CommandEmpty>No doctor found.</CommandEmpty>
+                    <CommandInput placeholder="Search by name or specialty..." className="h-10" />
+                    <CommandList className="max-h-[300px]">
+                      <CommandEmpty>
+                        <div className="text-center py-6">
+                          <User className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                          <p className="text-sm text-muted-foreground">No doctor found</p>
+                        </div>
+                      </CommandEmpty>
                       <CommandGroup>
                         {doctors.map((doctor) => (
                           <CommandItem
@@ -182,16 +232,29 @@ const SlotManagement = () => {
                               setSelectedDoctor(doctor);
                               setOpen(false);
                             }}
+                            className="py-3 cursor-pointer"
                           >
-                            <Check
-                              className={cn(
-                                "mr-2 h-4 w-4",
-                                selectedDoctor?._id === doctor._id ? "opacity-100" : "opacity-0"
-                              )}
-                            />
-                            <div className="flex flex-col">
-                              <span className="font-medium">Dr. {doctor.fullName}</span>
-                              <span className="text-sm text-muted-foreground">{doctor.specialty}</span>
+                            <div className="flex items-center gap-3 flex-1">
+                              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold flex-shrink-0">
+                                {doctor.fullName.charAt(0)}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className="font-semibold text-sm truncate">Dr. {doctor.fullName}</p>
+                                  {selectedDoctor?._id === doctor._id && (
+                                    <CheckCircle2 className="w-4 h-4 text-primary flex-shrink-0" />
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <Badge variant="secondary" className="text-xs px-1.5 py-0">
+                                    {doctor.specialty}
+                                  </Badge>
+                                  <span className="text-xs text-muted-foreground truncate flex items-center gap-1">
+                                    <Mail className="w-3 h-3" />
+                                    {doctor.email}
+                                  </span>
+                                </div>
+                              </div>
                             </div>
                           </CommandItem>
                         ))}
@@ -200,86 +263,110 @@ const SlotManagement = () => {
                   </Command>
                 </PopoverContent>
               </Popover>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            </CardContent>
+          </Card>
+        )}
 
-      {/* Schedule Manager */}
-      {selectedDoctor ? (
-        <div>
-          <Card className="mb-4 border-gray-100 dark:border-gray-800 shadow-sm">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center text-white font-semibold text-lg">
-                    {selectedDoctor.fullName.charAt(0)}
+        {/* Selected Doctor Info & Fees */}
+        {selectedDoctor ? (
+          <div className="space-y-6">
+            <Card className="shadow-md border-gray-200 dark:border-gray-800">
+              <CardContent className="p-6">
+                <div className="flex flex-col lg:flex-row lg:items-center gap-6">
+                  {/* Doctor Info */}
+                  <div className="flex items-center gap-4 flex-1">
+                    <div className="w-14 h-14 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-white font-bold text-xl shadow-lg flex-shrink-0">
+                      {selectedDoctor.fullName.charAt(0)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-lg font-bold text-gray-900 dark:text-white truncate">
+                        Dr. {selectedDoctor.fullName}
+                      </h3>
+                      <div className="flex flex-wrap items-center gap-2 mt-1">
+                        <Badge variant="outline" className="text-xs">
+                          <Stethoscope className="w-3 h-3 mr-1" />
+                          {selectedDoctor.specialty}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Mail className="w-3 h-3" />
+                          {selectedDoctor.email}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-gray-900 dark:text-white">
-                      Dr. {selectedDoctor.fullName}
-                    </h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      {selectedDoctor.specialty} • {selectedDoctor.email}
-                    </p>
-                  </div>
-                </div>
-                
-                {/* Appointment Fees Section */}
-                <div className="flex items-center gap-3">
-                  <div className="flex flex-col">
-                    <Label className="text-xs text-gray-600 dark:text-gray-400 mb-1">
-                      Appointment Fees (₹)
+                  
+                  {/* Consultation Fees */}
+                  <div className="lg:border-l lg:pl-6 lg:border-gray-200 dark:lg:border-gray-700">
+                    <Label className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-1.5">
+                      <DollarSign className="w-4 h-4 text-green-600" />
+                      Consultation Fee
                     </Label>
                     <div className="flex items-center gap-2">
-                      <Input
-                        type="number"
-                        min="0"
-                        step="50"
-                        value={appointmentFees}
-                        onChange={(e) => setAppointmentFees(e.target.value)}
-                        disabled={loadingFees || savingFees}
-                        className="w-32"
-                        placeholder="0"
-                      />
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-semibold">
+                          ₹
+                        </span>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="50"
+                          value={appointmentFees}
+                          onChange={(e) => setAppointmentFees(e.target.value)}
+                          disabled={loadingFees || savingFees}
+                          className="w-36 pl-7 h-10 text-base font-semibold border-2 focus:border-primary"
+                          placeholder="500"
+                        />
+                      </div>
                       <Button
                         onClick={saveDoctorFees}
                         disabled={savingFees || loadingFees}
-                        size="sm"
+                        className="h-10 px-4"
                       >
                         {savingFees ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                            Saving...
+                          </>
                         ) : (
-                          <Save className="w-4 h-4" />
+                          <>
+                            <Save className="w-4 h-4 mr-2" />
+                            Save
+                          </>
                         )}
                       </Button>
                     </div>
+                    <p className="text-xs text-muted-foreground mt-1.5">
+                      Set the consultation fee for appointments
+                    </p>
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Schedule Manager */}
+            <DoctorScheduleManager
+              doctorId={selectedDoctor._id}
+              clinicId={selectedDoctor.clinicId || currentUser?.clinicId || currentUser?.id}
+            />
+          </div>
+        ) : (
+          <Card className="shadow-md border-gray-200 dark:border-gray-800">
+            <CardContent className="flex flex-col items-center justify-center py-16">
+              <div className="w-20 h-20 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-4">
+                <CalendarDays className="w-10 h-10 text-gray-400" />
               </div>
+              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                {doctors.length === 0 ? 'No Doctors Available' : 'Select a Doctor to Begin'}
+              </h3>
+              <p className="text-sm text-muted-foreground text-center max-w-md">
+                {doctors.length === 0
+                  ? "No doctors found in the system. Please add doctors first to manage their schedules."
+                  : "Choose a doctor from the dropdown above to configure their availability schedule and consultation fees."}
+              </p>
             </CardContent>
           </Card>
-
-        <DoctorScheduleManager
-          doctorId={selectedDoctor._id}
-          clinicId={selectedDoctor.clinicId || currentUser?.clinicId || currentUser?.id}
-        />
+        )}
       </div>
-      ) : (
-        <Card className="border-gray-100 dark:border-gray-800 shadow-sm">
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <User className="w-16 h-16 text-gray-400 mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-              No Doctor Selected
-            </h3>
-            <p className="text-gray-600 dark:text-gray-400 text-center max-w-md">
-              {doctors.length === 0
-                ? "No doctors found in the system. Please add doctors first."
-                : "Please select a doctor to manage their availability schedule."}
-            </p>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 };

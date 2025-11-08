@@ -510,6 +510,7 @@ const InventoryManagement = () => {
                   type="date"
                   value={itemForm.manufacturingDate}
                   onChange={(e) => setItemForm({...itemForm, manufacturingDate: e.target.value})}
+                  max={new Date().toISOString().split('T')[0]}
                 />
               </div>
               <div>

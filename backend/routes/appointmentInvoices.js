@@ -3,6 +3,7 @@ const router = express.Router();
 const mongoose = require('mongoose');
 const AppointmentInvoice = require('../models/AppointmentInvoice');
 const Appointment = require('../models/Appointment');
+const Revenue = require('../models/Revenue');
 const auth = require('../middleware/auth');
 
 // Get all appointment invoices with filters
@@ -206,6 +207,21 @@ router.patch('/:id/approve', auth, async (req, res) => {
 
     await invoice.save();
 
+    // Add revenue when invoice is approved
+    if (invoice.clinicId) {
+      try {
+        await Revenue.addRevenue(
+          invoice.clinicId,
+          invoice._id,
+          invoice.amount,
+          'approved'
+        );
+      } catch (revenueError) {
+        console.error('Error adding revenue:', revenueError);
+        // Don't fail the approval if revenue tracking fails
+      }
+    }
+
     // Update the appointment status from Processing to Scheduled
     const appointment = await Appointment.findById(invoice.appointmentId);
     if (appointment && appointment.status === 'Processing') {
@@ -248,6 +264,8 @@ router.patch('/:id/mark-paid', auth, async (req, res) => {
       });
     }
 
+    const wasNotApproved = !invoice.approvedAt;
+
     invoice.status = 'paid';
     invoice.paymentMethod = 'online';
     invoice.paymentDetails = {
@@ -262,6 +280,21 @@ router.patch('/:id/mark-paid', auth, async (req, res) => {
     }
 
     await invoice.save();
+
+    // Add revenue when invoice is auto-approved via payment
+    if (wasNotApproved && invoice.clinicId) {
+      try {
+        await Revenue.addRevenue(
+          invoice.clinicId,
+          invoice._id,
+          invoice.amount,
+          'approved'
+        );
+      } catch (revenueError) {
+        console.error('Error adding revenue:', revenueError);
+        // Don't fail the payment if revenue tracking fails
+      }
+    }
 
     const populatedInvoice = await AppointmentInvoice.findById(invoice._id)
       .populate('appointmentId')
@@ -317,6 +350,21 @@ router.patch('/:id', auth, async (req, res) => {
       invoice.status = status;
       invoice.approvedBy = req.user.id;
       invoice.approvedAt = new Date();
+      
+      // Add revenue when invoice is approved
+      if (invoice.clinicId) {
+        try {
+          await Revenue.addRevenue(
+            invoice.clinicId,
+            invoice._id,
+            invoice.amount,
+            'approved'
+          );
+        } catch (revenueError) {
+          console.error('Error adding revenue:', revenueError);
+          // Don't fail the update if revenue tracking fails
+        }
+      }
       
       // Update the appointment status from Processing to Scheduled
       const appointment = await Appointment.findById(invoice.appointmentId);

@@ -273,13 +273,30 @@ class HealthcareEncryption {
       if (!encrypted) {
         // Try fallback to unencrypted storage
         const fallback = localStorage.getItem(key);
-        return fallback ? JSON.parse(fallback) : null;
+        if (!fallback) return null;
+        
+        try {
+          return JSON.parse(fallback);
+        } catch (parseError) {
+          console.warn('Corrupted fallback data, clearing:', key);
+          localStorage.removeItem(key);
+          return null;
+        }
       }
 
       const decrypted = await this.decrypt(encrypted);
-      return JSON.parse(decrypted);
+      try {
+        return JSON.parse(decrypted);
+      } catch (parseError) {
+        console.warn('Corrupted encrypted data, clearing:', key);
+        localStorage.removeItem(`encrypted_${key}`);
+        return null;
+      }
     } catch (error) {
       console.error('Failed to decrypt and retrieve data:', error);
+      // Clean up corrupted data
+      localStorage.removeItem(`encrypted_${key}`);
+      localStorage.removeItem(key);
       return null;
     }
   }

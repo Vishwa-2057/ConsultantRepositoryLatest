@@ -158,13 +158,15 @@ class EmailService {
       const transporter = await this.getTransporter();
       
       // Get doctor's name from database with better error handling
-      let doctorName = 'Healthcare Professional';
+      let doctorName = 'SMAART Healthcare';
+      let isDoctorName = false;
       try {
         if (doctorId) {
           const Doctor = require('../models/Doctor');
           const doctor = await Doctor.findById(doctorId);
           if (doctor && doctor.fullName) {
             doctorName = doctor.fullName;
+            isDoctorName = true;
           }
         }
       } catch (dbError) {
@@ -172,8 +174,9 @@ class EmailService {
       }
 
       const subject = this.getEmailSubject(purpose);
-      const htmlContent = this.generateOTPEmailHTML(otpCode, purpose, `Dr. ${doctorName}`);
-      const textContent = this.generateOTPEmailText(otpCode, purpose, `Dr. ${doctorName}`);
+      const displayName = isDoctorName ? `Dr. ${doctorName}` : doctorName;
+      const htmlContent = this.generateOTPEmailHTML(otpCode, purpose, displayName);
+      const textContent = this.generateOTPEmailText(otpCode, purpose, displayName);
 
       const mailOptions = {
         from: {
@@ -870,7 +873,7 @@ This is an automated message from Healthcare Management System. Please do not re
       const textContent = this.generatePasswordResetEmailText(otpCode, userName);
       
       const mailOptions = {
-        from: `"Healthcare Management System" <${process.env.EMAIL_USER}>`,
+        from: `"SMAART Healthcare" <${process.env.EMAIL_USER}>`,
         to: email,
         subject: 'Password Reset Verification Code',
         html: htmlContent,
@@ -929,16 +932,16 @@ This is an automated message from Healthcare Management System. Please do not re
                 text-align: center;
                 margin-bottom: 30px;
                 padding-bottom: 20px;
-                border-bottom: 2px solid #e74c3c;
+                border-bottom: 2px solid #2c5aa0;
             }
             .logo {
                 font-size: 28px;
                 font-weight: bold;
-                color: #e74c3c;
+                color: #2c5aa0;
                 margin-bottom: 10px;
             }
             .otp-code {
-                background: linear-gradient(135deg, #e74c3c, #c0392b);
+                background: linear-gradient(135deg, #2c5aa0, #1e4a8a);
                 color: white;
                 font-size: 32px;
                 font-weight: bold;
@@ -947,7 +950,7 @@ This is an automated message from Healthcare Management System. Please do not re
                 border-radius: 10px;
                 margin: 30px 0;
                 letter-spacing: 8px;
-                box-shadow: 0 4px 15px rgba(231, 76, 60, 0.3);
+                box-shadow: 0 4px 15px rgba(44, 90, 160, 0.3);
             }
             .warning {
                 background-color: #fff3cd;
@@ -970,20 +973,20 @@ This is an automated message from Healthcare Management System. Please do not re
     <body>
         <div class="container">
             <div class="header">
-                <div class="logo">Healthcare System</div>
-                <h2 style="color: #e74c3c; margin: 0;">Password Reset Request</h2>
+                <div class="logo">SMAART Healthcare</div>
+                <h2 style="color: #2c5aa0; margin: 0;">Password Reset Request</h2>
             </div>
             
             <p>Dear <strong>${userName}</strong>,</p>
             
-            <p>We have received a request to reset the password for your Healthcare Management System account.</p>
+            <p>We have received a request to reset the password for your SMAART Healthcare account.</p>
             
             <p>Please use the following verification code to complete your password reset:</p>
             
             <table width="100%" cellpadding="0" cellspacing="0" style="margin: 30px 0;">
               <tr>
                 <td align="center">
-                  <div style="background: #e74c3c; color: white; font-size: 36px; font-weight: bold; padding: 25px 40px; text-align: center; border-radius: 10px; display: inline-block; letter-spacing: 5px;">
+                  <div style="background: #2c5aa0; color: white; font-size: 36px; font-weight: bold; padding: 25px 40px; text-align: center; border-radius: 10px; display: inline-block; letter-spacing: 5px;">
                     ${otpCode}
                   </div>
                 </td>
@@ -991,7 +994,7 @@ This is an automated message from Healthcare Management System. Please do not re
             </table>
             
             <p style="text-align: center; font-size: 18px; margin: 20px 0;">
-              Your verification code is: <strong style="color: #e74c3c; font-size: 24px;">${otpCode}</strong>
+              Your verification code is: <strong style="color: #2c5aa0; font-size: 24px;">${otpCode}</strong>
             </p>
             
             <div class="warning">
@@ -1007,8 +1010,8 @@ This is an automated message from Healthcare Management System. Please do not re
             <p>If you did not initiate this password reset request, please disregard this email. However, if you have concerns about your account security, we recommend contacting our support team immediately.</p>
             
             <div class="footer">
-                <p>This is an automated message from Healthcare Management System.</p>
-                <p>© ${new Date().getFullYear()} Healthcare Management System. All rights reserved.</p>
+                <p>This is an automated message from SMAART Healthcare.</p>
+                <p>© ${new Date().getFullYear()} SMAART Healthcare. All rights reserved.</p>
             </div>
         </div>
     </body>
@@ -1018,11 +1021,11 @@ This is an automated message from Healthcare Management System. Please do not re
 
   generatePasswordResetEmailText(otpCode, userName = 'User') {
     return `
-Healthcare Management System - Password Reset Request
+SMAART Healthcare - Password Reset Request
 
 Dear ${userName},
 
-We have received a request to reset the password for your Healthcare Management System account.
+We have received a request to reset the password for your SMAART Healthcare account.
 
 Your password reset verification code is: ${otpCode}
 
@@ -1034,8 +1037,8 @@ SECURITY NOTICE:
 
 If you did not initiate this password reset request, please disregard this email. However, if you have concerns about your account security, we recommend contacting our support team immediately.
 
-This is an automated message from Healthcare Management System. Please do not reply to this email.
-© ${new Date().getFullYear()} Healthcare Management System. All rights reserved.
+This is an automated message from SMAART Healthcare. Please do not reply to this email.
+© ${new Date().getFullYear()} SMAART Healthcare. All rights reserved.
     `;
   }
 }

@@ -34,8 +34,8 @@ import EmailSettings from "./pages/EmailSettings.jsx";
 import ActivityLogs from "./pages/ActivityLogs.jsx";
 import AuditLogs from "./pages/AuditLogs.jsx";
 import LabReports from "./pages/LabReports.jsx";
-import Profile from "./pages/Profile.jsx";
 import Exercises from "./pages/Exercises.jsx";
+import Settings from "./pages/Settings.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import PublicRoute from "./components/PublicRoute.jsx";
 
@@ -122,8 +122,8 @@ const App = () => {
               <Route path="/audit-logs" element={isAuthed ? <ProtectedRoute routeName="audit-logs"><AuditLogs /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/lab-reports" element={isAuthed ? <ProtectedRoute routeName="lab-reports"><LabReports /></ProtectedRoute> : <Navigate to="/login" replace />} />
               <Route path="/compliance" element={isAuthed ? <ProtectedRoute routeName="compliance-alerts"><Dashboard /></ProtectedRoute> : <Navigate to="/login" replace />} />
-              <Route path="/profile" element={isAuthed ? <Profile /> : <Navigate to="/login" replace />} />
               <Route path="/exercises" element={isAuthed ? <ProtectedRoute routeName="exercises"><Exercises /></ProtectedRoute> : <Navigate to="/login" replace />} />
+              <Route path="/settings" element={isAuthed ? <Settings /> : <Navigate to="/login" replace />} />
               <Route path="/api-test" element={<APITest />} />
               <Route path="/logout" element={<Logout />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

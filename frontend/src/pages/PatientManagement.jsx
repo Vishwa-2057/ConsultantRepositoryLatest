@@ -267,7 +267,7 @@ const PatientManagement = () => {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
             <Input
-              placeholder="Search patients by name, UHID..."
+              placeholder="Search patients by name, UHID, or phone number."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10 h-10 bg-white border-gray-200 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
@@ -415,14 +415,14 @@ const PatientManagement = () => {
           {/* Table Headers */}
           {!loading && !error && filteredPatients.length > 0 && (
             <div className="bg-gray-100 rounded-lg px-6 py-4 mb-3">
-              <div className="grid grid-cols-12 gap-6 items-center">
+              <div className="grid grid-cols-12 gap-8 items-center">
                 <div className="col-span-1">
                   <span className="text-xs font-semibold text-gray-600 uppercase">Photo</span>
                 </div>
                 <div className="col-span-2">
                   <span className="text-xs font-semibold text-gray-600 uppercase">Name & UHID</span>
                 </div>
-                <div className="col-span-1 -ml-3">
+                <div className="col-span-1">
                   <span className="text-xs font-semibold text-gray-600 uppercase">Age/Gender</span>
                 </div>
                 <div className="col-span-1">
@@ -439,7 +439,7 @@ const PatientManagement = () => {
                 <div className="col-span-2">
                   <span className="text-xs font-semibold text-gray-600 uppercase">Assigned Doctors</span>
                 </div>
-                <div className="col-span-3 text-center">
+                <div className="col-span-3 text-center" style={{paddingLeft:"140px"}}>
                   <span className="text-xs font-semibold text-gray-600 uppercase">Actions</span>
                 </div>
               </div>
@@ -452,7 +452,7 @@ const PatientManagement = () => {
               
               return (
                 <div key={patientId} className="bg-gray-50 hover:bg-gray-100 rounded-lg px-6 py-5 transition-all duration-200 cursor-pointer" onClick={() => handlePatientClick(patientId)}>
-                  <div className="grid grid-cols-12 gap-6 items-center">
+                  <div className="grid grid-cols-12 gap-8 items-center">
                     {/* Column 1: Profile Image */}
                     <div className="col-span-1">
                       <div className="w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden">
@@ -485,7 +485,7 @@ const PatientManagement = () => {
                     </div>
                     
                     {/* Column 4: Age & Gender */}
-                    <div className="col-span-1 -ml-3">
+                    <div className="col-span-1">
                       <div className="text-sm text-muted-foreground space-y-1">
                         <div>{patient.age || patient.calculatedAge || 0} years</div>
                         <div>{patient.gender || 'Unknown'}</div>
@@ -506,7 +506,7 @@ const PatientManagement = () => {
                       <div className="col-span-1">
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                           <Phone className="w-3.5 h-3.5 flex-shrink-0" />
-                          <span className="truncate">{patient.phone || 'No phone'}</span>
+                          <span>{patient.phone || 'No phone'}</span>
                         </div>
                       </div>
                     )}
@@ -520,7 +520,7 @@ const PatientManagement = () => {
                             const date = new Date(patient.createdAt);
                             const day = String(date.getDate()).padStart(2, '0');
                             const month = String(date.getMonth() + 1).padStart(2, '0');
-                            const year = String(date.getFullYear()).slice(-2);
+                            const year = String(date.getFullYear());
                             return `${day}-${month}-${year}`;
                           })() : '-'}
                         </span>
@@ -543,18 +543,20 @@ const PatientManagement = () => {
                     
                     {/* Column 9-11: Actions */}
                     <div className="col-span-3 flex items-center justify-end gap-3">
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleVitalsHistory(patient);
-                        }}
-                        title="View Vitals History"
-                        className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-600 min-w-[80px]"
-                      >
-                        Vitals
-                      </Button>
+                      {!isClinic() && (
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleVitalsHistory(patient);
+                          }}
+                          title="View Vitals History"
+                          className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-600 min-w-[80px]"
+                        >
+                          Vitals
+                        </Button>
+                      )}
                       {isClinic() && (
                         <Button 
                           variant="outline" 

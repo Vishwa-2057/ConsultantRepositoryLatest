@@ -490,8 +490,13 @@ class SessionManager {
   /**
    * Update last activity timestamp
    */
-  updateLastActivity() {
-    this.updateSessionData({ lastActivity: Date.now() });
+  async updateLastActivity() {
+    try {
+      await this.updateSessionData({ lastActivity: Date.now() });
+    } catch (error) {
+      // Silently fail to prevent cascading errors
+      console.debug('Failed to update last activity:', error.message);
+    }
   }
 
   /**

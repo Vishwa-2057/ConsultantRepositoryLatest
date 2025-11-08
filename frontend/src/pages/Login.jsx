@@ -433,28 +433,21 @@ const Login = () => {
                             <span>Verifying...</span>
                           </div>
                         ) : (
-                          'Continue to Verification'
+                          'Send OTP'
                         )}
                       </Button>
                       
-                      {/* Developer Login Button */}
-                      <Button 
-                        type="button"
-                        onClick={handleDeveloperLogin}
-                        className="w-full h-10 text-sm font-semibold transition-all duration-300 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700  shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] text-white border-0"
-                        disabled={loading}
-                      >
-                        {loading ? (
-                          <div className="flex items-center space-x-2">
-                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                            <span>Logging in...</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center space-x-2">
-                            <span>Developer Login (Skip OTP)</span>
-                          </div>
-                        )}
-                      </Button>
+                      {/* Developer Login Link */}
+                      <div className="text-center mt-4">
+                        <button
+                          type="button"
+                          onClick={handleDeveloperLogin}
+                          disabled={loading}
+                          className="text-sm text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Developer Login
+                        </button>
+                      </div>
                     </form>
                   </div>
                 )}
@@ -532,7 +525,7 @@ const Login = () => {
                             ) : (
                               <div className="flex items-center space-x-2">
                                 <CheckCircle className="w-5 h-5" />
-                                <span>Complete Sign In</span>
+                                <span>Sign In</span>
                               </div>
                             )}
                           </Button>

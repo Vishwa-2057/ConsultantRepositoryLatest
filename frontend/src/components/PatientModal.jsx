@@ -15,12 +15,93 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { User, Phone, Mail, MapPin, Calendar, FileText, Plus, X, Share2, AlertCircle, Check, ChevronsUpDown } from "lucide-react";
+import { User, Phone, Mail, MapPin, Calendar, FileText, Plus, X, Share2, AlertCircle, Check, ChevronsUpDown, Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { appointmentAPI, patientAPI, doctorAPI } from "@/services/api";
 import { useToast } from "@/hooks/use-toast";
 import { validationSchemas, sanitizers, validators } from "@/utils/validation";
 import { useAuditLog } from "@/hooks/useAuditLog";
+
+// Password validation function
+const validatePasswordStrength = (password) => {
+  const minLength = 8;
+  const hasUpperCase = /[A-Z]/.test(password);
+  const hasLowerCase = /[a-z]/.test(password);
+  const hasNumber = /[0-9]/.test(password);
+  const hasSpecialChar = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password);
+  
+  if (password.length < minLength) {
+    return {
+      isValid: false,
+      message: `Password must be at least ${minLength} characters long.`
+    };
+  }
+  
+  if (!hasUpperCase) {
+    return {
+      isValid: false,
+      message: "Password must contain at least one uppercase letter (A-Z)."
+    };
+  }
+  
+  if (!hasLowerCase) {
+    return {
+      isValid: false,
+      message: "Password must contain at least one lowercase letter (a-z)."
+    };
+  }
+  
+  if (!hasNumber) {
+    return {
+      isValid: false,
+      message: "Password must contain at least one number (0-9)."
+    };
+  }
+  
+  if (!hasSpecialChar) {
+    return {
+      isValid: false,
+      message: "Password must contain at least one special character (!@#$%^&*...)."
+    };
+  }
+  
+  return {
+    isValid: true,
+    message: "Strong password!"
+  };
+};
+
+// Calculate password strength score
+const calculatePasswordStrength = (password) => {
+  if (!password) {
+    return { score: 0, message: '', color: '' };
+  }
+  
+  let score = 0;
+  const checks = {
+    length: password.length >= 8,
+    uppercase: /[A-Z]/.test(password),
+    lowercase: /[a-z]/.test(password),
+    number: /[0-9]/.test(password),
+    special: /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)
+  };
+  
+  // Calculate score
+  if (checks.length) score++;
+  if (checks.uppercase) score++;
+  if (checks.lowercase) score++;
+  if (checks.number) score++;
+  if (checks.special) score++;
+  
+  // Determine strength message and color
+  if (score === 5) {
+    return { score: 5, message: 'Strong password', color: 'text-green-600' };
+  } else if (score >= 3) {
+    return { score, message: 'Medium strength', color: 'text-yellow-600' };
+  } else {
+    return { score, message: 'Weak password', color: 'text-red-600' };
+  }
+};
 
 // List of countries for nationality dropdown
 const COUNTRIES = [
@@ -122,6 +203,8 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
   const [doctorsLoading, setDoctorsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [calculatedAge, setCalculatedAge] = useState(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordStrength, setPasswordStrength] = useState({ score: 0, message: '', color: '' });
   
   // File upload states
   const [profileImage, setProfileImage] = useState(null);
@@ -412,9 +495,12 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
     
     
     // Password validation
-    const passwordError = validators.required(formData.password, 'Password') ||
-                         validators.password(formData.password);
-    if (passwordError) newErrors.password = passwordError;
+    const passwordValidation = validatePasswordStrength(formData.password);
+    if (!formData.password) {
+      newErrors.password = 'Password is required';
+    } else if (!passwordValidation.isValid) {
+      newErrors.password = passwordValidation.message;
+    }
     
     // Phone and email validation for patients 18 and older
     if (!formData.isUnder18) {
@@ -469,18 +555,20 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                     validators.zipCode(formData.address.zipCode);
     if (zipError) newErrors['address.zipCode'] = zipError;
     
-    // Emergency contact validation (if provided)
-    if (formData.emergencyContact.name || formData.emergencyContact.phone || formData.emergencyContact.relationship) {
-      if (formData.emergencyContact.name && !formData.emergencyContact.phone) {
-        newErrors['emergencyContact.phone'] = "Emergency contact phone is required when name is provided";
-      }
-      if (formData.emergencyContact.phone && !formData.emergencyContact.name) {
-        newErrors['emergencyContact.name'] = "Emergency contact name is required when phone is provided";
-      }
-      if (formData.emergencyContact.phone) {
-        const emergencyPhoneError = validators.phone(formData.emergencyContact.phone);
-        if (emergencyPhoneError) newErrors['emergencyContact.phone'] = emergencyPhoneError;
-      }
+    // Emergency contact validation (all fields required)
+    if (!formData.emergencyContact.name || !formData.emergencyContact.name.trim()) {
+      newErrors['emergencyContact.name'] = "Emergency contact name is required";
+    }
+    
+    if (!formData.emergencyContact.relationship || !formData.emergencyContact.relationship.trim()) {
+      newErrors['emergencyContact.relationship'] = "Emergency contact relationship is required";
+    }
+    
+    if (!formData.emergencyContact.phone || !formData.emergencyContact.phone.trim()) {
+      newErrors['emergencyContact.phone'] = "Emergency contact phone is required";
+    } else {
+      const emergencyPhoneError = validators.phone(formData.emergencyContact.phone);
+      if (emergencyPhoneError) newErrors['emergencyContact.phone'] = emergencyPhoneError;
     }
     
     // File validation
@@ -1021,17 +1109,78 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
               
               <div>
                 <Label htmlFor="password">Password <span className="text-red-500">*</span></Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={formData.password}
-                  onChange={(e) => handleInputChange("password", e.target.value)}
-                  onBlur={(e) => handleFieldBlur("password", e.target.value)}
-                  placeholder="Enter password (min. 8 chars, uppercase, lowercase, number)"
-                  className={errors.password ? "border-red-500" : ""}
-                  required
-                  disabled={submitting}
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    value={formData.password}
+                    onChange={(e) => {
+                      const newPassword = e.target.value;
+                      handleInputChange("password", newPassword);
+                      setPasswordStrength(calculatePasswordStrength(newPassword));
+                    }}
+                    onBlur={(e) => handleFieldBlur("password", e.target.value)}
+                    placeholder="Enter secure password"
+                    className={errors.password ? "border-red-500" : ""}
+                    required
+                    disabled={submitting}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                    onClick={() => setShowPassword(!showPassword)}
+                    disabled={submitting}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+                
+                {/* Password Strength Indicator */}
+                {formData.password && (
+                  <div className="mt-2 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full transition-all duration-300 ${
+                            passwordStrength.score === 5 ? 'bg-green-500' :
+                            passwordStrength.score >= 3 ? 'bg-yellow-500' :
+                            'bg-red-500'
+                          }`}
+                          style={{ width: `${(passwordStrength.score / 5) * 100}%` }}
+                        />
+                      </div>
+                      <span className={`text-xs font-medium ${passwordStrength.color}`}>
+                        {passwordStrength.message}
+                      </span>
+                    </div>
+                    
+                    {/* Password Requirements Checklist */}
+                    <div className="text-xs space-y-1 text-gray-600">
+                      <div className={`flex items-center gap-1 ${formData.password.length >= 8 ? 'text-green-600' : ''}`}>
+                        {formData.password.length >= 8 ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                        <span>At least 8 characters</span>
+                      </div>
+                      <div className={`flex items-center gap-1 ${/[A-Z]/.test(formData.password) ? 'text-green-600' : ''}`}>
+                        {/[A-Z]/.test(formData.password) ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                        <span>One uppercase letter (A-Z)</span>
+                      </div>
+                      <div className={`flex items-center gap-1 ${/[a-z]/.test(formData.password) ? 'text-green-600' : ''}`}>
+                        {/[a-z]/.test(formData.password) ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                        <span>One lowercase letter (a-z)</span>
+                      </div>
+                      <div className={`flex items-center gap-1 ${/[0-9]/.test(formData.password) ? 'text-green-600' : ''}`}>
+                        {/[0-9]/.test(formData.password) ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                        <span>One number (0-9)</span>
+                      </div>
+                      <div className={`flex items-center gap-1 ${/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(formData.password) ? 'text-green-600' : ''}`}>
+                        {/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(formData.password) ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                        <span>One special character (!@#$%...)</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {errors.password && <p className="text-sm text-red-500 mt-1">{errors.password}</p>}
               </div>
             </div>
@@ -1248,27 +1397,45 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
-                <Label htmlFor="emergencyName">Contact Name</Label>
+                <Label htmlFor="emergencyName">Contact Name <span className="text-red-500">*</span></Label>
                 <Input
                   id="emergencyName"
                   value={formData.emergencyContact.name}
                   onChange={(e) => handleInputChange("emergencyContact.name", e.target.value)}
+                  onBlur={(e) => handleFieldBlur("emergencyContact.name", e.target.value)}
                   placeholder="Enter contact name"
+                  className={errors['emergencyContact.name'] ? "border-red-500" : ""}
+                  required
                 />
+                {errors['emergencyContact.name'] && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <AlertCircle className="w-4 h-4 text-red-500" />
+                    <p className="text-sm text-red-500">{errors['emergencyContact.name']}</p>
+                  </div>
+                )}
               </div>
               
               <div>
-                <Label htmlFor="emergencyRelationship">Relationship</Label>
+                <Label htmlFor="emergencyRelationship">Relationship <span className="text-red-500">*</span></Label>
                 <Input
                   id="emergencyRelationship"
                   value={formData.emergencyContact.relationship}
                   onChange={(e) => handleInputChange("emergencyContact.relationship", e.target.value)}
+                  onBlur={(e) => handleFieldBlur("emergencyContact.relationship", e.target.value)}
                   placeholder="e.g., Spouse, Parent"
+                  className={errors['emergencyContact.relationship'] ? "border-red-500" : ""}
+                  required
                 />
+                {errors['emergencyContact.relationship'] && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <AlertCircle className="w-4 h-4 text-red-500" />
+                    <p className="text-sm text-red-500">{errors['emergencyContact.relationship']}</p>
+                  </div>
+                )}
               </div>
               
               <div>
-                <Label htmlFor="emergencyPhone">Contact Phone</Label>
+                <Label htmlFor="emergencyPhone">Contact Phone <span className="text-red-500">*</span></Label>
                 <Input
                   id="emergencyPhone"
                   value={formData.emergencyContact.phone}
@@ -1276,6 +1443,7 @@ const PatientModal = ({ isOpen, onClose, onSubmit }) => {
                   onBlur={(e) => handleFieldBlur("emergencyContact.phone", e.target.value)}
                   placeholder="Enter contact phone"
                   className={errors['emergencyContact.phone'] ? "border-red-500" : ""}
+                  required
                 />
                 {errors['emergencyContact.phone'] && (
                   <div className="flex items-center gap-1 mt-1">

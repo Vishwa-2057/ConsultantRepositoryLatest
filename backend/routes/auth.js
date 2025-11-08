@@ -1233,7 +1233,7 @@ router.post('/clinic-reset-password', resetPasswordValidation, async (req, res) 
     });
 
     if (!otpRecord) {
-      return res.status(400).json({ error: 'Invalid or expired reset code' });
+      return res.status(400).json({ error: 'Invalid or expired OTP' });
     }
 
     // Find clinic
@@ -1398,7 +1398,7 @@ router.post('/reset-password', resetPasswordValidation, async (req, res) => {
     });
 
     if (!otpRecord) {
-      return res.status(400).json({ error: 'Invalid or expired reset code' });
+      return res.status(400).json({ error: 'Invalid or expired OTP' });
     }
 
     // Find user in all collections

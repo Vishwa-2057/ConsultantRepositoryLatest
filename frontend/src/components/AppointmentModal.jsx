@@ -141,15 +141,7 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
 
   const appointmentTypes = [
     "General Consultation",
-    "Follow-up Visit",
-    "Annual Checkup",
-    "Specialist Consultation",
-    "Emergency Visit",
-    "Lab Work",
-    "Imaging",
-    "Vaccination",
-    "Physical Therapy",
-    "Mental Health"
+    "Follow-up Visit"
   ];
 
   const durationOptions = [
@@ -492,8 +484,13 @@ const AppointmentModal = ({ isOpen, onClose, onSubmit }) => {
                               />
                               <div className="flex flex-col">
                                 <span className="font-medium">{patient.fullName}</span>
+                                {patient.uhid && (
+                                  <span className="text-xs font-mono text-muted-foreground">
+                                    {patient.uhid}
+                                  </span>
+                                )}
                                 <span className="text-sm text-muted-foreground">
-                                  {patient.uhid && `${patient.uhid} • `}{patient.phone} • {patient.email}
+                                  {patient.phone}
                                 </span>
                               </div>
                             </CommandItem>

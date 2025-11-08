@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { doctorAvailabilityAPI, scheduleExceptionAPI } from "@/services/api";
-import { Calendar, Clock, Plus, X, Save, Trash2, AlertCircle, CalendarOff, Loader2 } from "lucide-react";
+import { Calendar, Clock, Plus, X, Save, Trash2, AlertCircle, CalendarOff, Loader2, Coffee, ArrowRight, Info } from "lucide-react";
 
 const DAYS_OF_WEEK = [
   { value: 1, label: 'Monday' },
@@ -432,87 +432,127 @@ const DoctorScheduleManager = ({ doctorId, clinicId }) => {
           </div>
 
           {schedule.map((day) => (
-            <div key={day.dayOfWeek} className="p-4 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 rounded-lg space-y-3">
-              <div className="flex items-center gap-3">
-                <Switch
-                  checked={day.enabled}
-                  onCheckedChange={(checked) => 
-                    handleScheduleChange(day.dayOfWeek, 'enabled', checked)
-                  }
-                />
-                <Label className="font-medium w-28 text-gray-900 dark:text-white">{day.dayLabel}</Label>
-                
-                {!day.enabled && (
-                  <span className="text-sm text-muted-foreground">
-                    Not available
-                  </span>
-                )}
+            <div key={day.dayOfWeek} className="p-4 border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 rounded-lg space-y-4 hover:border-primary/30 transition-colors">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Switch
+                    checked={day.enabled}
+                    onCheckedChange={(checked) => 
+                      handleScheduleChange(day.dayOfWeek, 'enabled', checked)
+                    }
+                  />
+                  <Label className="font-semibold text-base w-28 text-gray-900 dark:text-white">{day.dayLabel}</Label>
+                  
+                  {!day.enabled && (
+                    <Badge variant="secondary" className="text-xs">
+                      Not Available
+                    </Badge>
+                  )}
+                  {day.enabled && (
+                    <Badge variant="outline" className="text-xs bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300 border-green-300 dark:border-green-700">
+                      {day.slots.length} {day.slots.length === 1 ? 'Period' : 'Periods'}
+                    </Badge>
+                  )}
+                </div>
               </div>
               
               {day.enabled && (
-                <div className="space-y-2 ml-11">
-                  {day.slots.map((slot, slotIndex) => (
-                    <div key={slotIndex}>
-                      <div className="flex items-center gap-6">
-                        <Badge variant="secondary" className="w-32 justify-center bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100">
-                          Work Period {slotIndex + 1}
-                        </Badge>
-                        <div className="flex items-center gap-3">
-                          <Label className="text-sm text-muted-foreground">From</Label>
-                          <Input
-                            type="time"
-                            value={slot.startTime}
-                            onChange={(e) => 
-                              handleSlotChange(day.dayOfWeek, slotIndex, 'startTime', e.target.value)
-                            }
-                            className="w-32"
-                          />
+                <div className="space-y-3 ml-11">
+                  {/* Info Banner */}
+                  {day.slots.length === 1 && (
+                    <div className="flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-md">
+                      <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                      <p className="text-xs text-blue-800 dark:text-blue-300">
+                        <strong>Tip:</strong> Click "Add Break Period" below to split this into multiple work periods with breaks in between.
+                      </p>
+                    </div>
+                  )}
+                  
+                  {/* Visual Timeline */}
+                  <div className="space-y-3">
+                    {day.slots.map((slot, slotIndex) => (
+                      <div key={slotIndex} className="space-y-2">
+                        {/* Work Period Card */}
+                        <div className="p-3 bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-950/40 dark:to-blue-900/40 border-2 border-blue-200 dark:border-blue-800 rounded-lg">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                              <span className="font-semibold text-sm text-blue-900 dark:text-blue-100">
+                                Work Period {slotIndex + 1}
+                              </span>
+                            </div>
+                            {day.slots.length > 1 && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleRemoveSlot(day.dayOfWeek, slotIndex)}
+                                className="h-7 px-2 hover:bg-red-100 dark:hover:bg-red-900/30"
+                              >
+                                <X className="w-4 h-4 text-red-600 dark:text-red-400" />
+                              </Button>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="flex-1">
+                              <Label className="text-xs text-blue-700 dark:text-blue-300 mb-1 block">Start Time</Label>
+                              <Input
+                                type="time"
+                                value={slot.startTime}
+                                onChange={(e) => 
+                                  handleSlotChange(day.dayOfWeek, slotIndex, 'startTime', e.target.value)
+                                }
+                                className="h-9 bg-white dark:bg-gray-900 border-blue-300 dark:border-blue-700 focus:border-blue-500"
+                              />
+                            </div>
+                            <ArrowRight className="w-5 h-5 text-blue-400 dark:text-blue-600 mt-5" />
+                            <div className="flex-1">
+                              <Label className="text-xs text-blue-700 dark:text-blue-300 mb-1 block">End Time</Label>
+                              <Input
+                                type="time"
+                                value={slot.endTime}
+                                onChange={(e) => 
+                                  handleSlotChange(day.dayOfWeek, slotIndex, 'endTime', e.target.value)
+                                }
+                                className="h-9 bg-white dark:bg-gray-900 border-blue-300 dark:border-blue-700 focus:border-blue-500"
+                              />
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-3">
-                          <Label className="text-sm text-muted-foreground">To</Label>
-                          <Input
-                            type="time"
-                            value={slot.endTime}
-                            onChange={(e) => 
-                              handleSlotChange(day.dayOfWeek, slotIndex, 'endTime', e.target.value)
-                            }
-                            className="w-32"
-                          />
-                        </div>
-                        {day.slots.length > 1 && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleRemoveSlot(day.dayOfWeek, slotIndex)}
-                          >
-                            <X className="w-4 h-4 text-red-500" />
-                          </Button>
+                        
+                        {/* Break Indicator between slots */}
+                        {slotIndex < day.slots.length - 1 && day.slots[slotIndex + 1] && (
+                          <div className="relative py-2">
+                            <div className="absolute inset-0 flex items-center">
+                              <div className="w-full border-t-2 border-dashed border-amber-300 dark:border-amber-600"></div>
+                            </div>
+                            <div className="relative flex justify-center">
+                              <div className="px-3 py-1.5 bg-amber-50 dark:bg-amber-950/50 border-2 border-amber-300 dark:border-amber-700 rounded-full flex items-center gap-2 shadow-sm">
+                                <Coffee className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                                <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+                                  Break: {slot.endTime} - {day.slots[slotIndex + 1].startTime}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
                         )}
                       </div>
-                      {/* Show break indicator between slots */}
-                      {slotIndex < day.slots.length - 1 && day.slots[slotIndex + 1] && (
-                        <div className="flex items-center gap-2 ml-24 mt-1 mb-1">
-                          <div className="h-px w-8 bg-amber-300 dark:bg-amber-600"></div>
-                          <Badge variant="outline" className="text-xs bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700">
-                            Break: {slot.endTime} - {day.slots[slotIndex + 1].startTime}
-                          </Badge>
-                          <div className="h-px flex-1 bg-amber-300 dark:bg-amber-600"></div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                   
-                  {/* Add Break / Time Slot button at the bottom */}
-                  <div className="mt-3">
+                  {/* Add Break Period button */}
+                  <div className="pt-2">
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => handleAddSlot(day.dayOfWeek)}
-                      className="w-full"
+                      className="w-full border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-primary hover:bg-primary/5 transition-all"
                     >
                       <Plus className="w-4 h-4 mr-2" />
-                      Add Break / Time Slot
+                      Add Break Period (Split Schedule)
                     </Button>
+                    <p className="text-xs text-muted-foreground mt-2 text-center">
+                      Adding a break period will create a new work session with a break in between
+                    </p>
                   </div>
                 </div>
               )}
@@ -822,32 +862,26 @@ const DoctorScheduleManager = ({ doctorId, clinicId }) => {
               exceptions.map((exception) => (
                 <div
                   key={exception._id}
-                  className="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                  className="flex items-start gap-4 p-3 border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                 >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-muted-foreground" />
-                      <span className="font-medium text-gray-900 dark:text-white">
-                        {new Date(exception.date).toLocaleDateString('en-US', {
-                          weekday: 'long',
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric'
-                        })}
-                      </span>
-                      <Badge variant={
-                        exception.type === 'unavailable' ? 'destructive' : 
-                        exception.type === 'blocked_hours' ? 'outline' :
-                        'secondary'
-                      }>
-                        {exception.type === 'unavailable' ? 'Unavailable' : 
-                         exception.type === 'blocked_hours' ? 'Blocked Hours' :
-                         'Custom Hours'}
-                      </Badge>
-                    </div>
+                  {/* Date Column */}
+                  <div className="flex items-center gap-2 min-w-[280px]">
+                    <Calendar className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      {new Date(exception.date).toLocaleDateString('en-US', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}
+                    </span>
+                  </div>
+                  
+                  {/* Details Column */}
+                  <div className="flex-1 min-w-0">
                     {exception.type === 'custom_hours' && (
-                      <div className="mt-1 space-y-1">
-                        <p className="text-sm text-blue-600 dark:text-blue-400 font-medium">
+                      <div className="space-y-1">
+                        <p className="text-sm text-gray-700 dark:text-gray-300 font-medium">
                           Override Schedule: {exception.startTime} - {exception.endTime}
                         </p>
                         {exception.breaks && exception.breaks.length > 0 && (
@@ -864,28 +898,38 @@ const DoctorScheduleManager = ({ doctorId, clinicId }) => {
                       </div>
                     )}
                     {exception.type === 'blocked_hours' && (
-                      <p className="text-sm text-orange-600 dark:text-orange-400 font-medium mt-1">
+                      <p className="text-sm text-gray-700 dark:text-gray-300 font-medium">
                         Blocked: {exception.startTime} - {exception.endTime}
                       </p>
                     )}
                     {exception.type === 'unavailable' && (
-                      <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                      <p className="text-sm text-gray-700 dark:text-gray-300">
                         No slots available on this date
                       </p>
                     )}
                     {exception.reason && (
                       <p className="text-sm text-muted-foreground mt-1">
-                        Reason: {exception.reason}
+                        {exception.reason}
                       </p>
                     )}
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => confirmDeleteException(exception)}
-                  >
-                    <Trash2 className="w-4 h-4 text-red-500" />
-                  </Button>
+                  
+                  {/* Type Badge Column */}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <Badge variant="outline" className="whitespace-nowrap">
+                      {exception.type === 'unavailable' ? 'Unavailable' : 
+                       exception.type === 'blocked_hours' ? 'Blocked Hours' :
+                       'Custom Hours'}
+                    </Badge>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => confirmDeleteException(exception)}
+                      className="h-8 w-8 p-0"
+                    >
+                      <Trash2 className="w-4 h-4 text-red-500" />
+                    </Button>
+                  </div>
                 </div>
               ))
             )}

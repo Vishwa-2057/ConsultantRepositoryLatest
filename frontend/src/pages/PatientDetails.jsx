@@ -129,6 +129,8 @@ const PatientDetails = () => {
   const [savingMedicalHistory, setSavingMedicalHistory] = useState(false);
   const [selectedLabReport, setSelectedLabReport] = useState(null);
   const [isLabReportModalOpen, setIsLabReportModalOpen] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
 
   useEffect(() => {
     if (patientId) {
@@ -829,16 +831,16 @@ const PatientDetails = () => {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-9">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="history">Patient History</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-9 gap-2">
+          <TabsTrigger value="overview">Profile</TabsTrigger>
           <TabsTrigger value="case-logs">Case Logs</TabsTrigger>
-          <TabsTrigger value="diagnosis">Diagnosis</TabsTrigger>
-          <TabsTrigger value="investigations">Investigations</TabsTrigger>
-          <TabsTrigger value="treatment">Treatment</TabsTrigger>
+          <TabsTrigger value="assessments">Assessments</TabsTrigger>
+          <TabsTrigger value="investigations">Test Reports</TabsTrigger>
+          <TabsTrigger value="treatment">Prescriptions</TabsTrigger>          
+          <TabsTrigger value="history">Treatment History</TabsTrigger>
           <TabsTrigger value="referrals">Referrals</TabsTrigger>
           <TabsTrigger value="invoices">Invoices</TabsTrigger>
-          <TabsTrigger value="gallery">Image Gallery</TabsTrigger>
+          <TabsTrigger value="gallery">Patient Uploads</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
@@ -855,6 +857,10 @@ const PatientDetails = () => {
                   <div>
                     <span className="text-gray-600">Date of Birth:</span>
                     <p className="font-medium">{formatDate(patient.dateOfBirth)}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Aadhar Number:</span>
+                    <p className="font-medium font-mono">{patient.aadhaarNumber || 'Not provided'}</p>
                   </div>
                   <div className="col-span-2">
                     <span className="text-gray-600">Address:</span>
@@ -1946,47 +1952,74 @@ const PatientDetails = () => {
               ) : invoices.length > 0 ? (
                 <div className="space-y-4">
                   {invoices.map((invoice, index) => (
-                    <div key={invoice._id || index} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                            <Receipt className="w-5 h-5 text-blue-600" />
+                    <div key={invoice._id || index} className="border rounded-lg p-6 hover:shadow-md transition-all bg-white">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-start gap-4 flex-1">
+                          <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <Receipt className="w-6 h-6 text-blue-600" />
                           </div>
-                          <div>
-                            <h4 className="font-semibold text-gray-900">Invoice #{invoice.invoiceNumber || invoice._id?.slice(-6)}</h4>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-semibold text-gray-900 text-lg mb-1">
+                              Invoice #{invoice.invoiceNo || invoice.invoiceNumber || invoice._id?.slice(-6)}
+                            </h4>
                             <p className="text-sm text-gray-500">
-                              {invoice.createdAt ? new Date(invoice.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}
+                              {invoice.date || (invoice.createdAt ? new Date(invoice.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A')}
                             </p>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <p className="text-lg font-bold text-gray-900">₹{invoice.totalAmount?.toFixed(2) || '0.00'}</p>
-                          <Badge variant={invoice.paymentStatus === 'paid' ? 'success' : invoice.paymentStatus === 'pending' ? 'warning' : 'secondary'}>
-                            {invoice.paymentStatus || 'Pending'}
+                        <div className="text-right flex-shrink-0 ml-4">
+                          <p className="text-2xl font-bold text-gray-900 mb-2">
+                            ₹{(invoice.total || invoice.totalAmount || 0).toFixed(2)}
+                          </p>
+                          <Badge 
+                            variant={
+                              invoice.status === 'Approved' || invoice.paymentStatus === 'paid' ? 'success' : 
+                              invoice.status === 'Rejected' ? 'destructive' :
+                              invoice.paymentStatus === 'pending' ? 'warning' : 'secondary'
+                            }
+                            className="text-xs px-3 py-1"
+                          >
+                            {invoice.status || (invoice.paymentStatus ? invoice.paymentStatus.charAt(0).toUpperCase() + invoice.paymentStatus.slice(1) : 'Pending')}
                           </Badge>
                         </div>
                       </div>
-                      {invoice.items && invoice.items.length > 0 && (
-                        <div className="mt-3 pt-3 border-t">
-                          <p className="text-xs font-semibold text-gray-600 uppercase mb-2">Items</p>
-                          <div className="space-y-1">
-                            {invoice.items.map((item, idx) => (
-                              <div key={idx} className="flex justify-between text-sm">
-                                <span className="text-gray-700">{item.description || item.name}</span>
-                                <span className="text-gray-900 font-medium">₹{item.amount?.toFixed(2) || '0.00'}</span>
+                      
+                      {invoice.lineItems && invoice.lineItems.length > 0 && (
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <p className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-3">Invoice Items</p>
+                          <div className="space-y-2">
+                            {invoice.lineItems.slice(0, 3).map((item, idx) => (
+                              <div key={idx} className="flex justify-between items-center text-sm py-2 px-3 bg-gray-50 rounded">
+                                <div className="flex-1">
+                                  <span className="text-gray-700 font-medium">{item.description}</span>
+                                  <span className="text-gray-500 text-xs ml-2">x{item.qty}</span>
+                                </div>
+                                <span className="text-gray-900 font-semibold">₹{(item.qty * item.unitPrice).toFixed(2)}</span>
                               </div>
                             ))}
+                            {invoice.lineItems.length > 3 && (
+                              <p className="text-xs text-gray-500 text-center pt-1">
+                                +{invoice.lineItems.length - 3} more items
+                              </p>
+                            )}
                           </div>
                         </div>
                       )}
-                      {invoice.paymentMethod && (
-                        <div className="mt-3 pt-3 border-t">
-                          <div className="flex items-center gap-2 text-sm text-gray-600">
-                            <span className="font-medium">Payment Method:</span>
-                            <span>{invoice.paymentMethod}</span>
-                          </div>
-                        </div>
-                      )}
+                      
+                      <div className="mt-4 pt-4 border-t border-gray-200 flex justify-end">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedInvoice(invoice);
+                            setIsInvoiceModalOpen(true);
+                          }}
+                          className="flex items-center gap-2"
+                        >
+                          <Eye className="w-4 h-4" />
+                          View Invoice
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -2001,46 +2034,138 @@ const PatientDetails = () => {
           </Card>
         </TabsContent>
 
+        <TabsContent value="assessments" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* General Assessment */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-blue-600" />
+                  General Assessment
+                </CardTitle>
+                <CardDescription>Overall health and functional assessment</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <h4 className="font-semibold text-sm text-gray-700 mb-2">Physical Assessment</h4>
+                    <p className="text-sm text-gray-600">
+                      General physical examination findings and observations
+                    </p>
+                  </div>
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <h4 className="font-semibold text-sm text-gray-700 mb-2">Mental Status</h4>
+                    <p className="text-sm text-gray-600">
+                      Cognitive function and mental health assessment
+                    </p>
+                  </div>
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <h4 className="font-semibold text-sm text-gray-700 mb-2">Functional Status</h4>
+                    <p className="text-sm text-gray-600">
+                      Activities of daily living and mobility assessment
+                    </p>
+                  </div>
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <h4 className="font-semibold text-sm text-gray-700 mb-2">Nutritional Status</h4>
+                    <p className="text-sm text-gray-600">
+                      Dietary habits and nutritional health evaluation
+                    </p>
+                  </div>
+                </div>
+                <div className="pt-4">
+                  <Button className="w-full" variant="outline">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add General Assessment
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Condition Specific Assessment */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Stethoscope className="w-5 h-5 text-green-600" />
+                  Condition Specific Assessment
+                </CardTitle>
+                <CardDescription>Assessments for specific medical conditions</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-3">
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <h4 className="font-semibold text-sm text-gray-700 mb-2">Cardiovascular Assessment</h4>
+                    <p className="text-sm text-gray-600">
+                      Heart and circulatory system evaluation
+                    </p>
+                  </div>
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <h4 className="font-semibold text-sm text-gray-700 mb-2">Respiratory Assessment</h4>
+                    <p className="text-sm text-gray-600">
+                      Lung function and breathing pattern evaluation
+                    </p>
+                  </div>
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <h4 className="font-semibold text-sm text-gray-700 mb-2">Neurological Assessment</h4>
+                    <p className="text-sm text-gray-600">
+                      Nervous system and neurological function evaluation
+                    </p>
+                  </div>
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <h4 className="font-semibold text-sm text-gray-700 mb-2">Musculoskeletal Assessment</h4>
+                    <p className="text-sm text-gray-600">
+                      Bone, joint, and muscle function evaluation
+                    </p>
+                  </div>
+                </div>
+                <div className="pt-4">
+                  <Button className="w-full" variant="outline">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Condition Specific Assessment
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
         <TabsContent value="gallery" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Camera className="w-5 h-5" />
-                Image Gallery
-              </CardTitle>
-              <CardDescription>Medical images, scans, and documents</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Camera className="w-5 h-5" />
+                    Image Gallery
+                  </CardTitle>
+                  <CardDescription>Medical images, scans, and documents</CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="file"
+                    id="medical-image-upload"
+                    accept="image/*,.pdf"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    disabled={uploadingImage}
+                  />
+                  <Button
+                    onClick={() => document.getElementById('medical-image-upload').click()}
+                    disabled={uploadingImage}
+                    className="flex items-center gap-2"
+                  >
+                    {uploadingImage ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    ) : (
+                      <Plus className="w-4 h-4" />
+                    )}
+                    {uploadingImage ? 'Uploading...' : 'Add Image'}
+                  </Button>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               {/* Medical Images Section */}
               <div>
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                    <Camera className="w-5 h-5" />
-                    Medical Images
-                  </h3>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="file"
-                      id="medical-image-upload"
-                      accept="image/*,.pdf"
-                      onChange={handleImageUpload}
-                      className="hidden"
-                      disabled={uploadingImage}
-                    />
-                    <Button
-                      onClick={() => document.getElementById('medical-image-upload').click()}
-                      disabled={uploadingImage}
-                      className="flex items-center gap-2"
-                    >
-                      {uploadingImage ? (
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      ) : (
-                        <Plus className="w-4 h-4" />
-                      )}
-                      {uploadingImage ? 'Uploading...' : 'Add Image'}
-                    </Button>
-                  </div>
-                </div>
 
                 {medicalImagesLoading ? (
                   <div className="flex justify-center py-8">
@@ -2102,6 +2227,30 @@ const PatientDetails = () => {
                     <p className="text-xs text-gray-400">Click "Add Image" to upload X-rays, scans, and other medical images</p>
                   </div>
                 )}
+              </div>
+
+              {/* Uploaded by Patient Section */}
+              <div className="mt-8 pt-8 border-t border-gray-200">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <Upload className="w-5 h-5 text-blue-600" />
+                    Uploaded by Patient
+                  </h3>
+                  <Badge variant="secondary" className="text-xs">
+                    Coming Soon
+                  </Badge>
+                </div>
+
+                <div className="text-center py-8 text-gray-500 bg-blue-50 rounded-lg border border-blue-200">
+                  <Upload className="w-8 h-8 mx-auto mb-3 text-blue-300" />
+                  <p className="text-sm font-medium text-gray-700">Patient Upload Feature</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Images and documents uploaded by the patient will appear here
+                  </p>
+                  <p className="text-xs text-gray-400 mt-2">
+                    This feature will be available soon
+                  </p>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -2344,6 +2493,148 @@ const PatientDetails = () => {
                 <Button
                   variant="outline"
                   onClick={handleCloseLabReportModal}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Invoice Detail Modal */}
+      <Dialog open={isInvoiceModalOpen} onOpenChange={setIsInvoiceModalOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Receipt className="w-5 h-5" />
+              Invoice Details
+            </DialogTitle>
+          </DialogHeader>
+          {selectedInvoice && (
+            <div className="space-y-6">
+              {/* Invoice Header */}
+              <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-6 rounded-lg">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h3 className="text-2xl font-bold text-gray-900">
+                      Invoice #{selectedInvoice.invoiceNo}
+                    </h3>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Date: {selectedInvoice.date || (selectedInvoice.createdAt ? new Date(selectedInvoice.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A')}
+                    </p>
+                  </div>
+                  <Badge 
+                    variant={
+                      selectedInvoice.status === 'Approved' ? 'success' : 
+                      selectedInvoice.status === 'Rejected' ? 'destructive' : 'secondary'
+                    }
+                    className="text-sm px-4 py-2"
+                  >
+                    {selectedInvoice.status}
+                  </Badge>
+                </div>
+              </div>
+
+              {/* Patient Information */}
+              <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
+                <div>
+                  <span className="text-sm font-semibold text-gray-600">Patient Name:</span>
+                  <p className="text-gray-900 font-medium">{selectedInvoice.patientName || patient?.fullName}</p>
+                </div>
+                <div>
+                  <span className="text-sm font-semibold text-gray-600">Phone:</span>
+                  <p className="text-gray-900">{selectedInvoice.phone || 'N/A'}</p>
+                </div>
+                <div>
+                  <span className="text-sm font-semibold text-gray-600">Email:</span>
+                  <p className="text-gray-900">{selectedInvoice.email || 'N/A'}</p>
+                </div>
+                <div>
+                  <span className="text-sm font-semibold text-gray-600">Address:</span>
+                  <p className="text-gray-900 text-sm">
+                    {selectedInvoice.address ? 
+                      `${selectedInvoice.address.line1}${selectedInvoice.address.line2 ? ', ' + selectedInvoice.address.line2 : ''}, ${selectedInvoice.address.city}, ${selectedInvoice.address.state} ${selectedInvoice.address.zipCode}` 
+                      : 'N/A'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Line Items */}
+              <div>
+                <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                  <FileText className="w-4 h-4" />
+                  Invoice Items
+                </h4>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="text-left p-3 text-sm font-semibold text-gray-700">Description</th>
+                        <th className="text-center p-3 text-sm font-semibold text-gray-700">Qty</th>
+                        <th className="text-right p-3 text-sm font-semibold text-gray-700">Unit Price</th>
+                        <th className="text-right p-3 text-sm font-semibold text-gray-700">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {selectedInvoice.lineItems?.map((item, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="p-3 text-sm text-gray-900">{item.description}</td>
+                          <td className="p-3 text-sm text-gray-700 text-center">{item.qty}</td>
+                          <td className="p-3 text-sm text-gray-700 text-right">₹{item.unitPrice.toFixed(2)}</td>
+                          <td className="p-3 text-sm font-semibold text-gray-900 text-right">₹{(item.qty * item.unitPrice).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Totals */}
+              <div className="border-t pt-4">
+                <div className="space-y-2 max-w-sm ml-auto">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Subtotal:</span>
+                    <span className="font-medium">₹{(selectedInvoice.lineItems?.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0) || 0).toFixed(2)}</span>
+                  </div>
+                  {selectedInvoice.discount > 0 && (
+                    <div className="flex justify-between text-sm text-green-600">
+                      <span>Discount:</span>
+                      <span>-₹{selectedInvoice.discount.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {selectedInvoice.tax > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Tax:</span>
+                      <span className="font-medium">₹{selectedInvoice.tax.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {selectedInvoice.shipping > 0 && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Shipping:</span>
+                      <span className="font-medium">₹{selectedInvoice.shipping.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-lg font-bold pt-2 border-t">
+                    <span>Total:</span>
+                    <span className="text-blue-600">₹{selectedInvoice.total.toFixed(2)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Remarks */}
+              {selectedInvoice.remarks && (
+                <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                  <span className="font-semibold text-yellow-900">Remarks: </span>
+                  <span className="text-yellow-800">{selectedInvoice.remarks}</span>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex justify-end gap-2 pt-4 border-t">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsInvoiceModalOpen(false)}
                 >
                   Close
                 </Button>

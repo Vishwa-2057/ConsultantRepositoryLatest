@@ -1,16 +1,18 @@
 import { SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar.jsx";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip.jsx";
 import { ConsultantSidebar } from "./ConsultantSidebar.jsx";
-import { LogOut, Moon, Sun, User, PanelLeft, Menu, X } from "lucide-react";
+import { ProfileDropdown } from "./ProfileDropdown.jsx";
+import { LogOut, Moon, Sun, User, PanelLeft, Menu, X, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button.jsx";
 import { Input } from "@/components/ui/input.jsx";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet.jsx";
 import { clinicAPI } from "@/services/api";
+import { isClinic } from "@/utils/roleUtils";
 
 // Header component that can use useSidebar hook
-function LayoutHeader({ getPageTitle, currentUser, currentTime, hideActions, toggleDarkMode, isDarkMode, mobileMenuOpen, setMobileMenuOpen, clinicName }) {
+function LayoutHeader({ getPageTitle, currentUser, currentTime, hideActions, toggleDarkMode, isDarkMode, mobileMenuOpen, setMobileMenuOpen, clinicName, clinicOwnerName }) {
   const { toggleSidebar } = useSidebar();
   const navigate = useNavigate();
   const handleLogoutClick = (e) => {
@@ -75,7 +77,9 @@ function LayoutHeader({ getPageTitle, currentUser, currentTime, hideActions, tog
           <div className="hidden xl:flex items-center gap-3 text-sm text-muted-foreground min-w-0">
             <div className="flex items-center gap-1 flex-shrink-0">
               <User className="w-4 h-4" />
-              <span className="truncate">{currentUser?.name || currentUser?.fullName || 'User'}</span>
+              <span className="truncate">
+                {isClinic() && clinicOwnerName ? clinicOwnerName : (currentUser?.name || currentUser?.fullName || 'User')}
+              </span>
             </div>
             <div className="w-1 h-1 bg-muted-foreground rounded-full flex-shrink-0"></div>
             <div className="font-mono flex-shrink-0">
@@ -98,7 +102,9 @@ function LayoutHeader({ getPageTitle, currentUser, currentTime, hideActions, tog
           {/* Compact user info for medium screens */}
           <div className="hidden lg:flex xl:hidden items-center gap-2 text-sm text-muted-foreground min-w-0">
             <User className="w-4 h-4 flex-shrink-0" />
-            <span className="truncate">{currentUser?.name || currentUser?.fullName || 'User'}</span>
+            <span className="truncate">
+              {isClinic() && clinicOwnerName ? clinicOwnerName : (currentUser?.name || currentUser?.fullName || 'User')}
+            </span>
           </div>
         </div>
       </div>
@@ -106,19 +112,20 @@ function LayoutHeader({ getPageTitle, currentUser, currentTime, hideActions, tog
       <div className="flex items-center gap-1 sm:gap-3 flex-shrink-0">
         {!hideActions && (
           <>
+            <ProfileDropdown />
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button 
                   variant="ghost" 
                   size="icon" 
-                  onClick={() => navigate('/profile')}
+                  onClick={() => navigate('/settings')}
                   className="h-8 w-8 sm:h-10 sm:w-10"
                 >
-                  <User className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <Settings className="w-4 h-4 sm:w-5 sm:h-5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>View Profile</p>
+                <p>Account Settings</p>
               </TooltipContent>
             </Tooltip>
             <Button variant="ghost" size="icon" onClick={toggleDarkMode} className="h-8 w-8 sm:h-10 sm:w-10">
@@ -161,6 +168,7 @@ export function Layout({ children }) {
   const isAuthPage = hideActions;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [clinicName, setClinicName] = useState('');
+  const [clinicOwnerName, setClinicOwnerName] = useState('');
   
   // Get current user from localStorage
   const [currentUser, setCurrentUser] = useState(() => {
@@ -222,11 +230,12 @@ export function Layout({ children }) {
     return () => window.removeEventListener('auth-changed', handleAuthChanged);
   }, []);
 
-  // Fetch clinic name
+  // Fetch clinic name and owner name
   useEffect(() => {
-    const fetchClinicName = async () => {
+    const fetchClinicData = async () => {
       if (!currentUser) {
         setClinicName('');
+        setClinicOwnerName('');
         return;
       }
 
@@ -238,6 +247,9 @@ export function Layout({ children }) {
           if (clinic?.name) {
             setClinicName(clinic.name);
           }
+          if (clinic?.ownerName) {
+            setClinicOwnerName(clinic.ownerName);
+          }
         } else if (currentUser?.clinicId) {
           // For other users, fetch clinic profile
           const response = await clinicAPI.getProfile();
@@ -247,12 +259,13 @@ export function Layout({ children }) {
           }
         }
       } catch (error) {
-        console.error('Error fetching clinic name:', error);
+        console.error('Error fetching clinic data:', error);
         setClinicName('');
+        setClinicOwnerName('');
       }
     };
 
-    fetchClinicName();
+    fetchClinicData();
   }, [currentUser]);
 
   const toggleDarkMode = () => {
@@ -343,6 +356,7 @@ export function Layout({ children }) {
               mobileMenuOpen={mobileMenuOpen}
               setMobileMenuOpen={setMobileMenuOpen}
               clinicName={clinicName}
+              clinicOwnerName={clinicOwnerName}
             />
 
             {/* Main Content */}
