@@ -1,4 +1,4 @@
-import { useState, Suspense, useRef, useEffect } from 'react';
+import React, { useState, Suspense, useRef, useEffect } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, useGLTF, PerspectiveCamera, Environment } from '@react-three/drei';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -38,15 +38,38 @@ const exercises = [
   }
 ];
 
-// 3D Model Component
-function Model({ modelPath, isPlaying }) {
+// Placeholder component for missing models
+function ModelPlaceholder() {
+  return (
+    <group>
+      <mesh position={[0, 0, 0]}>
+        <boxGeometry args={[1, 2, 0.5]} />
+        <meshStandardMaterial color="#6366f1" />
+      </mesh>
+      <mesh position={[0, 1.2, 0]}>
+        <sphereGeometry args={[0.3, 16, 16]} />
+        <meshStandardMaterial color="#818cf8" />
+      </mesh>
+    </group>
+  );
+}
+
+// 3D Model Component with error handling
+function Model({ modelPath, isPlaying, onError }) {
   const group = useRef();
   const mixer = useRef();
   
-  const { scene, animations } = useGLTF(modelPath);
+  // useGLTF will throw if the model doesn't exist
+  // The Suspense boundary will catch it
+  const { scene, animations } = useGLTF(modelPath, true, true, (loader) => {
+    loader.manager.onError = (url) => {
+      console.warn('Failed to load 3D model:', url);
+      if (onError) onError();
+    };
+  });
   
   useEffect(() => {
-    if (animations && animations.length > 0) {
+    if (animations && animations.length > 0 && scene) {
       mixer.current = new THREE.AnimationMixer(scene);
       const action = mixer.current.clipAction(animations[0]);
       
@@ -88,11 +111,36 @@ function Loader() {
   );
 }
 
+// Error Boundary Component for 3D models
+class ModelErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.warn('3D Model loading error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <ModelPlaceholder />;
+    }
+    return this.props.children;
+  }
+}
+
 // 3D Viewer Component
 function ExerciseViewer({ selectedExercise, isPlaying }) {
+  const [modelError, setModelError] = useState(false);
+  
   return (
     <div className="w-full h-[500px] bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 rounded-lg overflow-hidden border border-border relative">
-      <Canvas shadows camera={{ position: [0, 1, 5], fov: 50 }}>
+      <Canvas shadows camera={{ position: [0, 1, 5], fov: 50 }} onError={() => setModelError(true)}>
         <PerspectiveCamera makeDefault position={[0, 1, 5]} />
         
         {/* Lighting */}
@@ -107,11 +155,18 @@ function ExerciseViewer({ selectedExercise, isPlaying }) {
         <directionalLight position={[-10, -10, -5]} intensity={0.3} />
         <spotLight position={[0, 5, 0]} angle={0.3} penumbra={1} intensity={0.5} />
         
-        {/* Model */}
+        {/* Model with error boundary */}
         <Suspense fallback={<Loader />}>
-          {selectedExercise && (
-            <Model modelPath={selectedExercise.model} isPlaying={isPlaying} />
-          )}
+          <ModelErrorBoundary>
+            {selectedExercise && !modelError && (
+              <Model 
+                modelPath={selectedExercise.model} 
+                isPlaying={isPlaying}
+                onError={() => setModelError(true)}
+              />
+            )}
+            {modelError && <ModelPlaceholder />}
+          </ModelErrorBoundary>
         </Suspense>
         
         {/* Controls */}

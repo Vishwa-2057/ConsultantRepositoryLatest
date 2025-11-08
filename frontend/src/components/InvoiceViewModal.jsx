@@ -369,7 +369,7 @@ const InvoiceViewModal = ({
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Payment Status:</span>
                     <span className="font-medium">
-                      {invoice.status === 'Approved' || invoice.status === 'Paid' 
+                      {invoice.paymentStatus === 'paid' || invoice.status?.toLowerCase() === 'approved' || invoice.status?.toLowerCase() === 'paid' 
                         ? (invoice.paymentMethod === 'cash' ? 'Paid (Cash)' : invoice.paymentMethod === 'online' ? 'Paid (Online)' : 'Paid') 
                         : 'Pending'}
                     </span>
@@ -396,16 +396,27 @@ const InvoiceViewModal = ({
                     <div className="col-span-2 text-right">Unit Price</div>
                     <div className="col-span-2 text-right">Amount</div>
                   </div>
-                  {invoice.lineItems.map((item, index) => (
-                    <div key={index} className="grid grid-cols-12 gap-4 py-2 border-b border-border/50">
-                      <div className="col-span-6">
-                        <p className="font-medium">{item.description}</p>
+                  {invoice.lineItems.map((item, index) => {
+                    // If unitPrice is 0 or missing, use the invoice total amount
+                    // Check multiple possible field names for the total
+                    const invoiceTotal = invoice.totalAmount || invoice.amount || invoice.total || 0;
+                    const unitPrice = (item.unitPrice && item.unitPrice > 0) ? item.unitPrice : invoiceTotal;
+                    const qty = item.qty || 1;
+                    const amount = qty * unitPrice;
+                    
+                    console.log('Line item:', item, 'Invoice total:', invoiceTotal, 'Using unitPrice:', unitPrice);
+                    
+                    return (
+                      <div key={index} className="grid grid-cols-12 gap-4 py-2 border-b border-border/50">
+                        <div className="col-span-6">
+                          <p className="font-medium">{item.description}</p>
+                        </div>
+                        <div className="col-span-2 text-center">{qty}</div>
+                        <div className="col-span-2 text-right">₹{Number(unitPrice).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                        <div className="col-span-2 text-right font-medium">₹{Number(amount).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
                       </div>
-                      <div className="col-span-2 text-center">{item.qty}</div>
-                      <div className="col-span-2 text-right">₹{Number(item.unitPrice || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
-                      <div className="col-span-2 text-right font-medium">₹{Number((item.qty * item.unitPrice) || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="text-muted-foreground">No items listed</p>
@@ -419,7 +430,14 @@ const InvoiceViewModal = ({
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Subtotal:</span>
-                  <span className="font-medium">₹{Number(invoice.lineItems?.reduce((sum, item) => sum + (item.qty * item.unitPrice), 0) || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
+                  <span className="font-medium">₹{Number(
+                    invoice.lineItems?.reduce((sum, item) => {
+                      const invoiceTotal = invoice.totalAmount || invoice.amount || invoice.total || 0;
+                      const unitPrice = (item.unitPrice && item.unitPrice > 0) ? item.unitPrice : invoiceTotal;
+                      const qty = item.qty || 1;
+                      return sum + (qty * unitPrice);
+                    }, 0) || (invoice.totalAmount || invoice.amount || invoice.total || 0)
+                  ).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>
                 </div>
                 {invoice.discount > 0 && (
                   <div className="flex justify-between">

@@ -32,7 +32,7 @@ import {
 
 const Billing = () => {
   // Set page title immediately
-  document.title = "Smart Healthcare";
+  document.title = "SMAART Healthcare";
   
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -314,7 +314,7 @@ const Billing = () => {
 
 
   useEffect(() => {
-    document.title = "Smart Healthcare";
+    document.title = "SMAART Healthcare";
   }, []);
 
   // Save pageSize to localStorage when it changes (skip initial load)

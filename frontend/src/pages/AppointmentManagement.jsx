@@ -27,7 +27,7 @@ import sessionManager from '@/utils/sessionManager';
 
 const AppointmentManagement = () => {
   // Set page title immediately
-  document.title = "Smart Healthcare";
+  document.title = "SMAART Healthcare";
   
   // Get current user info
   const currentUser = getCurrentUser();
@@ -291,7 +291,7 @@ const AppointmentManagement = () => {
 
   useEffect(() => {
     console.log('Initial useEffect called');
-    document.title = "Smart Healthcare";
+    document.title = "SMAART Healthcare";
     loadPatients();
     loadDoctors();
     console.log('About to call loadAppointments from initial useEffect');
@@ -653,7 +653,11 @@ const AppointmentManagement = () => {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                       },
-                      body: JSON.stringify({ status: 'approved' })
+                      body: JSON.stringify({ 
+                        status: 'approved',
+                        paymentStatus: 'paid',
+                        paymentMethod: 'online'
+                      })
                     });
                   }
                 }
@@ -744,7 +748,8 @@ const AppointmentManagement = () => {
             },
             body: JSON.stringify({ 
               paymentMethod: 'cash',
-              status: 'approved'
+              status: 'approved',
+              paymentStatus: 'paid'
             })
           });
         }
