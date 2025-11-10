@@ -589,6 +589,7 @@ const Dashboard = () => {
   // Chart data states
   const [appointmentTrendData, setAppointmentTrendData] = useState([]);
   const [patientAgeData, setPatientAgeData] = useState([]);
+  const [appointmentStatusData, setAppointmentStatusData] = useState([]);
   const [chartsLoading, setChartsLoading] = useState(false);
   const [submittingAlert, setSubmittingAlert] = useState(false);
   const [solvingAlerts, setSolvingAlerts] = useState(new Set());
@@ -749,6 +750,50 @@ const Dashboard = () => {
       } catch (error) {
         console.error('Failed to load patient age data:', error);
         setPatientAgeData([]);
+      }
+
+      // Load appointment status distribution data
+      try {
+        const filters = isDoctor() 
+          ? { doctorId: currentUser?.id }
+          : {};
+        const appointmentsResponse = await appointmentAPI.getAll(1, 200, filters);
+        const allAppointments = appointmentsResponse.appointments || appointmentsResponse.data || [];
+        
+        const statusCounts = {
+          'Scheduled': 0,
+          'Confirmed': 0,
+          'In Progress': 0,
+          'Completed': 0,
+          'Cancelled': 0
+        };
+
+        allAppointments.forEach(apt => {
+          if (apt.status && statusCounts.hasOwnProperty(apt.status)) {
+            statusCounts[apt.status]++;
+          }
+        });
+
+        const COLORS = {
+          'Scheduled': '#94a3b8',
+          'Confirmed': '#22c55e',
+          'In Progress': '#f59e0b',
+          'Completed': '#6366f1',
+          'Cancelled': '#ef4444'
+        };
+
+        const statusData = Object.entries(statusCounts)
+          .filter(([_, count]) => count > 0)
+          .map(([status, count]) => ({
+            name: status,
+            value: count,
+            fill: COLORS[status]
+          }));
+
+        setAppointmentStatusData(statusData);
+      } catch (error) {
+        console.error('Failed to load appointment status data:', error);
+        setAppointmentStatusData([]);
       }
 
     } catch (error) {
@@ -1207,6 +1252,64 @@ const Dashboard = () => {
               </Tooltip>
             ))}
           </TooltipProvider>
+
+          {/* Additional graphs for Doctor and Nurse roles */}
+          {(isDoctor() || isNurse() || isHeadNurse() || isSupervisor()) && (
+            <>
+              {/* Appointment Status Distribution */}
+              <Card className="border-0 shadow-soft sm:col-span-2 xl:col-span-1">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <Activity className="w-4 h-4 text-primary" />
+                    Appointment Status
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Distribution of appointment statuses
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex justify-center items-center pt-2">
+                  {chartsLoading ? (
+                    <div className="h-[180px] flex items-center justify-center">
+                      <div className="text-muted-foreground text-sm">Loading...</div>
+                    </div>
+                  ) : appointmentStatusData.length === 0 ? (
+                    <div className="h-[180px] flex items-center justify-center">
+                      <div className="text-muted-foreground text-sm">No appointment data</div>
+                    </div>
+                  ) : (
+                    <ChartContainer
+                      config={{
+                        value: {
+                          label: "Appointments",
+                        },
+                      }}
+                      className="h-[180px] w-full"
+                    >
+                      <PieChart>
+                        <Pie
+                          data={appointmentStatusData}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                          outerRadius={60}
+                          fill="#8884d8"
+                          dataKey="value"
+                          stroke="#fff"
+                          strokeWidth={2}
+                        >
+                          {appointmentStatusData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.fill} stroke="#fff" strokeWidth={2} />
+                          ))}
+                        </Pie>
+                        <ChartTooltip content={<ChartTooltipContent />} />
+                      </PieChart>
+                    </ChartContainer>
+                  )}
+                </CardContent>
+              </Card>
+            </>
+          )}
         </div>
 
         {/* Appointments Trend Chart - Middle */}
